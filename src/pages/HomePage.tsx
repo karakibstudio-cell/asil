@@ -1,0 +1,612 @@
+import React, { useState, useEffect } from 'react';
+import { Hotel, Offer, ActivePage, SiteSettings, HotelReview } from '../types';
+import { HotelCard } from '../components/HotelCard';
+import { FeaturedHotelsCarousel } from '../components/FeaturedHotelsCarousel';
+import { OurHotelsAccordion } from '../components/OurHotelsAccordion';
+import { AddReviewModal } from '../components/AddReviewModal';
+import { HeroSlider } from '../components/HeroSlider';
+import { EditableText } from '../components/EditableText';
+import { getReviewsFromDb } from '../services/firebase';
+import { useLanguage } from '../context/LanguageContext';
+import { motion } from 'framer-motion';
+import { 
+  Building2, 
+  Users, 
+  Award, 
+  HeartHandshake, 
+  ArrowLeft, 
+  Sparkles, 
+  ShieldCheck, 
+  Compass, 
+  Star, 
+  ChevronDown, 
+  ChevronRight, 
+  ChevronLeft,
+  PhoneCall, 
+  MessageSquarePlus,
+  Tag,
+  Quote
+} from 'lucide-react';
+
+interface HomePageProps {
+  hotels: Hotel[];
+  activeOffers: Offer[];
+  onNavigate: (page: ActivePage, hotelId?: string) => void;
+  onSelectHotel: (hotelId: string) => void;
+  siteSettings: SiteSettings;
+  onFilterDistrict?: (city: string, district: string) => void;
+}
+
+// Interactive CountUp component
+const CountUp: React.FC<{ end: number; duration?: number; suffix?: string; prefix?: string }> = ({
+  end,
+  duration = 2000,
+  suffix = '',
+  prefix = ''
+}) => {
+  const { language } = useLanguage();
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let startTimestamp: number | null = null;
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const ease = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      setCount(Math.floor(ease * end));
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      }
+    };
+    window.requestAnimationFrame(step);
+  }, [end, duration]);
+
+  return <span>{prefix}{(count ?? 0).toLocaleString(language === 'en' ? 'en-US' : 'ar-SA')}{suffix}</span>;
+};
+
+export const HomePage: React.FC<HomePageProps> = ({
+  hotels,
+  activeOffers,
+  onNavigate,
+  onSelectHotel,
+  siteSettings,
+  onFilterDistrict
+}) => {
+  const { language, t, translateDynamic, isRtl } = useLanguage();
+  const [currentTestimonialIdx, setCurrentTestimonialIdx] = useState(0);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [liveReviews, setLiveReviews] = useState<HotelReview[]>([]);
+
+  const loadLiveReviews = async () => {
+    try {
+      const allRevs = await getReviewsFromDb();
+      const approved = allRevs.filter((r) => r.status === 'approved');
+      if (approved.length > 0) {
+        setLiveReviews(approved);
+      }
+    } catch (e) {
+      console.warn('Failed loading reviews for homepage:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadLiveReviews();
+  }, []);
+
+  // Combined testimonials: live approved reviews + default samples
+  const displayedTestimonials = liveReviews.length > 0
+    ? liveReviews.map((rev) => ({
+        id: rev.id,
+        name: rev.authorName,
+        role: rev.countryOrTitle || '',
+        hotel: rev.hotelName || '',
+        quote: rev.comment,
+        stars: rev.rating || 5,
+        avatar: rev.avatarUrl || '' // only if provided by client!
+      }))
+    : TESTIMONIALS_DATA;
+
+  // Auto slide testimonials every 6.5 seconds
+  useEffect(() => {
+    if (displayedTestimonials.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentTestimonialIdx((prev) => (prev + 1) % displayedTestimonials.length);
+    }, 6500);
+    return () => clearInterval(timer);
+  }, [displayedTestimonials.length]);
+
+  const activeTestimonial = displayedTestimonials[currentTestimonialIdx] || displayedTestimonials[0];
+
+  const handleNextTestimonial = () => {
+    setCurrentTestimonialIdx((prev) => (prev + 1) % displayedTestimonials.length);
+  };
+
+  const handlePrevTestimonial = () => {
+    setCurrentTestimonialIdx((prev) => (prev - 1 + displayedTestimonials.length) % displayedTestimonials.length);
+  };
+
+  const featuredHotels = hotels.slice(0, 6);
+
+  const scrollToStats = () => {
+    const el = document.getElementById('stats-section');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const hasActiveOffers = activeOffers && activeOffers.some((o) => o.isActive);
+
+  return (
+    <div id="home-page" className="min-h-screen bg-[#F8F7F4] text-stone-900 overflow-hidden">
+      {/* 1. Dynamic Interactive Hero Slider with Multi-Images & Transitions */}
+      <HeroSlider
+        slides={siteSettings?.heroSlides}
+        onNavigate={onNavigate}
+        siteSettings={siteSettings}
+        onScrollToNext={scrollToStats}
+      />
+
+      {/* 2. Featured Hotels Carousel Banner (Directly after Hero) */}
+      <FeaturedHotelsCarousel 
+        hotels={hotels}
+        onSelectHotel={onSelectHotel}
+      />
+
+      {/* 3. Stats Section with Count-Up */}
+      <section id="stats-section" className="py-16 sm:py-20 bg-white border-y border-[#E8E2D8] relative">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-8 md:px-12 lg:px-16">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8"
+          >
+            <motion.div 
+              whileHover={{ y: -4 }}
+              className="flex flex-col items-center text-center p-6 rounded-2xl bg-[#FAF8F5] border border-[#E8E2D8] hover:border-[#C9A24B] transition-all shadow-xs"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 flex items-center justify-center mb-4 text-[#B38A34]">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <div className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-stone-900 mb-2 font-mono">
+                <CountUp end={50} prefix="+" duration={2200} />
+              </div>
+              <span className="text-xs sm:text-sm text-stone-600 font-medium">
+                <EditableText 
+                  contentKey="home.stats.item1.label"
+                  fallback="فندق معتمد ومرخص بمكة والمدينة"
+                />
+              </span>
+            </motion.div>
+
+            <motion.div 
+              whileHover={{ y: -4 }}
+              className="flex flex-col items-center text-center p-6 rounded-2xl bg-[#FAF8F5] border border-[#E8E2D8] hover:border-[#C9A24B] transition-all shadow-xs"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 flex items-center justify-center mb-4 text-[#B38A34]">
+                <Users className="w-6 h-6" />
+              </div>
+              <div className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-[#B38A34] mb-2 font-mono">
+                <CountUp end={120} prefix="+" suffix={language === 'en' ? 'k+' : ' ألف'} duration={2500} />
+              </div>
+              <span className="text-xs sm:text-sm text-stone-600 font-medium">
+                <EditableText 
+                  contentKey="home.stats.item2.label"
+                  fallback="حاج ومعتمر تشرفنا بخدمتهم"
+                />
+              </span>
+            </motion.div>
+
+            <motion.div 
+              whileHover={{ y: -4 }}
+              className="flex flex-col items-center text-center p-6 rounded-2xl bg-[#FAF8F5] border border-[#E8E2D8] hover:border-[#C9A24B] transition-all shadow-xs"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 flex items-center justify-center mb-4 text-[#B38A34]">
+                <Award className="w-6 h-6" />
+              </div>
+              <div className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-stone-900 mb-2 font-mono">
+                <CountUp end={15} prefix="+" suffix={language === 'en' ? ' Years' : ' عاماً'} duration={2000} />
+              </div>
+              <span className="text-xs sm:text-sm text-stone-600 font-medium">
+                <EditableText 
+                  contentKey="home.stats.item3.label"
+                  fallback="من الريادة والخبرة المتخصصة"
+                />
+              </span>
+            </motion.div>
+
+            <motion.div 
+              whileHover={{ y: -4 }}
+              className="flex flex-col items-center text-center p-6 rounded-2xl bg-[#FAF8F5] border border-[#E8E2D8] hover:border-[#C9A24B] transition-all shadow-xs"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 flex items-center justify-center mb-4 text-[#B38A34]">
+                <HeartHandshake className="w-6 h-6" />
+              </div>
+              <div className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-[#B38A34] mb-2 font-mono">
+                <CountUp end={99} suffix={language === 'en' ? '%' : '٪'} duration={2200} />
+              </div>
+              <span className="text-xs sm:text-sm text-stone-600 font-medium">
+                <EditableText 
+                  contentKey="home.stats.item4.label"
+                  fallback="نسبة رضا وثقة ضيوف الرحمن"
+                />
+              </span>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* 4. Featured Hotels Grid Section (6 Cards) */}
+      <section id="featured-hotels-section" className="py-20 sm:py-24 max-w-[1720px] mx-auto px-4 sm:px-8 md:px-12 lg:px-16">
+        <motion.div 
+          initial={{ opacity: 0, y: 25 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-12 gap-4"
+        >
+          <div>
+            <div className="flex items-center gap-2 text-[#B38A34] text-xs sm:text-sm font-bold uppercase tracking-wider mb-2">
+              <Sparkles className="w-4 h-4" />
+              <EditableText 
+                contentKey="home.hotels.badge"
+                fallback="فخامة وروحانية"
+              />
+            </div>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-cairo font-bold text-stone-900">
+              <EditableText 
+                contentKey="home.hotels.title"
+                fallback="فنادقنا المميزة في مكة والمدينة"
+                as="span"
+              />
+            </h2>
+            <div className="text-sm text-stone-600 mt-2 max-w-xl">
+              <EditableText 
+                contentKey="home.hotels.subtitle"
+                fallback="مجموعة مختارة بعناية من أفخم الفنادق المطلة على الكعبة المشرفة وساحات المسجد النبوي، تضمن لكم راحة لا تضاهى."
+                as="span"
+                multiline={true}
+              />
+            </div>
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            id="featured-hotels-view-all"
+            onClick={() => onNavigate('hotels')}
+            className="px-6 py-3 rounded-full bg-white hover:bg-[#C9A24B] text-stone-800 hover:text-white font-bold text-sm border border-stone-300 hover:border-[#C9A24B] transition-all duration-300 flex items-center gap-2 shrink-0 group shadow-sm cursor-pointer"
+          >
+            <EditableText 
+              contentKey="home.hotels.viewAllBtn"
+              fallback="شاهد كل الفنادق"
+              inline={true}
+            />
+            <span>({hotels.length})</span>
+            <ArrowLeft className={`w-4 h-4 ${isRtl ? 'group-hover:-translate-x-1' : 'rotate-180 group-hover:translate-x-1'} transition-transform`} />
+          </motion.button>
+        </motion.div>
+
+        {/* 6 Hotels Grid */}
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-40px" }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8"
+        >
+          {featuredHotels.map((hotel, index) => (
+            <HotelCard
+              key={hotel.id}
+              hotel={hotel}
+              onClick={onSelectHotel}
+              index={index}
+            />
+          ))}
+        </motion.div>
+      </section>
+
+      {/* 5. Our Hotels Accordion by City and Districts */}
+      <OurHotelsAccordion
+        hotels={hotels}
+        onSelectHotel={onSelectHotel}
+        onFilterDistrict={(city, district) => {
+          if (onFilterDistrict) {
+            onFilterDistrict(city, district);
+          } else {
+            onNavigate('hotels');
+          }
+        }}
+      />
+
+      {/* 6. Active Offers Banner (if any active offers exist) */}
+      {hasActiveOffers && (
+        <section id="offers-spotlight-section" className="py-14 bg-gradient-to-r from-[#DFBE72]/15 via-[#C9A24B]/20 to-[#98752B]/15 border-b border-[#E8E2D8]">
+          <div className="max-w-[1720px] mx-auto px-4 sm:px-8 md:px-12 lg:px-16 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-4 text-right">
+              <div className="w-14 h-14 rounded-2xl bg-[#C9A24B] text-white flex items-center justify-center shrink-0 shadow-md">
+                <Tag className="w-7 h-7" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-[#B38A34] uppercase">
+                  <EditableText
+                    contentKey="home.offers.badge"
+                    fallback="عروض حصرية محدودة"
+                    inline={true}
+                  />
+                </span>
+                <h3 className="font-cairo font-black text-xl sm:text-2xl text-stone-900">
+                  <EditableText
+                    contentKey="home.offers.title"
+                    fallback="تصفح أحدث تصاميم وبوسترات عروض المواسم والمناسبات"
+                    as="span"
+                  />
+                </h3>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onNavigate('offers')}
+              className="px-7 py-3.5 rounded-full bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 shrink-0 cursor-pointer"
+            >
+              <span>
+                <EditableText
+                  contentKey="home.offers.btn"
+                  fallback="استعراض قسم العروض والمناسبات"
+                  inline={true}
+                />
+              </span>
+              <ArrowLeft className={`w-4 h-4 ${isRtl ? '' : 'rotate-180'}`} />
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* 7. Testimonials Section (Guest Reviews & Feedback) */}
+      <section id="testimonials-section" className="py-20 sm:py-24 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-12 text-center sm:text-right">
+          <div>
+            <span className="text-xs sm:text-sm font-bold text-[#B38A34] uppercase tracking-wider mb-2 block">
+              <EditableText 
+                contentKey="home.testimonials.badge"
+                fallback="شهادات نعتز بها"
+              />
+            </span>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-cairo font-bold text-stone-900">
+              <EditableText 
+                contentKey="home.testimonials.title"
+                fallback="آراء وتجارب ضيوف الرحمن"
+                as="span"
+              />
+            </h2>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsReviewModalOpen(true)}
+            className="px-5 py-2.5 rounded-full bg-white hover:bg-[#FAF8F5] text-[#B38A34] font-bold text-xs sm:text-sm border border-[#C9A24B] shadow-xs flex items-center gap-2 transition-all hover:scale-105 cursor-pointer"
+          >
+            <MessageSquarePlus className="w-4 h-4" />
+            <span>{t('home.testimonials.addReview', 'أضف تقييمك وتجربتك')}</span>
+          </button>
+        </div>
+
+        <div className="relative bg-white rounded-3xl border border-[#E8E2D8] p-8 sm:p-12 shadow-sm overflow-hidden">
+          {/* Decorative Quote Mark */}
+          <div className="absolute top-6 left-8 text-8xl text-[#C9A24B]/10 font-serif pointer-events-none select-none">
+            “
+          </div>
+
+          {/* Navigation Arrows for Testimonials */}
+          {displayedTestimonials.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={handlePrevTestimonial}
+                className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-stone-50 border border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-stone-100 flex items-center justify-center transition-all z-20 shadow-xs cursor-pointer`}
+                aria-label={t('hero.prev', 'السابق')}
+              >
+                {isRtl ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={handleNextTestimonial}
+                className={`absolute ${isRtl ? 'left-4' : 'right-4'} top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-stone-50 border border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-stone-100 flex items-center justify-center transition-all z-20 shadow-xs cursor-pointer`}
+                aria-label={t('hero.next', 'التالي')}
+              >
+                {isRtl ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+              </button>
+            </>
+          )}
+
+          <div className="relative z-10 flex flex-col items-center text-center px-4 sm:px-8">
+            {/* Display Customer Photo ONLY IF PROVIDED BY CLIENT */}
+            {activeTestimonial.avatar ? (
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full p-1 bg-gradient-to-tr from-[#DFBE72] to-[#C9A24B] mb-6 shadow-md shrink-0">
+                <img
+                  src={activeTestimonial.avatar}
+                  alt={activeTestimonial.name}
+                  className="w-full h-full rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            ) : null}
+
+            {/* Stars */}
+            <div className="flex items-center gap-1.5 mb-4">
+              {[...Array(activeTestimonial.stars || 5)].map((_, i) => (
+                <Star key={i} className="w-5 h-5 fill-[#C9A24B] text-[#C9A24B]" />
+              ))}
+            </div>
+
+            {/* Quote Text (Client Comment) */}
+            <blockquote className="text-base sm:text-xl text-stone-700 font-cairo font-medium leading-relaxed max-w-3xl mb-5">
+              "{translateDynamic(activeTestimonial.quote)}"
+            </blockquote>
+
+            {/* Guest Name & Details entered by client */}
+            <h4 className="font-cairo font-bold text-lg text-stone-900">
+              {translateDynamic(activeTestimonial.name)}
+            </h4>
+
+            {(activeTestimonial.role || activeTestimonial.hotel) && (
+              <span className="text-xs text-[#B38A34] mt-1 font-semibold">
+                {[
+                  activeTestimonial.role ? translateDynamic(activeTestimonial.role) : '',
+                  activeTestimonial.hotel 
+                    ? (language === 'en' ? `Stayed at ${translateDynamic(activeTestimonial.hotel)}` : `الإقامة في ${activeTestimonial.hotel}`)
+                    : ''
+                ]
+                  .filter(Boolean)
+                  .join(' • ')}
+              </span>
+            )}
+
+            {/* Slider Dots Navigation */}
+            {displayedTestimonials.length > 1 && (
+              <div className="flex items-center gap-2 mt-8">
+                {displayedTestimonials.map((_, idx) => (
+                  <button
+                    key={idx}
+                    id={`testimonial-dot-${idx}`}
+                    onClick={() => setCurrentTestimonialIdx(idx)}
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      currentTestimonialIdx === idx
+                        ? 'w-8 bg-[#C9A24B]'
+                        : 'w-2 bg-stone-300 hover:bg-stone-400'
+                    }`}
+                    aria-label={`الشهادة رقم ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 8. Why Choose Us / Trust & Services Banner */}
+      <section className="py-16 bg-[#FAF8F5] border-t border-[#E8E2D8]">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-8 md:px-12 lg:px-16">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+          >
+            <motion.div 
+              whileHover={{ y: -6, boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05)" }}
+              transition={{ duration: 0.3 }}
+              className="flex items-start gap-4 p-6 rounded-2xl bg-white border border-[#E8E2D8] shadow-2xs hover:border-[#C9A24B] transition-colors"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-cairo font-bold text-stone-900 text-base mb-1">
+                  <EditableText 
+                    contentKey="home.trust.feature1.title"
+                    fallback="حجوزات مؤكدة ومباشرة"
+                  />
+                </h4>
+                <div className="text-xs text-stone-600 leading-relaxed">
+                  <EditableText 
+                    contentKey="home.trust.feature1.desc"
+                    fallback="تعاقدات حصرية مع كبرى سلاسل الفنادق تضمن لك التسكين الفوري المؤكد."
+                    multiline={true}
+                  />
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              whileHover={{ y: -6, boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05)" }}
+              transition={{ duration: 0.3 }}
+              className="flex items-start gap-4 p-6 rounded-2xl bg-white border border-[#E8E2D8] shadow-2xs hover:border-[#C9A24B] transition-colors"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center shrink-0">
+                <Compass className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-cairo font-bold text-stone-900 text-base mb-1">
+                  <EditableText 
+                    contentKey="home.trust.feature2.title"
+                    fallback="القرب الفائق من الحرم"
+                  />
+                </h4>
+                <div className="text-xs text-stone-600 leading-relaxed">
+                  <EditableText 
+                    contentKey="home.trust.feature2.desc"
+                    fallback="فنادق تبعد خطوات معدودة عن ساحات الحرمين لراحة كبار السن والأسر والأطفال."
+                    multiline={true}
+                  />
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              whileHover={{ y: -6, boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05)" }}
+              transition={{ duration: 0.3 }}
+              className="flex items-start gap-4 p-6 rounded-2xl bg-white border border-[#E8E2D8] shadow-2xs hover:border-[#C9A24B] transition-colors"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center shrink-0">
+                <HeartHandshake className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-cairo font-bold text-stone-900 text-base mb-1">
+                  <EditableText 
+                    contentKey="home.trust.feature3.title"
+                    fallback="فريق ميداني على مدار 24/7"
+                  />
+                </h4>
+                <div className="text-xs text-stone-600 leading-relaxed">
+                  <EditableText 
+                    contentKey="home.trust.feature3.desc"
+                    fallback="ممثلونا متواجدون في مكة والمدينة لاستقبالكم وتسهيل إجراءات الدخول والإقامة."
+                    multiline={true}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Review Submission Modal */}
+      <AddReviewModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        hotels={hotels}
+      />
+    </div>
+  );
+};
+
+const TESTIMONIALS_DATA = [
+  {
+    id: 1,
+    name: 'المهندس عبدالرحمن السعيد',
+    role: 'معتمر من دولة الكويت',
+    hotel: 'فيرمونت برج الساعة - مكة',
+    quote: 'تجربة إقامة تفوق الوصف! المصداقية العالية في حجز الغرفة المطلة وسرعة تسجيل الدخول بدون أي انتظار جعلت رحلتنا مع الوالدة في قمة الراحة والسكينة.',
+    stars: 5,
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80'
+  },
+  {
+    id: 2,
+    name: 'الأستاذ طارق بن فيصل',
+    role: 'منظم رحلات سياحية - الإمارات',
+    hotel: 'شذا المدينة - المدينة المنورة',
+    quote: 'نتعامل مع شركة برستيج لإدارة وتشغيل الفنادق لتسكين مجموعاتنا منذ ٤ سنوات. الالتزام بالوعود والأسعار المميزة والمتابعة الميدانية الدائمة تجعلهم شريكنا الأول والموثوق دائماً.',
+    stars: 5,
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80'
+  },
+  {
+    id: 3,
+    name: 'الدكتور محمد فاروق',
+    role: 'حاج ومعتمر من مصر',
+    hotel: 'فندق برستيج أجياد - مكة المكرمة',
+    quote: 'قرب الفندق المباشر من ساحة الحرم المكي واحترافية طاقم التشغيل ساعد والدي المسن على أداء كل الصلوات في المسجد الحرام دون مشقة. شكراً لفريق شركة برستيج على حسن الضيافة والإدارة الراقية.',
+    stars: 5,
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=200&q=80'
+  }
+];

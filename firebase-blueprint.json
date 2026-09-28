@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "Hotel": {
+      "title": "Hotel",
+      "description": "Hotel accommodation details in Makkah or Madinah",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "city": { "type": "string" },
+        "district": { "type": "string" },
+        "stars": { "type": "number" },
+        "distanceToHaram": { "type": "number" },
+        "featured": { "type": "boolean" },
+        "categories": { "type": "array" },
+        "keywords": { "type": "string" },
+        "metaDescription": { "type": "string" }
+      },
+      "required": ["id", "name", "city", "district", "stars"]
+    },
+    "Offer": {
+      "title": "Offer",
+      "description": "Promotional offers and occasions designs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "keywords": { "type": "string" },
+        "metaDescription": { "type": "string" }
+      },
+      "required": ["id", "title", "isActive"]
+    },
+    "HotelReview": {
+      "title": "HotelReview",
+      "description": "Visitor reviews submitted for moderation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "hotelId": { "type": "string" },
+        "hotelName": { "type": "string" },
+        "authorName": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "hotelId", "authorName", "rating", "comment", "status"]
+    },
+    "ContactMessage": {
+      "title": "ContactMessage",
+      "description": "Guest contact inquiries and booking requests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "phone", "message", "createdAt"]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "General site configuration including identity and dynamic communication channels",
+      "type": "object",
+      "properties": {
+        "siteTitle": { "type": "string" },
+        "siteSubtitle": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "channels": { "type": "array" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["siteTitle"]
+    },
+    "ContentItem": {
+      "title": "ContentItem",
+      "description": "In-place editable content text and formatting entry mapped by unique key",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "text": { "type": "string" },
+        "color": { "type": "string" },
+        "fontSize": { "type": "string" },
+        "fontWeight": { "type": "string" },
+        "updatedAt": { "type": "number" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["key", "text"]
+    }
+  },
+  "firestore": {
+    "/hotels/{hotelId}": {
+      "schema": "Hotel",
+      "description": "Hotels listed on the platform"
+    },
+    "/offers/{offerId}": {
+      "schema": "Offer",
+      "description": "Promotional offers"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "HotelReview",
+      "description": "Visitor reviews awaiting moderation or approved"
+    },
+    "/messages/{messageId}": {
+      "schema": "ContactMessage",
+      "description": "Guest messages and booking requests"
+    },
+    "/settings/{settingId}": {
+      "schema": "SiteSettings",
+      "description": "Global website settings and communication channels"
+    },
+    "/content/{contentId}": {
+      "schema": "ContentItem",
+      "description": "Live editable texts and copies across site pages"
+    }
+  }
+}

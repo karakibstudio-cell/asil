@@ -1,0 +1,6 @@
+{
+  "name": "برستيج لإدارة وتشغيل الفنادق | Prestige Hotels Management",
+  "description": "الموقع الرسمي لشركة برستيج المتخصصة في إدارة وتشغيل الفنادق وتقديم خدمات الضيافة والتسكين الفندقي في مكة المكرمة والمدينة المنورة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
