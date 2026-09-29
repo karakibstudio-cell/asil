@@ -189,11 +189,11 @@ export const AboutPage: React.FC<AboutPageProps> = ({
   const handleDownloadLogo = () => {
     const a = document.createElement('a');
     a.href = displayLogo;
-    a.download = 'diyafat-alharamain-logo.png';
+    a.download = 'prestige-hotels-logo.png';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    onShowToast?.('جاري تنزيل ملف الشعار...', 'info');
+    onShowToast?.(t('about.downloadingLogo', 'جاري تنزيل ملف الشعار...'), 'info');
   };
 
   const officeMapUrl = about.officeMapUrl || 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah';
@@ -201,8 +201,8 @@ export const AboutPage: React.FC<AboutPageProps> = ({
   const cleanPhone = officeWhatsApp.replace(/[^0-9]/g, '');
   const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
     language === 'en'
-      ? 'Hello, I would like to inquire about Diyafat Al-Haramain hotel bookings and services.'
-      : 'السلام عليكم ورحمة الله، أود الاستفسار عن خدمات وحجوزات ضيافة الحرمين.'
+      ? 'Hello, I would like to inquire about Prestige hotel bookings and services.'
+      : 'السلام عليكم ورحمة الله، أود الاستفسار عن خدمات وحجوزات شركة برستيج.'
   )}`;
 
   return (
@@ -378,7 +378,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
           >
             <img
               src={mainPhoto}
-              alt="مقر وضيافة الحرمين"
+              alt="مقر شركة برستيج لإدارة وتشغيل الفنادق"
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               referrerPolicy="no-referrer"
             />
@@ -714,7 +714,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                 </div>
                 <div>
                   <h3 className="font-cairo font-bold text-base text-stone-900 leading-tight">
-                    {language === 'en' ? 'Company Brand Logo' : 'شعار ضيافة الحرمين'}
+                    {language === 'en' ? 'Company Brand Logo' : (siteSettings?.siteTitle || 'شعار شركة برستيج')}
                   </h3>
                   <span className="text-[11px] text-stone-500">
                     {language === 'en' ? 'High-Resolution Preview (PNG / SVG)' : 'معاينة الشعار بدقة عالية مع دعم الشفافية'}
@@ -739,7 +739,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
               >
                 <img
                   src={displayLogo}
-                  alt={siteSettings?.siteTitle || 'شعار ضيافة الحرمين'}
+                  alt={siteSettings?.siteTitle || 'شعار شركة برستيج'}
                   className="max-h-full max-w-full object-contain drop-shadow-md select-none"
                 />
               </div>

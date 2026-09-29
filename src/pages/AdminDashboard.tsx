@@ -199,7 +199,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     isActive: true,
     badgeText: 'عرض موسمي',
     keywords: 'عروض العمرة, خصومات فنادق مكة, باقات الحج والعمرة',
-    metaDescription: 'استفد من أقوى عروض وباقات التسكين الفاخرة في مكة والمدينة بأسعار حصرية من ضيافة الحرمين.'
+    metaDescription: 'استفد من أقوى عروض وباقات التسكين الفاخرة في مكة والمدينة بأسعار حصرية من شركة برستيج لإدارة وتشغيل الفنادق.'
   });
   const [offerUploadProgress, setOfferUploadProgress] = useState<number>(0);
   const [isOfferUploading, setIsOfferUploading] = useState(false);

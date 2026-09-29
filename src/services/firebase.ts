@@ -23,7 +23,8 @@ import {
   User 
 } from 'firebase/auth';
 import firebaseConfigJson from '../../firebase-applet-config.json';
-import { Hotel, Offer, ContactMessage, SiteSettings, ContactChannel, ContentItem, HotelReview, HeroSlide, District, AdminUser, BranchLocation, QuickLinkItem } from '../types';
+import { Hotel, Offer, ContactMessage, SiteSettings, ContactChannel, ContentItem, HotelReview, HeroSlide, District, AdminUser, BranchLocation, QuickLinkItem, AboutPageSettings } from '../types';
+import { DEFAULT_VALUE_PILLARS } from '../components/AdminAboutManager';
 import { INITIAL_HOTELS, INITIAL_OFFERS, INITIAL_REVIEWS } from '../data/mockHotels';
 import {
   fetchHotelsFromSupabase,
@@ -400,6 +401,38 @@ export const DEFAULT_QUICK_LINKS: QuickLinkItem[] = [
   }
 ];
 
+export const DEFAULT_ABOUT_US: AboutPageSettings = {
+  title: 'عن شركة برستيج لإدارة وتشغيل الفنادق',
+  subtitle: 'مسيرة ريادة واحترافية في إدارة وتشغيل الفنادق والضيافة الفاخرة لضيوف الرحمن وزوار مكة المكرمة والمدينة المنورة.',
+  badge: 'شرف خدمة ضيوف الرحمن',
+  missionTitle: 'رسالتنا: التميز في إدارة وتشغيل الفنادق وخدمة الضيوف',
+  missionText1: 'تأسست شركة برستيج لإدارة وتشغيل الفنادق انطلاقاً من رؤية متكاملة لرفع كفاءة تشغيل الأصول الفندقية وتقديم أرقى حلول الضيافة والتسكين لضيوف الرحمن وشركات السياحة في المدينتين المقدستين.',
+  missionText2: 'بفضل خبراتنا الإدارية وكوادرنا التشغيلية المتخصصة في كبرى فنادق مكة المكرمة والمدينة المنورة، نضمن للمستثمرين والنزلاء أعلى معايير الجودة الفندقية وسرعة إجراءات التسكين.',
+  visionTitle: 'رؤيتنا: الريادة في إدارة وتشغيل الفنادق والضيافة الروحانية',
+  visionText: 'أن نكون الخيار الأول والأكثر ثقة للمستثمرين وضيوف الرحمن ووكالات العمرة عالمياً من خلال تقديم أرقى معايير الإدارة والتشغيل الفندقي.',
+  yearsExperience: '١٥+ عاماً',
+  servedGuests: '١٢٠,٠٠٠+',
+  officeTitle: 'المقر الرئيسي لشركة برستيج لإدارة وتشغيل الفنادق',
+  officeCity: 'مكة المكرمة',
+  officeAddress: 'أبراج وقف الملك عبدالعزيز - مجمع أبراج البيت، طريق أجياد، مكة المكرمة',
+  officeMapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah',
+  officePhone: '+966501234567',
+  officeWhatsApp: '+966501234567',
+  officeEmail: 'info@prestigehotels.sa',
+  officeWorkingHours: 'على مدار الساعة 24/7 لخدمة ضيوف الرحمن',
+  licenseNumber: '73104928',
+  licenseAuthority: 'مرخصون من وزارة الحج والعمرة والهيئة السعودية للسياحة',
+  showLicense: true,
+  photos: [
+    'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
+    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80'
+  ],
+  mainPhoto: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
+  logoUrl: '',
+  valuePillars: DEFAULT_VALUE_PILLARS
+};
+
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   siteTitle: 'برستيج لإدارة وتشغيل الفنادق',
   siteSubtitle: 'إدارة وتشغيل الفنادق والضيافة الفاخرة',
@@ -409,6 +442,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   heroSlides: DEFAULT_HERO_SLIDES,
   branches: DEFAULT_BRANCHES,
   quickLinks: DEFAULT_QUICK_LINKS,
+  aboutUs: DEFAULT_ABOUT_US,
 };
 
 export async function getSiteSettingsFromDb(): Promise<SiteSettings> {
@@ -480,12 +514,21 @@ export async function getSiteSettingsFromDb(): Promise<SiteSettings> {
         ? [...data.quickLinks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
         : (fallback.quickLinks || DEFAULT_QUICK_LINKS);
 
+      const sanitizeAbout = (ab?: AboutPageSettings): AboutPageSettings => {
+        if (!ab) return DEFAULT_ABOUT_US;
+        const raw = JSON.stringify(ab);
+        if (raw.includes('ضيافة الحرمين')) {
+          return JSON.parse(raw.replace(/ضيافة الحرمين/g, 'شركة برستيج'));
+        }
+        return { ...DEFAULT_ABOUT_US, ...ab };
+      };
+
       const merged: SiteSettings = {
         siteTitle: data.siteTitle || DEFAULT_SITE_SETTINGS.siteTitle,
         siteSubtitle: data.siteSubtitle || DEFAULT_SITE_SETTINGS.siteSubtitle,
         logoUrl: data.logoUrl || fallback.logoUrl || '',
         showLicense: data.showLicense ?? fallback.showLicense ?? true,
-        aboutUs: data.aboutUs || fallback.aboutUs,
+        aboutUs: sanitizeAbout(data.aboutUs || fallback.aboutUs),
         channels,
         heroSlides,
         branches,
@@ -1000,10 +1043,17 @@ export function subscribeToLiveContent(callback: (contentMap: Record<string, Con
       const parsed = JSON.parse(cached);
       const normalized: Record<string, ContentItem> = {};
       Object.keys(parsed).forEach((k) => {
+        let textVal = '';
         if (typeof parsed[k] === 'string') {
-          normalized[k] = { key: k, text: parsed[k] };
+          textVal = parsed[k];
+          normalized[k] = { key: k, text: textVal.includes('ضيافة الحرمين') ? textVal.replace(/ضيافة الحرمين/g, 'شركة برستيج') : textVal };
         } else if (parsed[k] && typeof parsed[k] === 'object') {
-          normalized[k] = { key: k, text: parsed[k].text || '', ...parsed[k] };
+          textVal = parsed[k].text || '';
+          normalized[k] = { 
+            key: k, 
+            ...parsed[k],
+            text: textVal.includes('ضيافة الحرمين') ? textVal.replace(/ضيافة الحرمين/g, 'شركة برستيج') : textVal 
+          };
         }
       });
       callback(normalized);
@@ -1023,9 +1073,11 @@ export function subscribeToLiveContent(callback: (contentMap: Record<string, Con
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         if (data && typeof data.text === 'string') {
+          const rawText = data.text;
+          const cleanedText = rawText.includes('ضيافة الحرمين') ? rawText.replace(/ضيافة الحرمين/g, 'شركة برستيج') : rawText;
           map[docSnap.id] = {
             key: docSnap.id,
-            text: data.text,
+            text: cleanedText,
             color: data.color || undefined,
             fontSize: data.fontSize || undefined,
             fontWeight: data.fontWeight || undefined,
