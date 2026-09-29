@@ -15,10 +15,13 @@ import { safeSetLocalStorage, safeStringify } from './firebase';
 export const SUPABASE_URL_KEY = 'diy_supabase_url';
 export const SUPABASE_KEY_KEY = 'diy_supabase_anon_key';
 
-// Helper to get active Supabase credentials (from env or stored settings)
+export const DEFAULT_SUPABASE_URL = 'https://tjywogkyazdyqqncdshi.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqeXdvZ2t5YXpkeXFxbmNkc2hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2MjA3ODAsImV4cCI6MjEwNjE5Njc4MH0.uCej_jRRuHj9EGRkowfcbzFUolRuFl7iweLW5gwcosE';
+
+// Helper to get active Supabase credentials (from env or stored settings or defaults)
 export function getSupabaseConfig(): { url: string; anonKey: string; isConfigured: boolean } {
-  let url = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-  let anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+  let url = (import.meta as any).env?.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  let anonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
   try {
     const customUrl = localStorage.getItem(SUPABASE_URL_KEY);
