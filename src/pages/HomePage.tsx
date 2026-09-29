@@ -93,18 +93,18 @@ export const HomePage: React.FC<HomePageProps> = ({
     loadLiveReviews();
   }, []);
 
-  // Combined testimonials: live approved reviews + default samples
+  // Live approved reviews only (no mock data)
   const displayedTestimonials = liveReviews.length > 0
     ? liveReviews.map((rev) => ({
         id: rev.id,
         name: rev.authorName,
-        role: rev.countryOrTitle || '',
+        role: rev.country || (rev as any).countryOrTitle || '',
         hotel: rev.hotelName || '',
         quote: rev.comment,
         stars: rev.rating || 5,
-        avatar: rev.avatarUrl || '' // only if provided by client!
+        avatar: (rev as any).avatarUrl || ''
       }))
-    : TESTIMONIALS_DATA;
+    : [];
 
   // Auto slide testimonials every 6.5 seconds
   useEffect(() => {
@@ -115,7 +115,9 @@ export const HomePage: React.FC<HomePageProps> = ({
     return () => clearInterval(timer);
   }, [displayedTestimonials.length]);
 
-  const activeTestimonial = displayedTestimonials[currentTestimonialIdx] || displayedTestimonials[0];
+  const activeTestimonial = displayedTestimonials.length > 0
+    ? (displayedTestimonials[currentTestimonialIdx] || displayedTestimonials[0])
+    : null;
 
   const handleNextTestimonial = () => {
     setCurrentTestimonialIdx((prev) => (prev + 1) % displayedTestimonials.length);
@@ -391,95 +393,122 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
 
         <div className="relative bg-white rounded-3xl border border-[#E8E2D8] p-8 sm:p-12 shadow-sm overflow-hidden">
-          {/* Decorative Quote Mark */}
-          <div className="absolute top-6 left-8 text-8xl text-[#C9A24B]/10 font-serif pointer-events-none select-none">
-            “
-          </div>
-
-          {/* Navigation Arrows for Testimonials */}
-          {displayedTestimonials.length > 1 && (
+          {activeTestimonial ? (
             <>
-              <button
-                type="button"
-                onClick={handlePrevTestimonial}
-                className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-stone-50 border border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-stone-100 flex items-center justify-center transition-all z-20 shadow-xs cursor-pointer`}
-                aria-label={t('hero.prev', 'السابق')}
-              >
-                {isRtl ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-              </button>
-              <button
-                type="button"
-                onClick={handleNextTestimonial}
-                className={`absolute ${isRtl ? 'left-4' : 'right-4'} top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-stone-50 border border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-stone-100 flex items-center justify-center transition-all z-20 shadow-xs cursor-pointer`}
-                aria-label={t('hero.next', 'التالي')}
-              >
-                {isRtl ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-              </button>
-            </>
-          )}
-
-          <div className="relative z-10 flex flex-col items-center text-center px-4 sm:px-8">
-            {/* Display Customer Photo ONLY IF PROVIDED BY CLIENT */}
-            {activeTestimonial.avatar ? (
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full p-1 bg-gradient-to-tr from-[#DFBE72] to-[#C9A24B] mb-6 shadow-md shrink-0">
-                <img
-                  src={activeTestimonial.avatar}
-                  alt={activeTestimonial.name}
-                  className="w-full h-full rounded-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
+              {/* Decorative Quote Mark */}
+              <div className="absolute top-6 left-8 text-8xl text-[#C9A24B]/10 font-serif pointer-events-none select-none">
+                “
               </div>
-            ) : null}
 
-            {/* Stars */}
-            <div className="flex items-center gap-1.5 mb-4">
-              {[...Array(activeTestimonial.stars || 5)].map((_, i) => (
-                <Star key={i} className="w-5 h-5 fill-[#C9A24B] text-[#C9A24B]" />
-              ))}
-            </div>
-
-            {/* Quote Text (Client Comment) */}
-            <blockquote className="text-base sm:text-xl text-stone-700 font-cairo font-medium leading-relaxed max-w-3xl mb-5">
-              "{translateDynamic(activeTestimonial.quote)}"
-            </blockquote>
-
-            {/* Guest Name & Details entered by client */}
-            <h4 className="font-cairo font-bold text-lg text-stone-900">
-              {translateDynamic(activeTestimonial.name)}
-            </h4>
-
-            {(activeTestimonial.role || activeTestimonial.hotel) && (
-              <span className="text-xs text-[#B38A34] mt-1 font-semibold">
-                {[
-                  activeTestimonial.role ? translateDynamic(activeTestimonial.role) : '',
-                  activeTestimonial.hotel 
-                    ? (language === 'en' ? `Stayed at ${translateDynamic(activeTestimonial.hotel)}` : `الإقامة في ${activeTestimonial.hotel}`)
-                    : ''
-                ]
-                  .filter(Boolean)
-                  .join(' • ')}
-              </span>
-            )}
-
-            {/* Slider Dots Navigation */}
-            {displayedTestimonials.length > 1 && (
-              <div className="flex items-center gap-2 mt-8">
-                {displayedTestimonials.map((_, idx) => (
+              {/* Navigation Arrows for Testimonials */}
+              {displayedTestimonials.length > 1 && (
+                <>
                   <button
-                    key={idx}
-                    id={`testimonial-dot-${idx}`}
-                    onClick={() => setCurrentTestimonialIdx(idx)}
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      currentTestimonialIdx === idx
-                        ? 'w-8 bg-[#C9A24B]'
-                        : 'w-2 bg-stone-300 hover:bg-stone-400'
-                    }`}
-                    aria-label={`الشهادة رقم ${idx + 1}`}
-                  />
-                ))}
+                    type="button"
+                    onClick={handlePrevTestimonial}
+                    className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-stone-50 border border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-stone-100 flex items-center justify-center transition-all z-20 shadow-xs cursor-pointer`}
+                    aria-label={t('hero.prev', 'السابق')}
+                  >
+                    {isRtl ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextTestimonial}
+                    className={`absolute ${isRtl ? 'left-4' : 'right-4'} top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-stone-50 border border-stone-200 text-stone-600 hover:text-stone-900 hover:bg-stone-100 flex items-center justify-center transition-all z-20 shadow-xs cursor-pointer`}
+                    aria-label={t('hero.next', 'التالي')}
+                  >
+                    {isRtl ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                  </button>
+                </>
+              )}
+
+              <div className="relative z-10 flex flex-col items-center text-center px-4 sm:px-8">
+                {activeTestimonial.avatar ? (
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full p-1 bg-gradient-to-tr from-[#DFBE72] to-[#C9A24B] mb-6 shadow-md shrink-0">
+                    <img
+                      src={activeTestimonial.avatar}
+                      alt={activeTestimonial.name}
+                      className="w-full h-full rounded-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : null}
+
+                {/* Stars */}
+                <div className="flex items-center gap-1.5 mb-4">
+                  {[...Array(activeTestimonial.stars || 5)].map((_, i) => (
+                    <Star key={i} className="w-5 h-5 fill-[#C9A24B] text-[#C9A24B]" />
+                  ))}
+                </div>
+
+                {/* Quote Text */}
+                <blockquote className="text-base sm:text-xl text-stone-700 font-cairo font-medium leading-relaxed max-w-3xl mb-5">
+                  "{translateDynamic(activeTestimonial.quote)}"
+                </blockquote>
+
+                {/* Guest Name & Details */}
+                <h4 className="font-cairo font-bold text-lg text-stone-900">
+                  {translateDynamic(activeTestimonial.name)}
+                </h4>
+
+                {(activeTestimonial.role || activeTestimonial.hotel) && (
+                  <span className="text-xs text-[#B38A34] mt-1 font-semibold">
+                    {[
+                      activeTestimonial.role ? translateDynamic(activeTestimonial.role) : '',
+                      activeTestimonial.hotel 
+                        ? (language === 'en' ? `Stayed at ${translateDynamic(activeTestimonial.hotel)}` : `الإقامة في ${activeTestimonial.hotel}`)
+                        : ''
+                    ]
+                      .filter(Boolean)
+                      .join(' • ')}
+                  </span>
+                )}
+
+                {/* Slider Dots Navigation */}
+                {displayedTestimonials.length > 1 && (
+                  <div className="flex items-center gap-2 mt-8">
+                    {displayedTestimonials.map((_, idx) => (
+                      <button
+                        key={idx}
+                        id={`testimonial-dot-${idx}`}
+                        onClick={() => setCurrentTestimonialIdx(idx)}
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          currentTestimonialIdx === idx
+                            ? 'w-8 bg-[#C9A24B]'
+                            : 'w-2 bg-stone-300 hover:bg-stone-400'
+                        }`}
+                        aria-label={`الشهادة رقم ${idx + 1}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <div className="py-8 text-center flex flex-col items-center justify-center space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center">
+                <Sparkles className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="text-lg sm:text-xl font-cairo font-bold text-stone-900 mb-1">
+                  {language === 'en' ? 'Be the first to share your experience with Prestige!' : 'كن أول من يشارك تجربته وتقييمه لشركة برستيج!'}
+                </h3>
+                <p className="text-xs sm:text-sm text-stone-500 max-w-md mx-auto leading-relaxed">
+                  {language === 'en'
+                    ? 'We value your feedback and strive to deliver the highest hospitality standards in Makkah & Madinah.'
+                    : 'نسعد دائماً باستقبال تقييماتكم وانطباعاتكم عن إقامتكم وخدمات الضيافة الفندقية في مكة المكرمة والمدينة المنورة.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReviewModalOpen(true)}
+                className="px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2"
+              >
+                <MessageSquarePlus className="w-4 h-4" />
+                <span>{t('home.testimonials.addReview', 'أضف تقييمك وتجربتك')}</span>
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -581,32 +610,4 @@ export const HomePage: React.FC<HomePageProps> = ({
   );
 };
 
-const TESTIMONIALS_DATA = [
-  {
-    id: 1,
-    name: 'المهندس عبدالرحمن السعيد',
-    role: 'معتمر من دولة الكويت',
-    hotel: 'فيرمونت برج الساعة - مكة',
-    quote: 'تجربة إقامة تفوق الوصف! المصداقية العالية في حجز الغرفة المطلة وسرعة تسجيل الدخول بدون أي انتظار جعلت رحلتنا مع الوالدة في قمة الراحة والسكينة.',
-    stars: 5,
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80'
-  },
-  {
-    id: 2,
-    name: 'الأستاذ طارق بن فيصل',
-    role: 'منظم رحلات سياحية - الإمارات',
-    hotel: 'شذا المدينة - المدينة المنورة',
-    quote: 'نتعامل مع شركة برستيج لإدارة وتشغيل الفنادق لتسكين مجموعاتنا منذ ٤ سنوات. الالتزام بالوعود والأسعار المميزة والمتابعة الميدانية الدائمة تجعلهم شريكنا الأول والموثوق دائماً.',
-    stars: 5,
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80'
-  },
-  {
-    id: 3,
-    name: 'الدكتور محمد فاروق',
-    role: 'حاج ومعتمر من مصر',
-    hotel: 'فندق برستيج أجياد - مكة المكرمة',
-    quote: 'قرب الفندق المباشر من ساحة الحرم المكي واحترافية طاقم التشغيل ساعد والدي المسن على أداء كل الصلوات في المسجد الحرام دون مشقة. شكراً لفريق شركة برستيج على حسن الضيافة والإدارة الراقية.',
-    stars: 5,
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=200&q=80'
-  }
-];
+const TESTIMONIALS_DATA: any[] = [];
