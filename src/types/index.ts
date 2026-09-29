@@ -84,6 +84,8 @@ export interface Offer {
   mediaType: 'image' | 'video';
   mediaUrl: string;
   videoUrl?: string;
+  discountPercentage?: number;
+  endDate?: string;
   isActive: boolean; // مفتاح تفعيل/إخفاء للعرض
   badgeText?: string;
   hotelId?: string;
@@ -100,6 +102,7 @@ export interface HotelReview {
   avatarUrl?: string; // صورة العميل الشخصية (اختياري - تظهر فقط إذا أرفقها العميل)
   rating: number; // تقييم النجوم 1 إلى 5
   comment: string; // نص التقييم ورأي العميل (إجباري)
+  country?: string; // صفة أو بلد العميل
   countryOrTitle?: string; // صفة أو بلد العميل (اختياري - يظهر فقط إذا كتبه)
   stayDate?: string; // موعد الإقامة (اختياري)
   status: 'pending' | 'approved';
@@ -111,8 +114,10 @@ export interface ContactMessage {
   name: string;
   phone: string;
   email?: string;
-  subject: string;
+  subject?: string;
   message: string;
+  city?: string;
+  hotelInterest?: string;
   hotelName?: string;
   preferredCity?: string;
   guestCount?: number;
