@@ -23,9 +23,9 @@ import {
   User 
 } from 'firebase/auth';
 import firebaseConfigJson from '../../firebase-applet-config.json';
-import { Hotel, Offer, ContactMessage, SiteSettings, ContactChannel, ContentItem, HotelReview, HeroSlide, District, AdminUser, BranchLocation, QuickLinkItem, AboutPageSettings } from '../types';
+import { Hotel, Offer, ContactMessage, SiteSettings, ContactChannel, ContentItem, HotelReview, HeroSlide, District, AdminUser, BranchLocation, DepartmentContact, QuickLinkItem, AboutPageSettings } from '../types';
 import { DEFAULT_VALUE_PILLARS } from '../components/AdminAboutManager';
-import { INITIAL_HOTELS, INITIAL_OFFERS, INITIAL_REVIEWS } from '../data/mockHotels';
+import { INITIAL_HOTELS, INITIAL_OFFERS, INITIAL_REVIEWS, INITIAL_SITE_SETTINGS } from '../data/mockHotels';
 import {
   fetchHotelsFromSupabase,
   upsertHotelToSupabase,
@@ -202,9 +202,11 @@ export function safeSetLocalStorage(key: string, value: any): boolean {
       } catch {}
 
       if (typeof value === 'object' && value !== null) {
-        // Strip out huge data URLs / base64 images from the local cache copy
+        // Strip out huge data URLs / base64 images from the local cache copy only if they exceed safe thresholds
+        // Keep site settings media intact up to 2MB so hero slides and logo are never lost!
+        const maxLen = key === 'diy_site_settings' ? 2000000 : 400000;
         const strippedStr = safeStringify(value, (_k, v) => {
-          if (typeof v === 'string' && (v.startsWith('data:image/') || v.startsWith('data:video/') || v.startsWith('blob:')) && v.length > 10000) {
+          if (typeof v === 'string' && (v.startsWith('data:image/') || v.startsWith('data:video/') || v.startsWith('blob:')) && v.length > maxLen) {
             return '';
           }
           return v;
@@ -229,60 +231,7 @@ const DISTRICTS_COLLECTION = 'districts';
 const USERS_COLLECTION = 'admin_users';
 export const CONTENT_COLLECTION = 'content';
 
-export const DEFAULT_HERO_SLIDES: HeroSlide[] = [
-  {
-    id: 'slide_1',
-    imageUrl: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=2000&q=85',
-    badge: 'الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين',
-    title: 'تسكين في أرقى فنادق مكة المكرمة والمدينة المنورة',
-    subtitle: 'نوفر لضيوف الرحمن وشركات السياحة أفضل خيارات الإقامة في فنادق الصف الأول المقابلة للحرم المكي والمسجد النبوي، مع تسهيلات حجز معتمدة ومباشرة.',
-    primaryButtonText: 'استعرض الفنادق المتاحة',
-    primaryButtonAction: 'hotels',
-    secondaryButtonText: 'تواصل مع مستشار الحجز',
-    secondaryButtonAction: 'contact',
-    order: 0,
-    isActive: true
-  },
-  {
-    id: 'slide_2',
-    imageUrl: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=2000&q=85',
-    badge: 'إطلالات روحانية مباشرة وساحرة',
-    title: 'أجنحة ملكية فاخرة مطلة على الكعبة المشرفة',
-    subtitle: 'عش التجربة الروحانية الاستثنائية مع غرف وأجنحة ملكية وبوفيهات فاخرة تلبي رغبات العائلات والمجموعات وحملات المعتمرين بأعلى درجات الرفاهية.',
-    primaryButtonText: 'استكشف العروض الحصرية',
-    primaryButtonAction: 'offers',
-    secondaryButtonText: 'حجز مباشر عبر الواتساب',
-    secondaryButtonAction: 'whatsapp',
-    order: 1,
-    isActive: true
-  },
-  {
-    id: 'slide_3',
-    imageUrl: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=2000&q=85',
-    badge: 'المدينة المنورة - جوار المسجد النبوي الشريف',
-    title: 'سكينة وراحة في فنادق المنطقة المركزية بالمدينة',
-    subtitle: 'خطوات معدودة تفصلك عن الروضة الشريفة وباب السلام، مع خدمات فندقية راقية ونقل ترددي مستمر على مدار الساعة لخدمة الزوار الكرام.',
-    primaryButtonText: 'فنادق المدينة المنورة',
-    primaryButtonAction: 'hotels',
-    secondaryButtonText: 'تواصل سريع عبر الواتساب',
-    secondaryButtonAction: 'whatsapp',
-    order: 2,
-    isActive: true
-  },
-  {
-    id: 'slide_4',
-    imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=2000&q=85',
-    badge: 'خدمات الاستقبال والضيافة المتكاملة 5 نجوم',
-    title: 'باقات متكاملة تشمل التسكين الفاخر وأرقى مستويات الخدمة',
-    subtitle: 'فريق عمل متخصص في استقبال وتسكين ضيوف الرحمن وتسهيل كافة إجراءات الدخول والإقامة بأعلى معايير الجودة والراحة.',
-    primaryButtonText: 'طلب استشارة أو حجز',
-    primaryButtonAction: 'contact',
-    secondaryButtonText: 'استعراض كافة الفنادق',
-    secondaryButtonAction: 'hotels',
-    order: 3,
-    isActive: true
-  }
-];
+export const DEFAULT_HERO_SLIDES: HeroSlide[] = [];
 
 export const DEFAULT_CHANNELS: ContactChannel[] = [
   {
@@ -338,21 +287,65 @@ export const DEFAULT_CHANNELS: ContactChannel[] = [
 export const DEFAULT_BRANCHES: BranchLocation[] = [
   {
     id: 'branch_makkah',
-    name: 'المكتب الإداري - مكة المكرمة',
+    name: 'فرع مكة المكرمة (المقر الرئيسي)',
     city: 'مكة المكرمة',
-    address: 'أبراج وقف الملك عبدالعزيز، طريق أجياد، مكة المكرمة',
+    address: 'أبراج وقف الملك عبدالعزيز (الصفوة)، شارع أجياد، المنطقة المركزية، مكة المكرمة',
     mapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah',
     phone: '+966501234567',
+    whatsapp: '+966501234567',
+    workingHours: 'على مدار الساعة 24/7',
+    isMainBranch: true,
+    isActive: true,
     order: 1
   },
   {
     id: 'branch_madinah',
-    name: 'المكتب الإداري - المدينة المنورة',
+    name: 'فرع المدينة المنورة',
     city: 'المدينة المنورة',
-    address: 'المنطقة المركزية الشمالية، طريق الملك فهد، المدينة المنورة',
+    address: 'المنطقة المركزية الشمالية، أمام بوابة الملك فهد، طريق الملك فهد، المدينة المنورة',
     mapUrl: 'https://maps.google.com/?q=Northern+Central+Area+Madinah',
-    phone: '+966501234567',
+    phone: '+966501234568',
+    whatsapp: '+966501234568',
+    workingHours: 'على مدار الساعة 24/7',
+    isMainBranch: false,
+    isActive: true,
     order: 2
+  }
+];
+
+export const DEFAULT_DEPARTMENT_CONTACTS: DepartmentContact[] = [
+  {
+    id: 'dept_sales',
+    department: 'إدارة المبيعات والشركات',
+    name: 'فريق المبيعات والتعاقدات',
+    roleTitle: 'مسؤول مبيعات الشركات وحجوزات المجموعات',
+    phone: '+966501234567',
+    whatsapp: '+966501234567',
+    workingHours: 'متاح 24/7 طوال أيام الأسبوع',
+    isActive: true,
+    order: 1
+  },
+  {
+    id: 'dept_bookings',
+    department: 'قسم الحجوزات والتسكين',
+    name: 'استشاري التسكين المباشر',
+    roleTitle: 'مسؤول تأكيد الغرف والأجنحة الفندقية',
+    phone: '+966501234568',
+    whatsapp: '+966501234568',
+    workingHours: 'على مدار الساعة 24/7',
+    isActive: true,
+    order: 2
+  },
+  {
+    id: 'dept_accounts',
+    department: 'قسم الحسابات والمالية',
+    name: 'الإدارة المالية والمدفوعات',
+    roleTitle: 'المسؤول المالي والفواتير والتحويلات',
+    phone: '+966501234569',
+    whatsapp: '+966501234569',
+    workingHours: '9:00 ص - 6:00 م',
+    isActive: true,
+    order: 3
   }
 ];
 
@@ -423,12 +416,8 @@ export const DEFAULT_ABOUT_US: AboutPageSettings = {
   licenseNumber: '73104928',
   licenseAuthority: 'مرخصون من وزارة الحج والعمرة والهيئة السعودية للسياحة',
   showLicense: true,
-  photos: [
-    'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80'
-  ],
-  mainPhoto: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
+  photos: [],
+  mainPhoto: '',
   logoUrl: '',
   valuePillars: DEFAULT_VALUE_PILLARS
 };
@@ -441,108 +430,81 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   channels: DEFAULT_CHANNELS,
   heroSlides: DEFAULT_HERO_SLIDES,
   branches: DEFAULT_BRANCHES,
+  departmentContacts: DEFAULT_DEPARTMENT_CONTACTS,
   quickLinks: DEFAULT_QUICK_LINKS,
   aboutUs: DEFAULT_ABOUT_US,
+  ...(INITIAL_SITE_SETTINGS || {})
 };
 
 export async function getSiteSettingsFromDb(): Promise<SiteSettings> {
-  const local = localStorage.getItem('diy_site_settings');
-  const fallback = local ? JSON.parse(local) : DEFAULT_SITE_SETTINGS;
-
-  if (!fallback.heroSlides || !Array.isArray(fallback.heroSlides) || fallback.heroSlides.length === 0) {
-    fallback.heroSlides = DEFAULT_HERO_SLIDES;
-  } else {
-    fallback.heroSlides = fallback.heroSlides.map((s: any, idx: number) => ({
-      ...s,
-      videoUrl: (s.videoUrl && typeof s.videoUrl === 'string' && !s.videoUrl.startsWith('blob:'))
-        ? s.videoUrl
-        : (DEFAULT_HERO_SLIDES[idx]?.videoUrl || '')
-    }));
-  }
-  if (!fallback.branches || !Array.isArray(fallback.branches) || fallback.branches.length === 0) {
-    fallback.branches = DEFAULT_BRANCHES;
-  }
-  if (!fallback.quickLinks || !Array.isArray(fallback.quickLinks) || fallback.quickLinks.length === 0) {
-    fallback.quickLinks = DEFAULT_QUICK_LINKS;
-  }
-
-  // 1. Try Supabase first
+  // 1. Try Supabase first (authoritative primary database — always trust it over local cache)
   try {
     const supabaseSettings = await fetchSiteSettingsFromSupabase();
-    if (supabaseSettings) {
-      safeSetLocalStorage('diy_site_settings', supabaseSettings);
-      return supabaseSettings;
+    if (supabaseSettings && typeof supabaseSettings === 'object') {
+      const normalized: SiteSettings = {
+        ...DEFAULT_SITE_SETTINGS,
+        ...supabaseSettings,
+        channels: Array.isArray(supabaseSettings.channels) && supabaseSettings.channels.length > 0 
+          ? [...supabaseSettings.channels].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          : (INITIAL_SITE_SETTINGS?.channels || DEFAULT_CHANNELS),
+        heroSlides: Array.isArray(supabaseSettings.heroSlides) && supabaseSettings.heroSlides.length > 0
+          ? supabaseSettings.heroSlides.map((s, idx) => {
+              const hasValidVideoUrl = Boolean(s.videoUrl?.trim()) && !s.videoUrl.startsWith('blob:');
+              const isVid = s.mediaType === 'video' && hasValidVideoUrl;
+              return {
+                ...s,
+                mediaType: isVid ? ('video' as const) : ('image' as const),
+                videoUrl: hasValidVideoUrl ? s.videoUrl : '',
+                imageUrl: s.imageUrl || '',
+                order: typeof s.order === 'number' ? s.order : idx,
+                isActive: s.isActive !== false,
+                showBadge: s.showBadge !== false,
+                showTitle: s.showTitle !== false,
+                showSubtitle: s.showSubtitle !== false,
+                showPrimaryButton: s.showPrimaryButton !== false,
+                showSecondaryButton: s.showSecondaryButton !== false
+              };
+            }).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          : (INITIAL_SITE_SETTINGS?.heroSlides || DEFAULT_HERO_SLIDES),
+        branches: Array.isArray(supabaseSettings.branches) && supabaseSettings.branches.length > 0
+          ? supabaseSettings.branches.map((b, idx) => ({
+              ...b,
+              isActive: b.isActive !== false,
+              order: typeof b.order === 'number' ? b.order : idx + 1
+            })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          : (INITIAL_SITE_SETTINGS?.branches || DEFAULT_BRANCHES),
+        departmentContacts: Array.isArray(supabaseSettings.departmentContacts) && supabaseSettings.departmentContacts.length > 0
+          ? supabaseSettings.departmentContacts.map((c, idx) => ({
+              ...c,
+              isActive: c.isActive !== false,
+              order: typeof c.order === 'number' ? c.order : idx + 1
+            })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          : (INITIAL_SITE_SETTINGS?.departmentContacts || DEFAULT_DEPARTMENT_CONTACTS),
+        quickLinks: Array.isArray(supabaseSettings.quickLinks) && supabaseSettings.quickLinks.length > 0
+          ? [...supabaseSettings.quickLinks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          : (INITIAL_SITE_SETTINGS?.quickLinks || DEFAULT_QUICK_LINKS),
+        aboutUs: supabaseSettings.aboutUs || INITIAL_SITE_SETTINGS?.aboutUs || DEFAULT_ABOUT_US,
+      };
+      // Write Supabase authoritative data to localStorage (overrides any stale cache)
+      safeSetLocalStorage('diy_site_settings', normalized);
+      return normalized;
     }
   } catch (err) {
     console.warn('Failed to load site settings from Supabase:', err);
   }
 
-  // 2. Try Firestore
-  if (!db) {
-    return fallback;
+  // 2. Fallback to localStorage cache
+  const local = localStorage.getItem('diy_site_settings');
+  if (local) {
+    try {
+      const parsed = JSON.parse(local);
+      if (parsed && typeof parsed === 'object') {
+        return { ...DEFAULT_SITE_SETTINGS, ...parsed };
+      }
+    } catch {}
   }
 
-  try {
-    const docRef = doc(db, SETTINGS_COLLECTION, 'general');
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const data = docSnap.data() as Partial<SiteSettings>;
-      const channels = Array.isArray(data.channels) 
-        ? [...data.channels].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        : (fallback.channels || DEFAULT_CHANNELS);
-
-      const heroSlides = Array.isArray(data.heroSlides) && data.heroSlides.length > 0
-        ? data.heroSlides.map((s, idx) => {
-            const localSlide = fallback.heroSlides?.[idx];
-            const rawVideo = s.videoUrl || (localSlide?.id === s.id ? localSlide.videoUrl : s.videoUrl) || '';
-            const safeVideo = (rawVideo && typeof rawVideo === 'string' && !rawVideo.startsWith('blob:'))
-              ? rawVideo
-              : (DEFAULT_HERO_SLIDES[idx]?.videoUrl || '');
-            return {
-              ...s,
-              videoUrl: safeVideo,
-              imageUrl: s.imageUrl || (localSlide?.id === s.id ? localSlide.imageUrl : s.imageUrl) || '',
-            };
-          }).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        : (fallback.heroSlides || DEFAULT_HERO_SLIDES);
-
-      const branches = Array.isArray(data.branches) && data.branches.length > 0
-        ? [...data.branches].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        : (fallback.branches || DEFAULT_BRANCHES);
-
-      const quickLinks = Array.isArray(data.quickLinks) && data.quickLinks.length > 0
-        ? [...data.quickLinks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        : (fallback.quickLinks || DEFAULT_QUICK_LINKS);
-
-      const sanitizeAbout = (ab?: AboutPageSettings): AboutPageSettings => {
-        if (!ab) return DEFAULT_ABOUT_US;
-        const raw = JSON.stringify(ab);
-        if (raw.includes('ضيافة الحرمين')) {
-          return JSON.parse(raw.replace(/ضيافة الحرمين/g, 'شركة برستيج'));
-        }
-        return { ...DEFAULT_ABOUT_US, ...ab };
-      };
-
-      const merged: SiteSettings = {
-        siteTitle: data.siteTitle || DEFAULT_SITE_SETTINGS.siteTitle,
-        siteSubtitle: data.siteSubtitle || DEFAULT_SITE_SETTINGS.siteSubtitle,
-        logoUrl: data.logoUrl || fallback.logoUrl || '',
-        showLicense: data.showLicense ?? fallback.showLicense ?? true,
-        aboutUs: sanitizeAbout(data.aboutUs || fallback.aboutUs),
-        channels,
-        heroSlides,
-        branches,
-        quickLinks,
-        updatedAt: data.updatedAt,
-      };
-      safeSetLocalStorage('diy_site_settings', merged);
-      return merged;
-    }
-  } catch (err) {
-    console.warn('Failed to load site settings from Firestore, using cache:', err);
-  }
-
-  return fallback;
+  return DEFAULT_SITE_SETTINGS;
 }
 
 export async function saveSiteSettingsToDb(settings: SiteSettings): Promise<void> {
@@ -553,33 +515,31 @@ export async function saveSiteSettingsToDb(settings: SiteSettings): Promise<void
 
   const sanitized: SiteSettings = JSON.parse(safeStringify(toSave));
   
-  // Safe set local storage
+  // Safe set local storage for instant optimistic UI
   safeSetLocalStorage('diy_site_settings', sanitized);
 
-  // Sync with Supabase
+  // Sync directly to Supabase (authoritative primary database)
   try {
     await upsertSiteSettingsToSupabase(sanitized);
   } catch (err) {
     console.warn('Supabase site settings sync error:', err);
   }
 
-  // Sync with Firestore
+  // Background non-blocking sync to Firestore if configured
   if (db) {
     try {
       const firestorePayload = JSON.parse(
         safeStringify(sanitized, (key, value) => {
           if (typeof value === 'string' && (value.startsWith('data:video/') || value.startsWith('blob:')) && value.length > 500000) {
-            console.warn(`[Firestore] Truncating large video string for key "${key}" for remote cloud sync while preserving local storage.`);
             return '';
           }
           return value;
         })
       );
-
       const docRef = doc(db, SETTINGS_COLLECTION, 'general');
-      await setDoc(docRef, firestorePayload, { merge: true });
+      setDoc(docRef, firestorePayload, { merge: true }).catch(() => {});
     } catch (err) {
-      console.warn('Could not sync site settings to Firestore (saved locally):', err);
+      console.warn('Could not sync site settings to Firestore:', err);
     }
   }
 }
@@ -608,13 +568,32 @@ export async function getHotelsFromDb(): Promise<Hotel[]> {
     showHotelWhatsApp: h.showHotelWhatsApp !== false,
     hotelEmail: h.hotelEmail || '',
     showHotelEmail: h.showHotelEmail !== false,
+    isActive: h.isActive !== false,
+    order: typeof h.order === 'number' 
+      ? h.order 
+      : (typeof (h.location as any)?.order === 'number' ? (h.location as any).order : 0),
   });
 
-  // 1. Try Supabase first
+  // 1. Try Supabase first (authoritative cloud database)
   const supabaseHotels = await fetchHotelsFromSupabase();
-  if (supabaseHotels) {
-    safeSetLocalStorage('diy_hotels', supabaseHotels);
-    return supabaseHotels.map(normalizeHotel);
+  if (supabaseHotels !== null) {
+    if (supabaseHotels.length > 0) {
+      safeSetLocalStorage('diy_hotels', supabaseHotels);
+      return supabaseHotels.map(normalizeHotel);
+    }
+
+    // If Supabase returned empty array (0 hotels), check if we have local hotels or INITIAL_HOTELS to restore and sync up
+    const savedHotels = localStorage.getItem('diy_hotels');
+    if (savedHotels) {
+      try {
+        const parsed = JSON.parse(savedHotels);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(normalizeHotel);
+        }
+      } catch {}
+    }
+    safeSetLocalStorage('diy_hotels', INITIAL_HOTELS);
+    return INITIAL_HOTELS.map(normalizeHotel);
   }
 
   // 2. Check local clean version
@@ -626,15 +605,6 @@ export async function getHotelsFromDb(): Promise<Hotel[]> {
   }
 
   if (!db) {
-    const saved = localStorage.getItem('diy_hotels');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.map(normalizeHotel);
-        }
-      } catch {}
-    }
     return INITIAL_HOTELS;
   }
 
@@ -674,7 +644,12 @@ export async function getHotelsFromDb(): Promise<Hotel[]> {
 }
 
 export async function saveHotelToDb(hotel: Hotel): Promise<void> {
-  const localList = await getHotelsFromDb();
+  const saved = localStorage.getItem('diy_hotels');
+  let localList: Hotel[] = [];
+  try {
+    if (saved) localList = JSON.parse(saved);
+  } catch {}
+
   const existingIdx = localList.findIndex(h => h.id === hotel.id);
   let updatedList: Hotel[];
   if (existingIdx >= 0) {
@@ -685,10 +660,10 @@ export async function saveHotelToDb(hotel: Hotel): Promise<void> {
   }
   safeSetLocalStorage('diy_hotels', updatedList);
 
-  // Sync to Supabase
+  // Direct sync to Supabase (primary cloud database)
   await upsertHotelToSupabase(hotel);
 
-  // Sync to Firestore
+  // Background non-blocking sync to Firestore
   if (db) {
     try {
       const hotelRef = doc(db, HOTELS_COLLECTION, hotel.id);
@@ -696,15 +671,18 @@ export async function saveHotelToDb(hotel: Hotel): Promise<void> {
         ...hotel,
         updatedAt: Date.now()
       }));
-      await setDoc(hotelRef, sanitized, { merge: true });
-    } catch (err) {
-      console.warn('Could not sync hotel to Firestore (saved locally):', err);
-    }
+      setDoc(hotelRef, sanitized, { merge: true }).catch(() => {});
+    } catch {}
   }
 }
 
 export async function deleteHotelFromDb(hotelId: string): Promise<void> {
-  const localList = await getHotelsFromDb();
+  const saved = localStorage.getItem('diy_hotels');
+  let localList: Hotel[] = [];
+  try {
+    if (saved) localList = JSON.parse(saved);
+  } catch {}
+
   const filtered = localList.filter(h => h.id !== hotelId);
   safeSetLocalStorage('diy_hotels', filtered);
 
@@ -712,10 +690,8 @@ export async function deleteHotelFromDb(hotelId: string): Promise<void> {
 
   if (db) {
     try {
-      await deleteDoc(doc(db, HOTELS_COLLECTION, hotelId));
-    } catch (err) {
-      console.error('Error deleting hotel from Firestore:', err);
-    }
+      deleteDoc(doc(db, HOTELS_COLLECTION, hotelId)).catch(() => {});
+    } catch {}
   }
 }
 
@@ -723,45 +699,29 @@ export async function deleteHotelFromDb(hotelId: string): Promise<void> {
 // Offers CRUD (Supabase + Local)
 // ==========================================
 export async function getOffersFromDb(): Promise<Offer[]> {
-  const OFFERS_VERSION_KEY = 'prestige_zero_offers_v1';
   const supabaseOffers = await fetchOffersFromSupabase();
   if (supabaseOffers) {
     safeSetLocalStorage('diy_offers', supabaseOffers);
     return supabaseOffers;
   }
 
-  const version = localStorage.getItem(OFFERS_VERSION_KEY);
-  if (!version) {
-    safeSetLocalStorage('diy_offers', INITIAL_OFFERS);
-    safeSetLocalStorage(OFFERS_VERSION_KEY, '1.0');
-    return INITIAL_OFFERS;
+  const saved = localStorage.getItem('diy_offers');
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {}
   }
 
-  if (!db) {
-    const saved = localStorage.getItem('diy_offers');
-    return saved ? JSON.parse(saved) : INITIAL_OFFERS;
-  }
-  try {
-    const q = query(collection(db, OFFERS_COLLECTION));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
-      const saved = localStorage.getItem('diy_offers');
-      return saved ? JSON.parse(saved) : INITIAL_OFFERS;
-    }
-    const offers: Offer[] = [];
-    snapshot.forEach((docSnap) => {
-      offers.push({ id: docSnap.id, ...docSnap.data() } as Offer);
-    });
-    return offers;
-  } catch (err) {
-    console.warn('Failed to fetch offers from Firestore, reading local cache:', err);
-    const saved = localStorage.getItem('diy_offers');
-    return saved ? JSON.parse(saved) : INITIAL_OFFERS;
-  }
+  return INITIAL_OFFERS;
 }
 
 export async function saveOfferToDb(offer: Offer): Promise<void> {
-  const localList = await getOffersFromDb();
+  const saved = localStorage.getItem('diy_offers');
+  let localList: Offer[] = [];
+  try {
+    if (saved) localList = JSON.parse(saved);
+  } catch {}
+
   const existingIdx = localList.findIndex(o => o.id === offer.id);
   let updatedList: Offer[];
   if (existingIdx >= 0) {
@@ -781,15 +741,18 @@ export async function saveOfferToDb(offer: Offer): Promise<void> {
         ...offer,
         updatedAt: Date.now()
       }));
-      await setDoc(offerRef, sanitized, { merge: true });
-    } catch (err) {
-      console.warn('Could not sync offer to Firestore (saved locally):', err);
-    }
+      setDoc(offerRef, sanitized, { merge: true }).catch(() => {});
+    } catch {}
   }
 }
 
 export async function deleteOfferFromDb(offerId: string): Promise<void> {
-  const localList = await getOffersFromDb();
+  const saved = localStorage.getItem('diy_offers');
+  let localList: Offer[] = [];
+  try {
+    if (saved) localList = JSON.parse(saved);
+  } catch {}
+
   const filtered = localList.filter(o => o.id !== offerId);
   safeSetLocalStorage('diy_offers', filtered);
 
@@ -797,10 +760,8 @@ export async function deleteOfferFromDb(offerId: string): Promise<void> {
 
   if (db) {
     try {
-      await deleteDoc(doc(db, OFFERS_COLLECTION, offerId));
-    } catch (err) {
-      console.error('Error deleting offer from Firestore:', err);
-    }
+      deleteDoc(doc(db, OFFERS_COLLECTION, offerId)).catch(() => {});
+    } catch {}
   }
 }
 
@@ -823,10 +784,8 @@ export async function submitHotelReview(review: Omit<HotelReview, 'id' | 'create
 
   if (db) {
     try {
-      await setDoc(doc(db, REVIEWS_COLLECTION, newId), fullReview);
-    } catch (err) {
-      console.error('Error submitting review to Firestore:', err);
-    }
+      setDoc(doc(db, REVIEWS_COLLECTION, newId), fullReview).catch(() => {});
+    } catch {}
   }
   return newId;
 }

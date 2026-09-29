@@ -16,8 +16,7 @@ import {
   UserX,
   Lock,
   Eye,
-  EyeOff,
-  Sparkles
+  EyeOff
 } from 'lucide-react';
 import { 
   saveAdminUserToDb, 

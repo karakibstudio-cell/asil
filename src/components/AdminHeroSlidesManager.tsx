@@ -7,7 +7,7 @@ import {
   ArrowUp, 
   ArrowDown, 
   Image as ImageIcon, 
-  Sparkles, 
+  Building2, 
   Check, 
   X, 
   RotateCcw,
@@ -19,10 +19,58 @@ import {
   Sliders,
   CheckCircle2
 } from 'lucide-react';
-import { DEFAULT_HERO_SLIDES } from '../services/firebase';
 import { Lightbox, LightboxMediaItem } from './Lightbox';
 import { SafeVideoPlayer } from './SafeVideoPlayer';
 import { optimizeImageFile } from '../utils/imageOptimizer';
+import { uploadMediaToSupabase } from '../services/supabase';
+
+const sampleVideos = [
+  {
+    title: 'فيديو تجريبي للكعبة المشرفة',
+    url: 'https://assets.mixkit.co/videos/preview/mixkit-mecca-kaaba-at-night-41584-large.mp4',
+    poster: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa'
+  }
+];
+
+// Helper to extract a crisp video thumbnail on the fly
+function extractVideoThumbnail(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      video.onloadeddata = () => {
+        video.currentTime = Math.min(1, (video.duration || 2) / 2);
+      };
+      video.onseeked = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.min(video.videoWidth || 640, 800);
+          canvas.height = Math.min(video.videoHeight || 360, 450);
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const thumb = canvas.toDataURL('image/jpeg', 0.8);
+            URL.revokeObjectURL(url);
+            resolve(thumb);
+            return;
+          }
+        } catch {}
+        URL.revokeObjectURL(url);
+        resolve('');
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve('');
+      };
+    } catch {
+      resolve('');
+    }
+  });
+}
 
 interface AdminHeroSlidesManagerProps {
   siteSettings: SiteSettings;
@@ -36,11 +84,18 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
   onShowToast
 }) => {
   const [slides, setSlides] = useState<HeroSlide[]>(() => {
-    if (siteSettings?.heroSlides && Array.isArray(siteSettings.heroSlides) && siteSettings.heroSlides.length > 0) {
+    if (siteSettings?.heroSlides && Array.isArray(siteSettings.heroSlides)) {
       return siteSettings.heroSlides;
     }
-    return DEFAULT_HERO_SLIDES;
+    return [];
   });
+
+  // Keep slides state in sync when siteSettings loads asynchronously from Supabase
+  React.useEffect(() => {
+    if (siteSettings?.heroSlides && Array.isArray(siteSettings.heroSlides)) {
+      setSlides(siteSettings.heroSlides);
+    }
+  }, [siteSettings?.heroSlides]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSlideId, setEditingSlideId] = useState<string | null>(null);
@@ -51,10 +106,10 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
   const lightboxMediaItems: LightboxMediaItem[] = slides.map((s) => {
-    const isVid = s.mediaType === 'video' || Boolean(s.videoUrl);
+    const isVid = s.mediaType === 'video' && Boolean(s.videoUrl?.trim());
     return {
       type: isVid ? ('video' as const) : ('image' as const),
-      url: (isVid && s.videoUrl) ? s.videoUrl : (s.imageUrl || s.videoUrl || ''),
+      url: (isVid && s.videoUrl) ? s.videoUrl : (s.imageUrl || s.videoThumbnail || ''),
       title: s.title,
       thumbnail: s.videoThumbnail || s.imageUrl
     };
@@ -68,12 +123,12 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
   const [slideForm, setSlideForm] = useState<HeroSlide>({
     id: '',
     mediaType: 'image',
-    imageUrl: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1920&q=85',
+    imageUrl: '',
     videoUrl: '',
     videoThumbnail: '',
-    badge: 'الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين',
-    title: 'تسكين في أرقى فنادق مكة المكرمة والمدينة المنورة',
-    subtitle: 'نوفر لضيوف الرحمن وشركات السياحة أفضل خيارات الإقامة في فنادق الصف الأول المقابلة للحرم المكي والمسجد النبوي.',
+    badge: '',
+    title: '',
+    subtitle: '',
     showBadge: true,
     showTitle: true,
     showSubtitle: true,
@@ -87,19 +142,7 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
     isActive: true
   });
 
-  const sampleImages = [
-    { label: 'المسجد الحرام والكعبة (مكة)', url: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=2000&q=85' },
-    { label: 'أجنحة ملكية مطلة على الحرم المكي', url: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=2000&q=85' },
-    { label: 'المسجد النبوي الشريف (المدينة)', url: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=2000&q=85' },
-    { label: 'فنادق وأجنحة 5 نجوم بالمدينة', url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=2000&q=85' },
-    { label: 'فخامة الاستقبال والضيافة', url: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=2000&q=85' }
-  ];
-
-  const sampleVideos = [
-    { label: 'فيديو ترحيبي أجواء الحرم الشريف (MP4)', url: 'https://assets.mixkit.co/videos/preview/mixkit-flying-over-clouds-during-sunset-41712-large.mp4', poster: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=2000&q=85' },
-    { label: 'فيديو غروب هادئ فوق المسجد النبوي (MP4)', url: 'https://assets.mixkit.co/videos/preview/mixkit-set-of-plateaus-seen-from-the-sky-in-a-sunset-26070-large.mp4', poster: 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=2000&q=85' },
-    { label: 'فيديو الكعبة المشرفة جودة عالية (MP4)', url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', poster: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=2000&q=85' }
-  ];
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
   const handleSlideImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -125,20 +168,68 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
     }
   };
 
-  const handleSlideVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSlideVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 50 * 1024 * 1024) {
-        onShowToast('حجم ملف الفيديو كبير جداً، يرجى اختيار فيديو أقل من 50 ميجابايت أو وضع رابط مباشر', 'error');
+    if (!file) return;
+
+    if (file.size > 80 * 1024 * 1024) {
+      onShowToast('حجم ملف الفيديو يتجاوز 80 ميجابايت، يرجى اختيار مقطع فيديو أصغر حجماً.', 'error');
+      return;
+    }
+
+    setIsUploadingVideo(true);
+    onShowToast('جاري معالجة ورفع ملف الفيديو إلى سحابة Supabase التخزينية المباشرة...', 'info');
+
+    try {
+      // 1. Generate video thumbnail poster automatically
+      const generatedPoster = await extractVideoThumbnail(file);
+
+      // 2. Upload file to Supabase Storage bucket 'prestige-media'
+      const uploadRes = await uploadMediaToSupabase(file, 'videos');
+
+      if (uploadRes.success && uploadRes.url) {
+        setSlideForm(prev => ({
+          ...prev,
+          mediaType: 'video',
+          videoUrl: uploadRes.url,
+          imageUrl: prev.imageUrl || generatedPoster
+        }));
+        onShowToast('تم رفع وتثبيت الفيديو بنجاح في Supabase Storage ✓ سيعمل فورياً وبشكل دائم لجميع الزوار.', 'success');
+        setIsUploadingVideo(false);
+        e.target.value = '';
         return;
       }
 
-      // Create object URL for smooth instant playback in current session
-      const objectUrl = URL.createObjectURL(file);
-      setSlideForm(prev => ({ ...prev, mediaType: 'video', videoUrl: objectUrl }));
-      onShowToast('تم تحميل ملف الفيديو بنجاح ✓ ينصح باستخدام رابط MP4 أو YouTube للتخزين السحابي الدائم.', 'success');
-      e.target.value = '';
+      // 3. Fallback if storage bucket is not configured yet and file size is <= 6MB
+      if (file.size <= 6 * 1024 * 1024) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (typeof event.target?.result === 'string') {
+            setSlideForm(prev => ({
+              ...prev,
+              mediaType: 'video',
+              videoUrl: event.target!.result as string,
+              imageUrl: prev.imageUrl || generatedPoster
+            }));
+            onShowToast('تم حفظ الفيديو محلياً. لتفعيل الرفع السحابي الدائم، يرجى تنفيذ سكريبت supabase_update_storage.sql في Supabase.', 'info');
+          }
+          setIsUploadingVideo(false);
+        };
+        reader.onerror = () => {
+          onShowToast('حدث خطأ أثناء قراءة ملف الفيديو', 'error');
+          setIsUploadingVideo(false);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        onShowToast(`فشل الرفع السحابي: ${uploadRes.error || 'يرجى تشغيل سكريبت إنشاء حاوية التخزين في Supabase'}. يمكنك استخدام رابط YouTube أو MP4 مباشر.`, 'error');
+        setIsUploadingVideo(false);
+      }
+    } catch (err) {
+      console.error('Video upload error:', err);
+      onShowToast('حدث خطأ أثناء رفع الفيديو', 'error');
+      setIsUploadingVideo(false);
     }
+    e.target.value = '';
   };
 
   const handleOpenAddModal = () => {
@@ -146,7 +237,7 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
     setSlideForm({
       id: 'slide_' + Date.now(),
       mediaType: 'image',
-      imageUrl: sampleImages[0].url,
+      imageUrl: '',
       videoUrl: '',
       videoThumbnail: '',
       badge: 'الضيافة الملكية المميزة',
@@ -169,15 +260,20 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
 
   const handleOpenEditModal = (slide: HeroSlide) => {
     setEditingSlideId(slide.id);
+    const hasBlob = Boolean(slide.videoUrl?.startsWith('blob:'));
     setSlideForm({
       ...slide,
       mediaType: slide.mediaType || (slide.videoUrl ? 'video' : 'image'),
+      videoUrl: hasBlob ? '' : (slide.videoUrl || ''),
       showBadge: slide.showBadge !== false,
       showTitle: slide.showTitle !== false,
       showSubtitle: slide.showSubtitle !== false,
       showPrimaryButton: slide.showPrimaryButton !== false,
       showSecondaryButton: slide.showSecondaryButton !== false
     });
+    if (hasBlob) {
+      onShowToast('تم تنبيهك: الرابط السابق كان مؤقتاً (blob). يرجى اختيار أحد نماذج الفيديو الدائمة أو رفع الفيديو.', 'info');
+    }
     setIsModalOpen(true);
   };
 
@@ -208,16 +304,29 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
       onShowToast('يرجى تحديد رابط أو ملف الفيديو الترحيبي', 'error');
       return;
     }
+    if (slideForm.mediaType === 'video' && slideForm.videoUrl?.trim().startsWith('blob:')) {
+      onShowToast('روابط blob المؤقتة لا تعمل بعد تحديث الصفحة. يرجى وضع رابط فيديو مباشر (MP4) أو رابط YouTube.', 'error');
+      return;
+    }
     if (slideForm.mediaType === 'image' && !slideForm.imageUrl?.trim()) {
       onShowToast('يرجى تحديد رابط أو ملف الصورة الخلفية', 'error');
       return;
     }
 
+    const isVid = slideForm.mediaType === 'video';
+    const cleanedSlide: HeroSlide = {
+      ...slideForm,
+      mediaType: isVid ? 'video' : 'image',
+      videoUrl: isVid ? (slideForm.videoUrl || '').trim() : '',
+      videoThumbnail: isVid ? (slideForm.videoThumbnail || slideForm.imageUrl || '').trim() : '',
+      imageUrl: (slideForm.imageUrl || slideForm.videoThumbnail || '').trim()
+    };
+
     let updated: HeroSlide[];
     if (editingSlideId) {
-      updated = slides.map(s => s.id === editingSlideId ? slideForm : s);
+      updated = slides.map(s => s.id === editingSlideId ? cleanedSlide : s);
     } else {
-      updated = [...slides, { ...slideForm, order: slides.length }];
+      updated = [...slides, { ...cleanedSlide, order: slides.length }];
     }
 
     setIsModalOpen(false);
@@ -230,12 +339,11 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
   };
 
   const handleDeleteSlide = async (id: string) => {
-    if (slides.length <= 1) {
-      onShowToast('يجب الاحتفاظ بشريحة واحدة على الأقل في الهيرو', 'error');
-      return;
+    if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه الشريحة نهائياً؟')) {
+      const updated = slides.filter(s => s.id !== id);
+      await saveSlidesList(updated);
+      onShowToast('تم حذف الشريحة بنجاح', 'success');
     }
-    const updated = slides.filter(s => s.id !== id);
-    await saveSlidesList(updated);
   };
 
   const handleMoveSlide = async (index: number, direction: 'up' | 'down') => {
@@ -250,10 +358,10 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
     await saveSlidesList(reordered);
   };
 
-  const handleResetToDefault = async () => {
-    if (window.confirm('هل أنت متأكد من رغبتك في استعادة الشرائح الافتراضية؟')) {
-      await saveSlidesList(DEFAULT_HERO_SLIDES);
-      onShowToast('تمت استعادة الشرائح الافتراضية بنجاح', 'info');
+  const handleClearAllSlides = async () => {
+    if (window.confirm('هل أنت متأكد من رغبتك في مسح كافة الشرائح والاعتماد على الشاشة الترحيبية للعلامة التجارية؟')) {
+      await saveSlidesList([]);
+      onShowToast('تم مسح جميع الشرائح وحفظ الإعدادات في قاعدة البيانات', 'info');
     }
   };
 
@@ -263,7 +371,7 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-stone-200">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold mb-1">
-            <Sparkles className="w-3.5 h-3.5" />
+            <Sliders className="w-3.5 h-3.5" />
             <span>إدارة شرائح الواجهة والهيرو</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-cairo font-bold text-stone-900">
@@ -275,15 +383,17 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleResetToDefault}
-            className="px-3.5 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="استعادة الشرائح الافتراضية"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-stone-500" />
-            <span>استعادة الافتراضي</span>
-          </button>
+          {slides.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAllSlides}
+              className="px-3.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-red-200"
+              title="مسح جميع الشرائح"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-500" />
+              <span>مسح جميع الشرائح</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -298,18 +408,41 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
 
       {/* Slides List */}
       <div className="space-y-4">
-        {slides.map((slide, idx) => {
-          const isVid = slide.mediaType === 'video' || Boolean(slide.videoUrl);
-          const hasText = (slide.showTitle !== false && slide.title) || (slide.showSubtitle !== false && slide.subtitle);
-          const hasBtns = (slide.showPrimaryButton !== false && slide.primaryButtonText) || (slide.showSecondaryButton !== false && slide.secondaryButtonText);
-
-          return (
-            <div
-              key={slide.id}
-              className={`p-4 sm:p-5 rounded-2xl bg-white border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm ${
-                slide.isActive ? 'border-stone-200 hover:border-[#C9A24B]' : 'border-dashed border-stone-300 opacity-60 bg-stone-50'
-              }`}
+        {slides.length === 0 ? (
+          <div className="p-8 sm:p-12 text-center rounded-2xl bg-white border border-stone-200 shadow-sm space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-[#C9A24B]/15 text-[#B38A34] mx-auto flex items-center justify-center">
+              <Building2 className="w-8 h-8" />
+            </div>
+            <div className="max-w-md mx-auto space-y-1">
+              <h3 className="font-cairo font-bold text-lg text-stone-900">
+                لا توجد شرائح مضافة حالياً في قاعدة البيانات
+              </h3>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                يتم عرض الشاشة الترحيبية الملكية للعلامة التجارية تلقائياً. يمكنك إضافة شريحة مخصصة تحتوي على فيديو أو صورة بنصوص وأزرار تفاعلية في أي وقت.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddModal}
+              className="px-5 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-md shadow-[#C9A24B]/20 inline-flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95"
             >
+              <Plus className="w-4 h-4" />
+              <span>إضافة أول شريحة الآن</span>
+            </button>
+          </div>
+        ) : (
+          slides.map((slide, idx) => {
+            const isVid = slide.mediaType === 'video' && Boolean(slide.videoUrl?.trim());
+            const hasText = (slide.showTitle !== false && slide.title) || (slide.showSubtitle !== false && slide.subtitle);
+            const hasBtns = (slide.showPrimaryButton !== false && slide.primaryButtonText) || (slide.showSecondaryButton !== false && slide.secondaryButtonText);
+
+            return (
+              <div
+                key={slide.id}
+                className={`p-4 sm:p-5 rounded-2xl bg-white border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm ${
+                  slide.isActive ? 'border-stone-200 hover:border-[#C9A24B]' : 'border-dashed border-stone-300 opacity-60 bg-stone-50'
+                }`}
+              >
               {/* Slide Preview & Info */}
               <div className="flex items-start sm:items-center gap-4 flex-1">
                 <div 
@@ -459,8 +592,9 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
               </div>
             </div>
           );
-        })}
-      </div>
+        })
+      )}
+    </div>
 
       {/* Slide Add/Edit Modal */}
       {isModalOpen && (
@@ -495,7 +629,12 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setSlideForm(prev => ({ ...prev, mediaType: 'image' }))}
+                    onClick={() => setSlideForm(prev => ({
+                      ...prev,
+                      mediaType: 'image',
+                      videoUrl: '', // Reset video url to prevent interference
+                      imageUrl: prev.imageUrl || prev.videoThumbnail || ''
+                    }))}
                     className={`p-3.5 rounded-2xl border-2 font-cairo font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       slideForm.mediaType === 'image' || !slideForm.mediaType
                         ? 'border-[#C9A24B] bg-[#C9A24B]/10 text-[#B38A34] shadow-sm'
@@ -508,7 +647,11 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setSlideForm(prev => ({ ...prev, mediaType: 'video' }))}
+                    onClick={() => setSlideForm(prev => ({
+                      ...prev,
+                      mediaType: 'video',
+                      videoThumbnail: prev.imageUrl || prev.videoThumbnail || ''
+                    }))}
                     className={`p-3.5 rounded-2xl border-2 font-cairo font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       slideForm.mediaType === 'video'
                         ? 'border-purple-600 bg-purple-50 text-purple-700 shadow-sm'
@@ -548,21 +691,6 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                     placeholder="https://... رابط مباشر للصورة"
                     className="w-full px-3.5 py-2.5 bg-white border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#C9A24B] dir-ltr text-left"
                   />
-
-                  {/* Quick Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[11px] text-stone-500 font-semibold">نماذج صور مقترحة:</span>
-                    {sampleImages.map((s, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setSlideForm({ ...slideForm, imageUrl: s.url })}
-                        className="text-[11px] px-2 py-0.5 rounded-md bg-white hover:bg-[#C9A24B]/20 text-stone-700 hover:text-[#B38A34] transition-colors border border-stone-200 cursor-pointer"
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               )}
 
@@ -573,17 +701,51 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                     <label className="text-xs font-bold text-stone-700 block">
                       رابط مقطع الفيديو (Direct MP4 أو YouTube أو رابط سحابي): *
                     </label>
-                    <label className="cursor-pointer text-[11px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-purple-200 shadow-2xs transition-colors">
-                      <Film className="w-3.5 h-3.5" />
-                      <span>رفع فيديو من جهازك</span>
+                    <label className={`cursor-pointer text-[11px] font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-purple-200 shadow-2xs transition-all ${isUploadingVideo ? 'opacity-60 pointer-events-none' : ''}`}>
+                      {isUploadingVideo ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                          <span>جاري الرفع لـ Supabase...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Film className="w-3.5 h-3.5" />
+                          <span>رفع فيديو من جهازك</span>
+                        </>
+                      )}
                       <input
                         type="file"
-                        accept="video/*"
+                        accept="video/mp4, video/webm, video/quicktime, video/*"
                         onChange={handleSlideVideoUpload}
+                        disabled={isUploadingVideo}
                         className="hidden"
                       />
                     </label>
                   </div>
+
+                  {/* Warning banner for temporary blob URLs */}
+                  {slideForm.videoUrl?.startsWith('blob:') && (
+                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">⚠️</span>
+                        <div>
+                          <p className="font-bold">الرابط الحالي مؤقت (blob) ولا يعمل للزوار بعد تحديث الصفحة</p>
+                          <p className="text-[11px] text-amber-700">يرجى الضغط على زر "رفع فيديو من جهازك" لرفعه إلى سحابة Supabase، أو اختيار أحد النماذج المباشرة.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSlideForm(prev => ({
+                          ...prev,
+                          videoUrl: sampleVideos[0].url,
+                          imageUrl: sampleVideos[0].poster
+                        }))}
+                        className="px-3 py-1.5 rounded-lg bg-[#C9A24B] hover:bg-[#b08b38] text-stone-950 font-bold text-[11px] shrink-0 transition-colors cursor-pointer shadow-sm"
+                      >
+                        تجربة نموذج سريع
+                      </button>
+                    </div>
+                  )}
 
                   <input
                     type="text"
@@ -593,21 +755,6 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                     placeholder="https://... رابط فيديو MP4 مباشر أو YouTube"
                     className="w-full px-3.5 py-2.5 bg-white border border-purple-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-purple-500 dir-ltr text-left"
                   />
-
-                  {/* Sample Video Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[11px] text-stone-500 font-semibold">نماذج فيديو تجريبية:</span>
-                    {sampleVideos.map((v, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setSlideForm({ ...slideForm, videoUrl: v.url, imageUrl: v.poster })}
-                        className="text-[11px] px-2 py-0.5 rounded-md bg-white hover:bg-purple-100 text-purple-800 transition-colors border border-purple-200 cursor-pointer"
-                      >
-                        {v.label}
-                      </button>
-                    ))}
-                  </div>
 
                   {/* Optional Poster / Thumbnail */}
                   <div>
@@ -629,6 +776,18 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
               {/* 2. LIVE PREVIEW CARD */}
               {/* ========================================================= */}
               <div className="rounded-2xl overflow-hidden border border-stone-200 relative aspect-[16/8] bg-black shadow-inner">
+                {slideForm.mediaType === 'video' ? (
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-purple-600/90 text-white text-[10px] font-bold z-10 flex items-center gap-1 shadow-sm">
+                    <Film className="w-3 h-3" />
+                    <span>معاينة مشغل الفيديو الترحيبي</span>
+                  </span>
+                ) : (
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-blue-600/90 text-white text-[10px] font-bold z-10 flex items-center gap-1 shadow-sm">
+                    <ImageIcon className="w-3 h-3" />
+                    <span>معاينة صورة الخلفية</span>
+                  </span>
+                )}
+
                 {slideForm.mediaType === 'video' && slideForm.videoUrl ? (
                   <SafeVideoPlayer
                     url={slideForm.videoUrl}

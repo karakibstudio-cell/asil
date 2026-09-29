@@ -15,8 +15,7 @@ import {
   Check,
   ChevronDown,
   X,
-  SlidersHorizontal,
-  Sparkles
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface HotelsPageProps {
@@ -40,7 +39,7 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
     district: initialDistrict || 'all',
     stars: 'all',
     maxDistance: 1000,
-    sortBy: 'closest',
+    sortBy: 'recommended',
     searchQuery: '',
     selectedCategories: []
   });
@@ -69,11 +68,12 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
     }
   }, [initialCity, initialDistrict]);
 
-  // Extract available districts dynamically according to city selection
+  // Extract available districts dynamically according to city selection (active hotels only)
   const availableDistricts = useMemo(() => {
-    const relevantHotels = filters.city === 'all' 
+    const relevantHotels = (filters.city === 'all' 
       ? hotels 
-      : hotels.filter(h => h.city === filters.city);
+      : hotels.filter(h => h.city === filters.city)
+    ).filter(h => h.isActive !== false);
     
     const set = new Set<string>();
     relevantHotels.forEach(h => {
@@ -88,7 +88,7 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
       district: 'all',
       stars: 'all',
       maxDistance: 1000,
-      sortBy: 'closest',
+      sortBy: 'recommended',
       searchQuery: '',
       selectedCategories: []
     });
@@ -111,6 +111,10 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
   const filteredHotels = useMemo(() => {
     return hotels
       .filter((hotel) => {
+        // Exclude hidden hotels completely from public visitor views
+        if (hotel.isActive === false) {
+          return false;
+        }
         // City filter
         if (filters.city !== 'all' && hotel.city !== filters.city) {
           return false;
@@ -155,7 +159,11 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
         if (filters.sortBy === 'stars') {
           return b.stars - a.stars;
         }
-        return 0;
+        // Default: 'recommended' custom order set by admin
+        const orderA = typeof a.order === 'number' && a.order > 0 ? a.order : 9999;
+        const orderB = typeof b.order === 'number' && b.order > 0 ? b.order : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.distanceToHaram - b.distanceToHaram;
       });
   }, [hotels, filters]);
 
@@ -499,7 +507,9 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
               >
                 <ArrowUpDown className="w-3.5 h-3.5 text-[#C9A24B]" />
                 <span>
-                  {filters.sortBy === 'closest'
+                  {filters.sortBy === 'recommended'
+                    ? (language === 'en' ? 'Recommended' : 'الترتيب الموصى به')
+                    : filters.sortBy === 'closest'
                     ? (language === 'en' ? 'Closest to Haram' : 'الأقرب للحرم')
                     : filters.sortBy === 'highest-rated'
                     ? (language === 'en' ? 'Highest Rated' : 'الأعلى تقييماً')
@@ -511,6 +521,7 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
               {openDropdown === 'sort' && (
                 <div className={`absolute top-full ${isRtl ? 'right-0' : 'left-0'} mt-2 w-52 bg-white rounded-2xl border border-stone-200 shadow-xl p-2 z-50 animate-fadeIn space-y-1`}>
                   {[
+                    { id: 'recommended', label: language === 'en' ? 'Recommended Order' : 'الترتيب الموصى به (الافتراضي)' },
                     { id: 'closest', label: language === 'en' ? 'Closest to Haram courtyard' : 'الأقرب إلى ساحة الحرم' },
                     { id: 'highest-rated', label: language === 'en' ? 'Highest Rated' : 'الأعلى تقييماً' },
                     { id: 'stars', label: language === 'en' ? 'Star Rating (Highest first)' : 'عدد النجوم (الأعلى أولاً)' }
@@ -618,6 +629,7 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
               <HotelCard
                 key={hotel.id}
                 hotel={hotel}
+                onClick={() => onSelectHotel(hotel.slug || hotel.id)}
                 onSelect={() => onSelectHotel(hotel.slug || hotel.id)}
               />
             ))}

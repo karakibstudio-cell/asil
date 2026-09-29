@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { HeroSlide, ActivePage, SiteSettings } from '../types';
 import { 
-  Sparkles, 
+  Building2, 
   ArrowLeft, 
+  ArrowRight,
   PhoneCall, 
   ChevronDown, 
   ChevronRight, 
@@ -34,29 +35,9 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
   siteSettings,
   onScrollToNext
 }) => {
-  // Only use active slides, fallback to default if empty
+  // Only use active slides directly from the database
   const activeSlides = slides.filter((s) => s.isActive);
-  const effectiveSlides = activeSlides.length > 0 ? activeSlides : [
-    {
-      id: 'default_slide_1',
-      mediaType: 'image' as const,
-      imageUrl: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1920&q=85',
-      badge: 'الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين',
-      title: 'تسكين في أرقى فنادق مكة المكرمة والمدينة المنورة',
-      subtitle: 'نوفر لضيوف الرحمن وشركات السياحة أفضل خيارات الإقامة في فنادق الصف الأول المقابلة للحرم المكي والمسجد النبوي، مع تسهيلات حجز معتمدة ومباشرة.',
-      showBadge: true,
-      showTitle: true,
-      showSubtitle: true,
-      showPrimaryButton: true,
-      primaryButtonText: 'استعرض الفنادق المتاحة',
-      primaryButtonAction: 'hotels' as const,
-      showSecondaryButton: true,
-      secondaryButtonText: 'تواصل مع مستشار الحجز',
-      secondaryButtonAction: 'contact' as const,
-      order: 0,
-      isActive: true
-    }
-  ];
+  const effectiveSlides = activeSlides;
 
   const { language, t, isRtl } = useLanguage();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -69,12 +50,28 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
 
   const totalSlides = effectiveSlides.length;
 
+  // WhatsApp Link calculation
+  const primaryWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
+  const defaultWhatsAppMsg = `السلام عليكم ورحمة الله، أود الاستفسار عن عروض وتسكين الفنادق في مكة والمدينة عبر ${siteSettings?.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'}.`;
+  const whatsAppBookingUrl = primaryWhatsApp
+    ? getChannelHref(primaryWhatsApp, defaultWhatsAppMsg)
+    : `https://wa.me/966501234567?text=${encodeURIComponent(defaultWhatsAppMsg)}`;
+
+  const handleAction = (action?: ActivePage | 'whatsapp') => {
+    if (!action) return;
+    if (action === 'whatsapp') {
+      window.open(whatsAppBookingUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      onNavigate(action);
+    }
+  };
+
   // Convert slides into Lightbox media items (handling both video and image)
   const lightboxMediaItems: LightboxMediaItem[] = effectiveSlides.map((s) => {
-    const isVid = s.mediaType === 'video' || Boolean(s.videoUrl);
+    const isVid = s.mediaType === 'video' && Boolean(s.videoUrl?.trim());
     return {
       type: isVid ? ('video' as const) : ('image' as const),
-      url: (isVid && s.videoUrl) ? s.videoUrl : (s.imageUrl || s.videoUrl || ''),
+      url: (isVid && s.videoUrl) ? s.videoUrl : (s.imageUrl || ''),
       title: s.title,
       thumbnail: s.videoThumbnail || s.imageUrl
     };
@@ -121,8 +118,78 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
     touchStartX.current = null;
   };
 
+  // If no slides exist in the database, render an ultra-luxury branded hero section
+  if (totalSlides === 0) {
+    return (
+      <section 
+        id="hero-slider-section" 
+        className="relative min-h-[80vh] sm:min-h-[90vh] w-full flex items-center justify-center p-6 sm:p-12 overflow-hidden bg-gradient-to-b from-[#1C1917] via-[#0C0A09] to-[#1C1917] text-white select-none"
+      >
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#C9A24B]/15 rounded-full blur-[140px] pointer-events-none" />
+        
+        <div className="relative z-10 max-w-4xl mx-auto text-center space-y-6 pt-20">
+          {siteSettings?.logoUrl && (
+            <div className="flex justify-center mb-4">
+              <img
+                src={siteSettings.logoUrl}
+                alt={siteSettings.siteTitle || 'Logo'}
+                className="h-16 sm:h-20 w-auto object-contain filter drop-shadow-[0_0_15px_rgba(201,162,75,0.4)]"
+              />
+            </div>
+          )}
+
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#C9A24B]/20 border border-[#C9A24B]/40 text-[#DFBE72] text-xs sm:text-sm font-bold backdrop-blur-md">
+            <Building2 className="w-4 h-4 text-[#C9A24B]" />
+            <span>{siteSettings?.siteSubtitle || t('hero.welcomeBadge', 'الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين')}</span>
+          </div>
+
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-cairo font-bold text-white tracking-tight leading-tight">
+            {siteSettings?.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'}
+          </h1>
+
+          <p className="text-sm sm:text-lg text-stone-300 max-w-2xl mx-auto font-medium leading-relaxed">
+            {language === 'en' 
+              ? 'Luxury hotel management, hospitality, and elite accommodation for Umrah and Hajj guests in Makkah & Madinah.'
+              : 'نوفر لضيوف الرحمن وشركات السياحة أفضل خيارات الإقامة في فنادق مكة المكرمة والمدينة المنورة مع تسهيلات حجز معتمدة ومباشرة.'}
+          </p>
+
+          <div className="flex items-center justify-center gap-3 pt-4 flex-wrap">
+            <button
+              type="button"
+              onClick={() => onNavigate('hotels')}
+              className="px-6 py-3.5 rounded-2xl bg-[#C9A24B] hover:bg-[#b08b38] text-stone-950 font-bold text-xs sm:text-sm shadow-lg shadow-[#C9A24B]/30 hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+            >
+              <span>{t('hero.exploreHotels', 'استعرض الفنادق المتاحة')}</span>
+              {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAction('whatsapp')}
+              className="px-6 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/20 hover:border-white/40 backdrop-blur-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+            >
+              <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+              <span>{t('hero.contactWhatsApp', 'تواصل عبر الواتساب')}</span>
+            </button>
+          </div>
+        </div>
+
+        {onScrollToNext && (
+          <div 
+            onClick={onScrollToNext}
+            className="absolute bottom-6 sm:bottom-8 z-20 cursor-pointer flex flex-col items-center gap-1.5 text-stone-400 hover:text-[#DFBE72] transition-colors"
+          >
+            <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center animate-bounce">
+              <ChevronDown className="w-4 h-4 text-[#DFBE72]" />
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  }
+
   const currentSlide = effectiveSlides[currentIndex] || effectiveSlides[0];
-  const isCurrentVideo = currentSlide.mediaType === 'video' || Boolean(currentSlide.videoUrl);
+  const isCurrentVideo = currentSlide.mediaType === 'video' && Boolean(currentSlide.videoUrl?.trim());
 
   const hasBadge = currentSlide.showBadge !== false && Boolean(currentSlide.badge?.trim());
   const hasTitle = currentSlide.showTitle !== false && Boolean(currentSlide.title?.trim());
@@ -130,22 +197,6 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
   const hasPrimaryButton = currentSlide.showPrimaryButton !== false && Boolean(currentSlide.primaryButtonText?.trim());
   const hasSecondaryButton = currentSlide.showSecondaryButton !== false && Boolean(currentSlide.secondaryButtonText?.trim());
   const hasAnyTextOrButtons = hasBadge || hasTitle || hasSubtitle || hasPrimaryButton || hasSecondaryButton;
-
-  // WhatsApp Link calculation
-  const primaryWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
-  const defaultWhatsAppMsg = `السلام عليكم ورحمة الله، أود الاستفسار عن عروض وتسكين الفنادق في مكة والمدينة عبر ${siteSettings?.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'}.`;
-  const whatsAppBookingUrl = primaryWhatsApp
-    ? getChannelHref(primaryWhatsApp, defaultWhatsAppMsg)
-    : `https://wa.me/966501234567?text=${encodeURIComponent(defaultWhatsAppMsg)}`;
-
-  const handleAction = (action?: ActivePage | 'whatsapp') => {
-    if (!action) return;
-    if (action === 'whatsapp') {
-      window.open(whatsAppBookingUrl, '_blank', 'noopener,noreferrer');
-    } else {
-      onNavigate(action);
-    }
-  };
 
   return (
     <section 
@@ -159,7 +210,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
       {/* Background Media Layer (Images & Videos) */}
       {effectiveSlides.map((slide, idx) => {
         const isCurrent = idx === currentIndex;
-        const isSlideVideo = slide.mediaType === 'video' || Boolean(slide.videoUrl);
+        const isSlideVideo = slide.mediaType === 'video' && Boolean(slide.videoUrl?.trim());
 
         return (
           <div
@@ -207,7 +258,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
 
       {/* Top Floating Controls Bar: Fullscreen Zoom & Video Sound Toggle */}
       <div className={`absolute top-24 sm:top-28 ${isRtl ? 'right-4 sm:right-8' : 'left-4 sm:left-8'} z-20 flex items-center gap-2`}>
-        {isCurrentVideo && (
+        {Boolean(currentSlide?.mediaType === 'video' && currentSlide?.videoUrl?.trim()) && (
           <button
             type="button"
             onClick={() => {
@@ -263,7 +314,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
                 transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
                 className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/45 border border-[#C9A24B]/60 text-[#DFBE72] text-xs sm:text-sm font-semibold mb-6 backdrop-blur-md shadow-xl"
               >
-                <Sparkles className="w-4 h-4 text-[#DFBE72]" />
+                <Building2 className="w-4 h-4 text-[#DFBE72]" />
                 <span>
                   <EditableText
                     contentKey={`hero.slide.${currentSlide.id}.badge`}

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Hotel, Offer, ActivePage, SiteSettings, HotelReview } from '../types';
+import { Hotel, Offer, ActivePage, SiteSettings, HotelReview, HeroSlide } from '../types';
 import { HotelCard } from '../components/HotelCard';
 import { FeaturedHotelsCarousel } from '../components/FeaturedHotelsCarousel';
 import { OurHotelsAccordion } from '../components/OurHotelsAccordion';
 import { AddReviewModal } from '../components/AddReviewModal';
 import { HeroSlider } from '../components/HeroSlider';
+import { IntroVideoSection } from '../components/IntroVideoSection';
 import { EditableText } from '../components/EditableText';
 import { getReviewsFromDb } from '../services/firebase';
 import { useLanguage } from '../context/LanguageContext';
@@ -15,7 +16,6 @@ import {
   Award, 
   HeartHandshake, 
   ArrowLeft, 
-  Sparkles, 
   ShieldCheck, 
   Compass, 
   Star, 
@@ -127,7 +127,18 @@ export const HomePage: React.FC<HomePageProps> = ({
     setCurrentTestimonialIdx((prev) => (prev - 1 + displayedTestimonials.length) % displayedTestimonials.length);
   };
 
-  const featuredHotels = hotels.slice(0, 6);
+  const activeHotels = React.useMemo(() => {
+    return hotels
+      .filter((h) => h.isActive !== false)
+      .sort((a, b) => {
+        const orderA = typeof a.order === 'number' && a.order > 0 ? a.order : 9999;
+        const orderB = typeof b.order === 'number' && b.order > 0 ? b.order : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (b.rating || 0) - (a.rating || 0);
+      });
+  }, [hotels]);
+
+  const featuredHotels = activeHotels.slice(0, 6);
 
   const scrollToStats = () => {
     const el = document.getElementById('stats-section');
@@ -136,11 +147,51 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const hasActiveOffers = activeOffers && activeOffers.some((o) => o.isActive);
 
+  // Synthesize ads marked for hero slider into the slides list
+  const mergedHeroSlides = React.useMemo(() => {
+    const originalSlides = siteSettings?.heroSlides || [];
+    const adSlides: HeroSlide[] = (activeOffers || [])
+      .filter((o) => o.isActive && o.showInHeroSlides)
+      .map((o, idx) => ({
+        id: `ad_slide_${o.id}`,
+        mediaType: o.mediaType,
+        imageUrl: o.mediaUrl,
+        videoUrl: o.videoUrl,
+        videoThumbnail: o.mediaUrl,
+        badge: o.badgeText || (o.showDiscount && o.discountPercentage ? `خصم ${o.discountPercentage}٪` : 'إعلان خاص'),
+        title: o.title,
+        subtitle: o.shortDescription,
+        showBadge: true,
+        showTitle: true,
+        showSubtitle: true,
+        showPrimaryButton: true,
+        primaryButtonText: 'تفاصيل الإعلان',
+        primaryButtonAction: 'offers',
+        showSecondaryButton: true,
+        secondaryButtonText: 'تواصل عبر واتساب',
+        secondaryButtonAction: 'whatsapp',
+        order: 9000 + idx,
+        isActive: true
+      }));
+
+    return [...originalSlides, ...adSlides];
+  }, [siteSettings?.heroSlides, activeOffers]);
+
   return (
     <div id="home-page" className="min-h-screen bg-[#F8F7F4] text-stone-900 overflow-hidden">
-      {/* 1. Dynamic Interactive Hero Slider with Multi-Images & Transitions */}
+      {/* 1. Cinematic Intro Video (Customized from Admin - Top priority when enabled) */}
+      <IntroVideoSection
+        siteSettings={siteSettings}
+        onNavigate={onNavigate}
+        onSkip={() => {
+          const heroEl = document.getElementById('hero-slider-section');
+          if (heroEl) heroEl.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
+
+      {/* 2. Dynamic Interactive Hero Slider with Multi-Images & Transitions */}
       <HeroSlider
-        slides={siteSettings?.heroSlides}
+        slides={mergedHeroSlides}
         onNavigate={onNavigate}
         siteSettings={siteSettings}
         onScrollToNext={scrollToStats}
@@ -148,7 +199,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 2. Featured Hotels Carousel Banner (Directly after Hero) */}
       <FeaturedHotelsCarousel 
-        hotels={hotels}
+        hotels={activeHotels}
         onSelectHotel={onSelectHotel}
       />
 
@@ -248,7 +299,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         >
           <div>
             <div className="flex items-center gap-2 text-[#B38A34] text-xs sm:text-sm font-bold uppercase tracking-wider mb-2">
-              <Sparkles className="w-4 h-4" />
+              <Building2 className="w-4 h-4" />
               <EditableText 
                 contentKey="home.hotels.badge"
                 fallback="فخامة وروحانية"
@@ -283,7 +334,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               fallback="شاهد كل الفنادق"
               inline={true}
             />
-            <span>({hotels.length})</span>
+            <span>({activeHotels.length})</span>
             <ArrowLeft className={`w-4 h-4 ${isRtl ? 'group-hover:-translate-x-1' : 'rotate-180 group-hover:translate-x-1'} transition-transform`} />
           </motion.button>
         </motion.div>
@@ -309,7 +360,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       {/* 5. Our Hotels Accordion by City and Districts */}
       <OurHotelsAccordion
-        hotels={hotels}
+        hotels={activeHotels}
         onSelectHotel={onSelectHotel}
         onFilterDistrict={(city, district) => {
           if (onFilterDistrict) {
@@ -332,14 +383,14 @@ export const HomePage: React.FC<HomePageProps> = ({
                 <span className="text-xs font-bold text-[#B38A34] uppercase">
                   <EditableText
                     contentKey="home.offers.badge"
-                    fallback="عروض حصرية محدودة"
+                    fallback="إعلانات وبوسترات حصرية"
                     inline={true}
                   />
                 </span>
                 <h3 className="font-cairo font-black text-xl sm:text-2xl text-stone-900">
                   <EditableText
                     contentKey="home.offers.title"
-                    fallback="تصفح أحدث تصاميم وبوسترات عروض المواسم والمناسبات"
+                    fallback="تصفح أحدث إعلانات وبوسترات مواسم برستيج الفندقية"
                     as="span"
                   />
                 </h3>
@@ -353,7 +404,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               <span>
                 <EditableText
                   contentKey="home.offers.btn"
-                  fallback="استعراض قسم العروض والمناسبات"
+                  fallback="استعراض كافة الإعلانات"
                   inline={true}
                 />
               </span>
@@ -487,7 +538,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           ) : (
             <div className="py-8 text-center flex flex-col items-center justify-center space-y-4">
               <div className="w-14 h-14 rounded-2xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center">
-                <Sparkles className="w-7 h-7" />
+                <Building2 className="w-7 h-7" />
               </div>
               <div>
                 <h3 className="text-lg sm:text-xl font-cairo font-bold text-stone-900 mb-1">

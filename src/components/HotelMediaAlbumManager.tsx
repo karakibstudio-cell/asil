@@ -10,7 +10,6 @@ import {
   Check, 
   ArrowRight, 
   ArrowLeft, 
-  Sparkles, 
   Eye, 
   Film, 
   X,
@@ -18,6 +17,16 @@ import {
 } from 'lucide-react';
 import { SafeVideoPlayer } from './SafeVideoPlayer';
 import { optimizeImageFile } from '../utils/imageOptimizer';
+import { HotelGalleryItem, HotelImageCategory } from '../types';
+
+export const HOTEL_IMAGE_CATEGORIES: { key: HotelImageCategory; label: string }[] = [
+  { key: 'all', label: 'عام / ألبوم الفندق' },
+  { key: 'rooms', label: 'الغرف والأجنحة' },
+  { key: 'views', label: 'إطلالات وموقع' },
+  { key: 'dining', label: 'المطاعم والبوفيه' },
+  { key: 'lobby', label: 'الاستقبال والبهو' },
+  { key: 'facilities', label: 'الخدمات والمرافق' },
+];
 
 export interface AdditionalVideoItem {
   id: string;
@@ -28,12 +37,12 @@ export interface AdditionalVideoItem {
 
 interface HotelMediaAlbumManagerProps {
   mainImage: string;
-  galleryImages: string[];
+  galleryImages: (string | HotelGalleryItem)[];
   videoUrl?: string;
   additionalVideos?: AdditionalVideoItem[];
   onChange: (data: {
     mainImage: string;
-    galleryImages: string[];
+    galleryImages: (string | HotelGalleryItem)[];
     videoUrl?: string;
     additionalVideos?: AdditionalVideoItem[];
   }) => void;
@@ -52,6 +61,7 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
   const [newImageUrl, setNewImageUrl] = useState('');
   const [showAddUrlInput, setShowAddUrlInput] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [defaultUploadCategory, setDefaultUploadCategory] = useState<HotelImageCategory>('all');
 
   // Video Tour Modal State
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
@@ -69,12 +79,24 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
   const tourVideoFileInputRef = useRef<HTMLInputElement>(null);
   const videoThumbnailInputRef = useRef<HTMLInputElement>(null);
 
+  // Normalize gallery items into clean structure
+  const normalizedGallery = galleryImages.map((item) => {
+    if (typeof item === 'string') {
+      return { url: item, category: 'all' as HotelImageCategory, title: '' };
+    }
+    return {
+      url: item.url,
+      category: (item.category || 'all') as HotelImageCategory,
+      title: item.title || ''
+    };
+  });
+
   // All images combined (Main image is first)
   const allImages = [
-    ...(mainImage ? [{ url: mainImage, isMain: true }] : []),
-    ...galleryImages
-      .filter((img) => img && img !== mainImage)
-      .map((img) => ({ url: img, isMain: false }))
+    ...(mainImage ? [{ url: mainImage, isMain: true, category: 'views' as HotelImageCategory, title: 'الواجهة الرئيسية' }] : []),
+    ...normalizedGallery
+      .filter((img) => img.url && img.url !== mainImage)
+      .map((img) => ({ ...img, isMain: false }))
   ];
 
   // ==========================================
@@ -117,13 +139,19 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
     if (newImages.length === 0) return;
 
     let updatedMain = mainImage;
-    let updatedGallery = [...galleryImages];
+    const newItems: HotelGalleryItem[] = newImages.map((url) => ({
+      url,
+      category: defaultUploadCategory,
+      title: ''
+    }));
+
+    let updatedGallery: (string | HotelGalleryItem)[] = [...galleryImages];
 
     if (!updatedMain) {
       updatedMain = newImages[0];
-      updatedGallery = [...updatedGallery, ...newImages.slice(1)];
+      updatedGallery = [...updatedGallery, ...newItems.slice(1)];
     } else {
-      updatedGallery = [...updatedGallery, ...newImages];
+      updatedGallery = [...updatedGallery, ...newItems];
     }
 
     onChange({
@@ -133,7 +161,7 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
       additionalVideos
     });
 
-    onShowToast?.(`تمت إضافة ${newImages.length} صورة إلى ألبوم الفندق بنجاح`, 'success');
+    onShowToast?.(`تمت إضافة ${newImages.length} صورة بنجاح بتصنيف (${HOTEL_IMAGE_CATEGORIES.find(c => c.key === defaultUploadCategory)?.label})`, 'success');
   };
 
   const handleAddImageUrl = (e: React.FormEvent) => {
@@ -142,13 +170,18 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
 
     const url = newImageUrl.trim();
     let updatedMain = mainImage;
-    let updatedGallery = [...galleryImages];
+    let updatedGallery: (string | HotelGalleryItem)[] = [...galleryImages];
 
     if (!updatedMain) {
       updatedMain = url;
     } else {
-      if (!updatedGallery.includes(url)) {
-        updatedGallery.push(url);
+      const exists = updatedGallery.some((item) => (typeof item === 'string' ? item : item.url) === url);
+      if (!exists) {
+        updatedGallery.push({
+          url,
+          category: defaultUploadCategory,
+          title: ''
+        });
       }
     }
 
@@ -164,13 +197,44 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
     onShowToast?.('تمت إضافة رابط الصورة إلى الألبوم بنجاح', 'success');
   };
 
+  const handleUpdateImageCategory = (targetUrl: string, newCategory: HotelImageCategory) => {
+    const updatedGallery = galleryImages.map((item) => {
+      const itemUrl = typeof item === 'string' ? item : item.url;
+      if (itemUrl === targetUrl) {
+        return {
+          url: itemUrl,
+          category: newCategory,
+          title: typeof item === 'object' ? item.title : ''
+        };
+      }
+      return item;
+    });
+
+    onChange({
+      mainImage,
+      galleryImages: updatedGallery,
+      videoUrl,
+      additionalVideos
+    });
+
+    const categoryTitle = HOTEL_IMAGE_CATEGORIES.find(c => c.key === newCategory)?.label || newCategory;
+    onShowToast?.(`تم تغيير تصنيف الصورة إلى: ${categoryTitle}`, 'info');
+  };
+
   const handleSetAsMainImage = (targetUrl: string) => {
     if (targetUrl === mainImage) return;
 
     // Move old mainImage to gallery, and set targetUrl as main
-    const filteredGallery = galleryImages.filter((img) => img !== targetUrl);
-    if (mainImage && !filteredGallery.includes(mainImage)) {
-      filteredGallery.unshift(mainImage);
+    const filteredGallery = galleryImages.filter((img) => (typeof img === 'string' ? img : img.url) !== targetUrl);
+    if (mainImage) {
+      const exists = filteredGallery.some((img) => (typeof img === 'string' ? img : img.url) === mainImage);
+      if (!exists) {
+        filteredGallery.unshift({
+          url: mainImage,
+          category: 'views',
+          title: 'الواجهة الرئيسية'
+        });
+      }
     }
 
     onChange({
@@ -186,8 +250,9 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
   const handleDeleteImage = (targetUrl: string) => {
     if (targetUrl === mainImage) {
       // If deleting main image, pick next from gallery if available
-      const remainingGallery = galleryImages.filter((img) => img !== targetUrl);
-      const nextMain = remainingGallery[0] || '';
+      const remainingGallery = galleryImages.filter((img) => (typeof img === 'string' ? img : img.url) !== targetUrl);
+      const nextItem = remainingGallery[0];
+      const nextMain = nextItem ? (typeof nextItem === 'string' ? nextItem : nextItem.url) : '';
       const updatedGallery = remainingGallery.slice(1);
 
       onChange({
@@ -198,7 +263,7 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
       });
       onShowToast?.('تم حذف الصورة الرئيسية وتحديث الألبوم', 'info');
     } else {
-      const updatedGallery = galleryImages.filter((img) => img !== targetUrl);
+      const updatedGallery = galleryImages.filter((img) => (typeof img === 'string' ? img : img.url) !== targetUrl);
       onChange({
         mainImage,
         galleryImages: updatedGallery,
@@ -403,7 +468,7 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
         <div className="space-y-6 animate-fadeIn">
           {/* Action Bar: Upload from Device & Add URL */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-stone-50 border border-stone-200">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2.5 flex-wrap">
               {/* Device File Upload Button (Supports Multiple) */}
               <label className="cursor-pointer px-4 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs flex items-center gap-2 transition-all">
                 <Upload className="w-4 h-4" />
@@ -418,6 +483,20 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
                 />
               </label>
 
+              {/* Default Category for new uploads */}
+              <div className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-xl border border-stone-200 shadow-2xs">
+                <span className="text-xs text-stone-600 font-bold whitespace-nowrap">تصنيف الرفع:</span>
+                <select
+                  value={defaultUploadCategory}
+                  onChange={(e) => setDefaultUploadCategory(e.target.value as HotelImageCategory)}
+                  className="text-xs font-bold bg-transparent text-[#B38A34] focus:outline-none cursor-pointer"
+                >
+                  {HOTEL_IMAGE_CATEGORIES.map(c => (
+                    <option key={c.key} value={c.key}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Add by URL toggle */}
               <button
                 type="button"
@@ -430,7 +509,7 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
             </div>
 
             <div className="text-xs text-stone-500 font-medium">
-              ⭐ انقر على زر النجمة لأي صورة لتعيينها كصورة رئيسية للغلاف.
+              ⭐ يمكنك تحديد تصنيف كل صورة (غرف، إطلالات، مطاعم، مرافق) بدقة لمنع الخلط.
             </div>
           </div>
 
@@ -491,14 +570,14 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
                 return (
                   <div
                     key={idx}
-                    className={`group relative rounded-2xl overflow-hidden border-2 transition-all bg-stone-100 shadow-sm flex flex-col ${
+                    className={`group relative rounded-2xl overflow-hidden border-2 transition-all bg-white shadow-sm flex flex-col justify-between ${
                       img.isMain
                         ? 'border-[#C9A24B] ring-2 ring-[#C9A24B]/30'
                         : 'border-stone-200 hover:border-[#C9A24B]/50'
                     }`}
                   >
                     {/* Image Box */}
-                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-200">
+                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-100">
                       <img
                         src={img.url}
                         alt={`صورة ${idx + 1}`}
@@ -511,6 +590,13 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
                         <div className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-[#C9A24B] text-white text-[10px] font-bold shadow-md flex items-center gap-1">
                           <Star className="w-3 h-3 fill-current" />
                           <span>الصورة الرئيسية</span>
+                        </div>
+                      )}
+
+                      {/* Category Badge on Image */}
+                      {!img.isMain && (
+                        <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-stone-200 text-[10px] font-medium shadow-sm">
+                          {HOTEL_IMAGE_CATEGORIES.find(c => c.key === img.category)?.label || 'عام'}
                         </div>
                       )}
 
@@ -538,32 +624,53 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
                       </div>
                     </div>
 
-                    {/* Bottom Info & Make Primary Button */}
-                    <div className="p-2.5 bg-white flex items-center justify-between gap-1 border-t border-stone-100 text-[11px]">
-                      {img.isMain ? (
-                        <span className="text-[#B38A34] font-bold flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>صورة الغلاف</span>
-                        </span>
+                    {/* Card Footer: Category Selector & Actions */}
+                    <div className="p-2.5 bg-white space-y-2 border-t border-stone-100">
+                      {/* Category Selector Dropdown */}
+                      {!img.isMain ? (
+                        <div className="flex items-center justify-between gap-1">
+                          <label className="text-[10px] text-stone-500 font-bold whitespace-nowrap">القسم:</label>
+                          <select
+                            value={img.category || 'all'}
+                            onChange={(e) => handleUpdateImageCategory(img.url, e.target.value as HotelImageCategory)}
+                            className="w-full text-[11px] font-bold py-1 px-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-white text-stone-800 focus:outline-none focus:border-[#C9A24B] cursor-pointer"
+                          >
+                            {HOTEL_IMAGE_CATEGORIES.map((cat) => (
+                              <option key={cat.key} value={cat.key}>
+                                {cat.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleSetAsMainImage(img.url)}
-                          className="text-stone-600 hover:text-[#B38A34] font-bold flex items-center gap-1 transition-colors"
-                        >
-                          <Star className="w-3 h-3 text-[#C9A24B]" />
-                          <span>اجعلها رئيسية</span>
-                        </button>
+                        <div className="text-[11px] text-[#B38A34] font-bold flex items-center gap-1 py-1">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>صورة غلاف الفندق الرئيسية</span>
+                        </div>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteImage(img.url)}
-                        className="text-stone-400 hover:text-red-600 p-1 transition-colors"
-                        title="حذف"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {/* Bottom Info & Make Primary Button */}
+                      <div className="flex items-center justify-between gap-1 pt-1 border-t border-stone-50 text-[11px]">
+                        {!img.isMain && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetAsMainImage(img.url)}
+                            className="text-stone-600 hover:text-[#B38A34] font-bold flex items-center gap-1 transition-colors text-[11px]"
+                          >
+                            <Star className="w-3 h-3 text-[#C9A24B]" />
+                            <span>اجعلها رئيسية</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteImage(img.url)}
+                          className="text-stone-400 hover:text-red-600 p-1 transition-colors mr-auto"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

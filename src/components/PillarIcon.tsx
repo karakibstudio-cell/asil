@@ -3,7 +3,6 @@ import {
   ShieldCheck, 
   HeartHandshake, 
   Award, 
-  Sparkles, 
   Building2, 
   Star, 
   Clock, 
@@ -34,14 +33,13 @@ export const ICON_OPTIONS = [
   { name: 'HeartHandshake', label: 'رعاية ومصادقة (Care & Handshake)' },
   { name: 'Award', label: 'وسام وعقود (Award)' },
   { name: 'Bookmark', label: 'علامة الموثوقية (Bookmark)' },
-  { name: 'Sparkles', label: 'فخامة وتميز (Sparkles)' },
+  { name: 'Crown', label: 'تاج الضيافة الملكية (Crown)' },
   { name: 'Building2', label: 'فندق ومبنى (Hotel)' },
   { name: 'Star', label: 'نجمة تقييم (Star)' },
   { name: 'Clock', label: 'خدمة 24/7 (24/7 Clock)' },
   { name: 'PhoneCall', label: 'اتصال مباشر (Phone)' },
   { name: 'Users', label: 'فريق وضيوف (Users)' },
   { name: 'CheckCircle2', label: 'اعتماد رسمي (Check)' },
-  { name: 'Crown', label: 'تاج الضيافة الملكية (Crown)' },
   { name: 'BadgeCheck', label: 'شارة التوثيق (Verified Badge)' },
   { name: 'Compass', label: 'بوصلة الموقع (Compass)' },
   { name: 'Heart', label: 'عناية ومحبة (Heart)' },
@@ -72,7 +70,7 @@ export const PillarIcon: React.FC<PillarIconProps> = ({
     case 'Bookmark':
       return <Bookmark className={className} />;
     case 'Sparkles':
-      return <Sparkles className={className} />;
+      return <Crown className={className} />;
     case 'Building2':
       return <Building2 className={className} />;
     case 'Star':

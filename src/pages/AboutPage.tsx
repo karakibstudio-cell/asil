@@ -5,7 +5,6 @@ import { useLanguage } from '../context/LanguageContext';
 import { useLiveContent } from '../context/LiveContentContext';
 import { optimizeImageFile } from '../utils/imageOptimizer';
 import { 
-  Sparkles, 
   ShieldCheck, 
   Award, 
   Users, 
@@ -46,23 +45,26 @@ export const AboutPage: React.FC<AboutPageProps> = ({
   onShowToast,
   isAdminLoggedIn: propIsAdminLoggedIn
 }) => {
-  const { language, t, isRtl } = useLanguage();
+  const { language, t, isRtl, translateDynamic } = useLanguage();
   const { isEditMode, isAdminLoggedIn: contextIsAdminLoggedIn } = useLiveContent();
   const isAdminLoggedIn = propIsAdminLoggedIn ?? contextIsAdminLoggedIn;
   const about = siteSettings?.aboutUs || {};
   
-  // Active Logo URL or fallback
-  const defaultEmblemUrl = 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=400&q=80';
-  const logo = about.logoUrl || siteSettings?.logoUrl || '';
-  const displayLogo = logo || defaultEmblemUrl;
+  // Active Logo URL (Always synchronized directly with Brand Identity logo)
+  const logo = siteSettings?.logoUrl || about.logoUrl || '';
+  const displayLogo = logo;
 
-  const defaultPhotos = [
-    'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80'
-  ];
-  const photos = about.photos && about.photos.length > 0 ? about.photos : defaultPhotos;
-  const mainPhoto = about.mainPhoto || photos[0];
+  // Active Branches list
+  const activeBranches = (siteSettings?.branches && siteSettings.branches.length > 0
+    ? siteSettings.branches.filter(b => b.isActive !== false)
+    : []
+  ).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(activeBranches[0]?.id || '');
+  const currentBranch = activeBranches.find(b => b.id === selectedBranchId) || activeBranches[0] || null;
+
+  const photos = Array.isArray(about.photos) ? about.photos.filter(Boolean) : [];
+  const mainPhoto = about.mainPhoto || photos[0] || '';
 
   // Modals state
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
@@ -164,7 +166,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
 
     if (newOptimizedPhotos.length > 0 && onUpdateSiteSettings && siteSettings) {
       try {
-        const currentPhotos = about.photos || defaultPhotos;
+        const currentPhotos = Array.isArray(about.photos) ? about.photos : [];
         const updatedPhotos = [...currentPhotos, ...newOptimizedPhotos];
         const updatedAbout = {
           ...about,
@@ -196,13 +198,20 @@ export const AboutPage: React.FC<AboutPageProps> = ({
     onShowToast?.(t('about.downloadingLogo', 'جاري تنزيل ملف الشعار...'), 'info');
   };
 
-  const officeMapUrl = about.officeMapUrl || 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah';
-  const officeWhatsApp = about.officeWhatsApp || '+966501234567';
-  const cleanPhone = officeWhatsApp.replace(/[^0-9]/g, '');
+  // Selected Branch Data
+  const officeMapUrl = currentBranch?.mapUrl || about.officeMapUrl || 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah';
+  const branchPhone = currentBranch?.phone || about.officePhone || '+966501234567';
+  const branchWhatsApp = currentBranch?.whatsapp || currentBranch?.phone || about.officeWhatsApp || '+966501234567';
+  const branchAddress = currentBranch?.address || about.officeAddress || 'أبراج وقف الملك عبدالعزيز - طريق أجياد، مكة المكرمة';
+  const branchCity = currentBranch?.city || about.officeCity || 'مكة المكرمة';
+  const branchTitle = currentBranch ? currentBranch.name : (about.officeTitle || 'المقر الرئيسي لشركة برستيج لإدارة وتشغيل الفنادق');
+  const branchWorkingHours = currentBranch?.workingHours || about.officeWorkingHours || 'على مدار الساعة 24/7';
+
+  const cleanPhone = branchWhatsApp.replace(/[^0-9]/g, '');
   const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
     language === 'en'
-      ? 'Hello, I would like to inquire about Prestige hotel bookings and services.'
-      : 'السلام عليكم ورحمة الله، أود الاستفسار عن خدمات وحجوزات شركة برستيج.'
+      ? `Hello, I would like to inquire about Prestige hotel bookings at ${branchCity}.`
+      : `السلام عليكم ورحمة الله، أود الاستفسار عن خدمات وحجوزات شركة برستيج في ${branchCity}.`
   )}`;
 
   return (
@@ -239,7 +248,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
               ) : (
                 <div className="w-full h-full rounded-2xl bg-gradient-to-br from-[#DFBE72] via-[#C9A24B] to-[#98752B] p-0.5 flex items-center justify-center">
                   <div className="w-full h-full bg-white rounded-2xl flex items-center justify-center">
-                    <Sparkles className="w-10 h-10 text-[#B38A34]" />
+                    <Building2 className="w-10 h-10 text-[#B38A34]" />
                   </div>
                 </div>
               )}
@@ -285,7 +294,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
           </div>
 
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold border border-[#C9A24B]/30 mb-3">
-            <Sparkles className="w-3.5 h-3.5" />
+            <Building2 className="w-3.5 h-3.5" />
             <span>
               <EditableText
                 contentKey="about.badge"
@@ -372,23 +381,47 @@ export const AboutPage: React.FC<AboutPageProps> = ({
 
           {/* Main Photo Card */}
           <div 
-            onClick={() => openImageInLightbox(mainPhoto)}
-            className="lg:col-span-6 relative rounded-3xl overflow-hidden border border-[#C9A24B]/30 shadow-xl aspect-[4/3] bg-stone-100 group cursor-pointer"
-            title={t('about.zoomMainPhoto', 'انقر لتكبير ومعاينة الصورة')}
+            onClick={() => mainPhoto && openImageInLightbox(mainPhoto)}
+            className={`lg:col-span-6 relative rounded-3xl overflow-hidden border border-[#C9A24B]/30 shadow-xl aspect-[4/3] ${
+              mainPhoto ? 'bg-stone-100 group cursor-pointer' : 'bg-gradient-to-br from-[#1C1917] via-[#2A241C] to-[#1C1917] flex items-center justify-center p-8'
+            }`}
+            title={mainPhoto ? t('about.zoomMainPhoto', 'انقر لتكبير ومعاينة الصورة') : undefined}
           >
-            <img
-              src={mainPhoto}
-              alt="مقر شركة برستيج لإدارة وتشغيل الفنادق"
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-            
-            {/* Click to zoom overlay */}
-            <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-md text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#C9A24B]" />
-              <span>{t('about.zoomMainPhoto', 'تكبير الصورة')}</span>
-            </div>
+            {mainPhoto ? (
+              <>
+                <img
+                  src={mainPhoto}
+                  alt="مقر شركة برستيج لإدارة وتشغيل الفنادق"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                
+                {/* Click to zoom overlay */}
+                <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-md text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5">
+                  <Eye className="w-3.5 h-3.5 text-[#C9A24B]" />
+                  <span>{t('about.zoomMainPhoto', 'تكبير الصورة')}</span>
+                </div>
+              </>
+            ) : (
+              <div className="text-center space-y-4 max-w-sm pb-16">
+                {logo ? (
+                  <img src={logo} alt="Logo" className="h-20 w-auto mx-auto object-contain filter drop-shadow-[0_0_15px_rgba(201,162,75,0.4)]" />
+                ) : (
+                  <div className="w-16 h-16 rounded-3xl bg-[#C9A24B]/20 text-[#DFBE72] mx-auto flex items-center justify-center border border-[#C9A24B]/40">
+                    <Building2 className="w-8 h-8" />
+                  </div>
+                )}
+                <div>
+                  <h4 className="font-cairo font-bold text-lg text-white">
+                    {about.title || 'شركة برستيج لإدارة وتشغيل الفنادق'}
+                  </h4>
+                  <p className="text-xs text-stone-400 mt-1 leading-relaxed">
+                    {about.subtitle || 'إدارة وتشغيل الفنادق والضيافة الفاخرة لضيوف الرحمن'}
+                  </p>
+                </div>
+              </div>
+            )}
             
             {about.showLicense !== false && (
               <div className="absolute bottom-5 right-5 left-5 p-4 rounded-2xl bg-white/95 backdrop-blur-md border border-stone-200 shadow-lg flex items-center justify-between gap-3">
@@ -417,28 +450,62 @@ export const AboutPage: React.FC<AboutPageProps> = ({
         {/* 3. OFFICE LOCATION & HEADQUARTERS SHOWCASE CARD */}
         {/* ========================================================= */}
         <div id="office-location-section" className="mb-20">
-          <div className="bg-gradient-to-br from-white via-white to-amber-50/40 rounded-3xl border border-[#C9A24B]/30 p-6 sm:p-10 shadow-lg">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-6 mb-8 border-b border-stone-200">
+          <div className="bg-gradient-to-br from-white via-white to-amber-50/40 rounded-3xl border border-[#C9A24B]/30 p-6 sm:p-10 shadow-lg space-y-6">
+            
+            {/* If multiple active branches exist, show sleek switcher tabs */}
+            {activeBranches.length > 1 && (
+              <div className="flex items-center gap-2 pb-2 overflow-x-auto no-scrollbar border-b border-stone-200/80">
+                <span className="text-xs font-bold text-stone-500 shrink-0 ml-2">
+                  {language === 'en' ? 'Select Branch:' : 'اختر الفرع لعرض موقعه:'}
+                </span>
+                {activeBranches.map((branch) => {
+                  const isSelected = branch.id === (currentBranch?.id || selectedBranchId);
+                  return (
+                    <button
+                      key={branch.id}
+                      type="button"
+                      onClick={() => setSelectedBranchId(branch.id)}
+                      className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#C9A24B] text-white shadow-sm'
+                          : 'bg-stone-100 hover:bg-stone-200/80 text-stone-700'
+                      }`}
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span>{translateDynamic(branch.name)}</span>
+                      {branch.isMainBranch && (
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-normal ${isSelected ? 'bg-white/25 text-white' : 'bg-[#C9A24B]/15 text-[#B38A34]'}`}>
+                          {language === 'en' ? 'Main' : 'الرئيسي'}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-6 border-b border-stone-200">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-[#C9A24B] text-white flex items-center justify-center shadow-md shadow-[#C9A24B]/30 shrink-0">
                   <Building2 className="w-7 h-7" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-[#B38A34] uppercase tracking-wide">
                       <EditableText
                         contentKey="about.office.sectionBadge"
-                        fallback={language === 'en' ? 'Official Headquarters & Location' : 'الموقع الجغرافي والمقر الرسمي'}
+                        fallback={language === 'en' ? 'Official Branch Location' : 'الموقع الجغرافي والفرع المعتمد'}
                         inline={true}
                       />
                     </span>
+                    {currentBranch?.isMainBranch && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#C9A24B]/15 text-[#B38A34] border border-[#C9A24B]/30">
+                        {language === 'en' ? 'Headquarters' : 'المقر الرئيسي'}
+                      </span>
+                    )}
                   </div>
-                  <h3 className="text-xl sm:text-2xl font-cairo font-bold text-stone-900">
-                    <EditableText
-                      contentKey="about.office.title"
-                      fallback={about.officeTitle || (language === 'en' ? 'Prestige Hotels Management Headquarters' : 'المقر الرئيسي لشركة برستيج لإدارة وتشغيل الفنادق')}
-                      as="span"
-                    />
+                  <h3 className="text-xl sm:text-2xl font-cairo font-bold text-stone-900 mt-0.5">
+                    {translateDynamic(branchTitle)}
                   </h3>
                 </div>
               </div>
@@ -447,7 +514,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                 href={officeMapUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-6 py-3 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs sm:text-sm font-bold shadow-md shadow-[#C9A24B]/20 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 shrink-0"
+                className="px-6 py-3 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs sm:text-sm font-bold shadow-md shadow-[#C9A24B]/20 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 shrink-0 cursor-pointer"
               >
                 <MapPin className="w-4 h-4" />
                 <span>{t('about.viewMap', 'فتح اللوكيشن على خرائط جوجل')}</span>
@@ -464,14 +531,10 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                   <span>{language === 'en' ? 'Address & City' : 'العنوان والمدينة'}</span>
                 </div>
                 <div className="text-xs sm:text-sm font-semibold text-stone-800 leading-relaxed">
-                  <EditableText
-                    contentKey="about.office.address"
-                    fallback={about.officeAddress || 'أبراج وقف الملك عبدالعزيز - طريق أجياد، مكة المكرمة'}
-                    as="span"
-                  />
+                  {translateDynamic(branchAddress)}
                 </div>
                 <span className="text-[11px] text-[#B38A34] block font-medium">
-                  {language === 'en' ? 'Makkah Al-Mukarramah' : (about.officeCity || 'مكة المكرمة')}
+                  {translateDynamic(branchCity)}
                 </span>
               </div>
 
@@ -482,11 +545,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                   <span>{t('about.workingHoursTitle', 'أوقات وساعات العمل')}</span>
                 </div>
                 <div className="text-xs sm:text-sm font-semibold text-stone-800">
-                  <EditableText
-                    contentKey="about.office.workingHours"
-                    fallback={about.officeWorkingHours || 'على مدار الساعة 24/7'}
-                    as="span"
-                  />
+                  {translateDynamic(branchWorkingHours)}
                 </div>
                 <span className="text-[11px] text-stone-500 block">
                   {language === 'en' ? 'Every day throughout all seasons' : 'طوال أيام الأسبوع والمواسم'}
@@ -506,10 +565,10 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                   </span>
                 </div>
                 <a
-                  href={`tel:${about.officePhone || '+966501234567'}`}
+                  href={`tel:${branchPhone}`}
                   className="text-xs sm:text-sm font-bold font-mono text-stone-900 hover:text-[#B38A34] block transition-colors dir-ltr text-right"
                 >
-                  {about.officePhone || '+966501234567'}
+                  {branchPhone}
                 </a>
                 <span className="text-[11px] text-stone-500 block">
                   {language === 'en' ? 'Accommodation & Bookings' : 'استفسارات التسكين والحجوزات'}
@@ -528,7 +587,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                   rel="noopener noreferrer"
                   className="text-xs sm:text-sm font-bold font-mono text-stone-900 hover:text-[#25D366] block transition-colors dir-ltr text-right"
                 >
-                  {about.officeWhatsApp || '+966501234567'}
+                  {branchWhatsApp}
                 </a>
                 <span className="text-[11px] text-emerald-600 block font-medium">
                   {language === 'en' ? 'Instant Consultant Response' : 'رد فوري من المستشار'}
@@ -541,77 +600,87 @@ export const AboutPage: React.FC<AboutPageProps> = ({
         {/* ========================================================= */}
         {/* 4. OFFICE & COMPANY PHOTOS ALBUM (WITH PNG UPLOAD) */}
         {/* ========================================================= */}
-        <div className="mb-20 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold mb-1">
-                <ImageIcon className="w-3.5 h-3.5" />
-                <span>{language === 'en' ? 'Photo Album' : 'ألبوم الصور'}</span>
-              </div>
-              <h3 className="text-2xl font-cairo font-bold text-stone-900">
-                <EditableText
-                  contentKey="about.album.title"
-                  fallback={language === 'en' 
-                    ? 'Photos from Company Headquarters, Reception & Team' 
-                    : 'صور من مقر الشركة، مكاتب الاستقبال، وفريق العمل'}
-                  as="span"
-                />
-              </h3>
-            </div>
-
-            {/* Upload PNG Photos Button (Always available for admin / edit mode) */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {(isAdminLoggedIn && isEditMode) && (
-                <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95">
-                  <Upload className="w-4 h-4" />
-                  <span>
-                    {isUploadingPhoto
-                      ? (language === 'en' ? 'Uploading photos...' : 'جاري رفع الصور...')
-                      : (language === 'en' ? 'Add PNG Photos to Album' : 'إضافة صور PNG للألبوم')}
-                  </span>
-                  <input
-                    ref={pngAlbumFileInputRef}
-                    type="file"
-                    accept="image/png, image/jpeg, image/jpg, image/webp, .png, image/*"
-                    multiple
-                    disabled={isUploadingPhoto}
-                    onChange={handleUploadPngPhotos}
-                    className="hidden"
-                  />
-                </label>
-              )}
-
-              <span className="text-xs text-stone-500">
-                {language === 'en' 
-                  ? 'Click any photo to view in high resolution' 
-                  : 'انقر على أي صورة لتكبيرها واستعراضها بجودة عالية'}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {photos.map((pic, idx) => (
-              <div
-                key={idx}
-                onClick={() => openImageInLightbox(pic)}
-                className="group relative rounded-2xl overflow-hidden border border-stone-200 shadow-xs aspect-[4/3] bg-stone-100 cursor-pointer hover:border-[#C9A24B] hover:shadow-md transition-all"
-                title={language === 'en' ? 'Click to zoom photo' : 'انقر لتكبير الصورة'}
-              >
-                <img
-                  src={pic}
-                  alt={`صورة المقر ${idx + 1}`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <div className="p-2 rounded-xl bg-white/90 backdrop-blur-xs text-stone-900 shadow-md">
-                    <Sparkles className="w-4 h-4 text-[#B38A34]" />
-                  </div>
+        {(photos.length > 0 || (isAdminLoggedIn && isEditMode)) && (
+          <div className="mb-20 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold mb-1">
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>{language === 'en' ? 'Photo Album' : 'ألبوم الصور'}</span>
                 </div>
+                <h3 className="text-2xl font-cairo font-bold text-stone-900">
+                  <EditableText
+                    contentKey="about.album.title"
+                    fallback={language === 'en' 
+                      ? 'Photos from Company Headquarters, Reception & Team' 
+                      : 'صور من مقر الشركة، مكاتب الاستقبال، وفريق العمل'}
+                    as="span"
+                  />
+                </h3>
               </div>
-            ))}
+
+              {/* Upload PNG Photos Button (Always available for admin / edit mode) */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {(isAdminLoggedIn && isEditMode) && (
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-sm transition-all hover:scale-105 active:scale-95">
+                    <Upload className="w-4 h-4" />
+                    <span>
+                      {isUploadingPhoto
+                        ? (language === 'en' ? 'Uploading photos...' : 'جاري رفع الصور...')
+                        : (language === 'en' ? 'Add PNG Photos to Album' : 'إضافة صور PNG للألبوم')}
+                    </span>
+                    <input
+                      ref={pngAlbumFileInputRef}
+                      type="file"
+                      accept="image/png, image/jpeg, image/jpg, image/webp, .png, image/*"
+                      multiple
+                      disabled={isUploadingPhoto}
+                      onChange={handleUploadPngPhotos}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+
+                {photos.length > 0 && (
+                  <span className="text-xs text-stone-500">
+                    {language === 'en' 
+                      ? 'Click any photo to view in high resolution' 
+                      : 'انقر على أي صورة لتكبيرها واستعراضها بجودة عالية'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {photos.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {photos.map((pic, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => openImageInLightbox(pic)}
+                    className="group relative rounded-2xl overflow-hidden border border-stone-200 shadow-xs aspect-[4/3] bg-stone-100 cursor-pointer hover:border-[#C9A24B] hover:shadow-md transition-all"
+                    title={language === 'en' ? 'Click to zoom photo' : 'انقر لتكبير الصورة'}
+                  >
+                    <img
+                      src={pic}
+                      alt={`صورة المقر ${idx + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="p-2 rounded-xl bg-white/90 backdrop-blur-xs text-stone-900 shadow-md">
+                        <Eye className="w-4 h-4 text-[#B38A34]" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center rounded-2xl bg-stone-50 border border-dashed border-stone-300 text-xs text-stone-500">
+                {language === 'en' ? 'No photos in album yet. Use the button above to add photos.' : 'لا توجد صور في الألبوم حالياً. استخدم الزر بالأعلى لإضافة صور لمقر الشركة.'}
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* ========================================================= */}
         {/* 5. CORE VALUES & PILLARS */}
@@ -710,7 +779,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
             <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between bg-stone-50/80">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center">
-                  <Sparkles className="w-4 h-4" />
+                  <Building2 className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="font-cairo font-bold text-base text-stone-900 leading-tight">

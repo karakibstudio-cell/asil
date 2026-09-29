@@ -1,25 +1,95 @@
 import { Hotel, ActivePage } from '../types';
 
 /**
- * Generate a clean, SEO-friendly and human-readable slug for a hotel
- * Example: "فندق برج الساعة فيرمونت" -> "fairmont-makkah-clock-royal-tower" or "Safwat_Al_Khair_Hotel"
+ * Transliterate Arabic hotel titles into clean, concise Latin letters
+ * to prevent ugly percent-encoded URLs like %D8%A8%D8%B1%D8%B3%D8%AA%D9%8A%D8%AC...
  */
-export function getHotelSlug(hotel: Hotel): string {
-  if (hotel.nameEn && hotel.nameEn.trim()) {
-    return hotel.nameEn
-      .trim()
-      .replace(/[^\w\s-]/g, '')
-      .replace(/[\s-]+/g, '_');
+export function arabicToLatinSlug(text: string): string {
+  if (!text) return '';
+  const dictionary: Record<string, string> = {
+    'برستيج': 'prestige',
+    'فندق': 'hotel',
+    'أجياد': 'ajyad',
+    'اجياد': 'ajyad',
+    'مكة': 'makkah',
+    'المدينة': 'madinah',
+    'المنورة': 'munawwarah',
+    'المكرمة': 'mukarramah',
+    'الحرم': 'haram',
+    'الصفوة': 'safwah',
+    'ابراج': 'towers',
+    'أبراج': 'towers',
+    'سويس': 'swiss',
+    'فيرمونت': 'fairmont',
+    'موفنبيك': 'movenpick',
+    'هيلتون': 'hilton',
+    'دار': 'dar',
+    'التوحيد': 'tawhid',
+    'العزيزية': 'aziziyah',
+    'المسفلة': 'mesfalah',
+    'زمزم': 'zamzam',
+    'الشهداء': 'shuhada',
+    'البديع': 'badee',
+    'فجر': 'fajr',
+    'الريان': 'rayyan',
+    'رويال': 'royal',
+    'المركزية': 'central'
+  };
+
+  let cleaned = text.trim();
+  for (const [ar, en] of Object.entries(dictionary)) {
+    const reg = new RegExp(ar, 'gi');
+    cleaned = cleaned.replace(reg, ` ${en} `);
   }
-  // Arabic slug fallback
-  return hotel.name
-    .trim()
-    .replace(/[^\u0621-\u064A\w\s-]/g, '')
-    .replace(/[\s-]+/g, '_');
+
+  const charMap: Record<string, string> = {
+    'ا': 'a', 'أ': 'a', 'إ': 'e', 'آ': 'a', 'ب': 'b', 'ت': 't', 'ث': 'th',
+    'ج': 'j', 'ح': 'h', 'خ': 'kh', 'د': 'd', 'ذ': 'dh', 'ر': 'r', 'ز': 'z',
+    'س': 's', 'ش': 'sh', 'ص': 's', 'ض': 'd', 'ط': 't', 'ظ': 'z', 'ع': 'a',
+    'غ': 'gh', 'ف': 'f', 'ق': 'q', 'ك': 'k', 'ل': 'l', 'م': 'm', 'ن': 'n',
+    'ه': 'h', 'و': 'w', 'ي': 'y', 'ى': 'a', 'ة': 'h', 'ء': '', 'ئ': 'e', 'ؤ': 'o'
+  };
+
+  let result = '';
+  for (const ch of cleaned) {
+    result += charMap[ch] !== undefined ? charMap[ch] : ch;
+  }
+
+  return result
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 /**
- * Find hotel in list by either ID or slug (English / Arabic / variations)
+ * Generate a clean, SEO-friendly, short Latin slug for a hotel
+ * Example: "برستيج اجياد" -> "prestige-ajyad"
+ */
+export function getHotelSlug(hotel: Hotel): string {
+  if (hotel.nameEn && hotel.nameEn.trim()) {
+    const enSlug = hotel.nameEn
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (enSlug) return enSlug;
+  }
+  
+  const transliterated = arabicToLatinSlug(hotel.name);
+  if (transliterated) {
+    return transliterated;
+  }
+
+  // Fallback to clean hotel id
+  if (hotel.id) {
+    return hotel.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  }
+
+  return 'hotel';
+}
+
+/**
+ * Find hotel in list by either ID, English slug, Arabic transliteration, or original Arabic name
  */
 export function findHotelBySlugOrId(hotels: Hotel[], identifier: string): Hotel | undefined {
   if (!identifier || !hotels || hotels.length === 0) return undefined;
@@ -31,27 +101,45 @@ export function findHotelBySlugOrId(hotels: Hotel[], identifier: string): Hotel 
   const directId = hotels.find((h) => h.id === rawDecoded || h.id.toLowerCase() === rawDecoded.toLowerCase());
   if (directId) return directId;
 
-  // 2. English name slug match
+  // 2. English name & slug match
   const matchEn = hotels.find((h) => {
-    if (!h.nameEn) return false;
-    const cleanEn = h.nameEn.toLowerCase().replace(/[\s_-]+/g, '');
-    const cleanSlug = getHotelSlug(h).toLowerCase().replace(/[\s_-]+/g, '');
-    return cleanEn === normalized || cleanSlug === normalized;
+    const slug = getHotelSlug(h).toLowerCase().replace(/[\s_-]+/g, '');
+    if (slug === normalized) return true;
+    if (h.nameEn) {
+      const cleanEn = h.nameEn.toLowerCase().replace(/[\s_-]+/g, '');
+      if (cleanEn === normalized) return true;
+    }
+    return false;
   });
   if (matchEn) return matchEn;
 
-  // 3. Arabic name match
+  // 3. Arabic transliteration match
+  const matchTranslit = hotels.find((h) => {
+    const translit = arabicToLatinSlug(h.name).replace(/[\s_-]+/g, '');
+    return translit === normalized;
+  });
+  if (matchTranslit) return matchTranslit;
+
+  // 4. Arabic original name match (supports old links with Arabic text)
   const matchAr = hotels.find((h) => {
     const cleanAr = h.name.toLowerCase().replace(/[\s_-]+/g, '');
     return cleanAr === normalized;
   });
   if (matchAr) return matchAr;
 
-  // 4. Partial substring match
+  // 5. Partial substring match
   const partial = hotels.find((h) => {
     const cleanName = h.name.toLowerCase().replace(/[\s_-]+/g, '');
     const cleanEn = (h.nameEn || '').toLowerCase().replace(/[\s_-]+/g, '');
-    return cleanName.includes(normalized) || cleanEn.includes(normalized) || normalized.includes(cleanName);
+    const slug = getHotelSlug(h).toLowerCase().replace(/[\s_-]+/g, '');
+    return (
+      cleanName.includes(normalized) || 
+      normalized.includes(cleanName) ||
+      cleanEn.includes(normalized) || 
+      normalized.includes(cleanEn) ||
+      slug.includes(normalized) ||
+      normalized.includes(slug)
+    );
   });
   if (partial) return partial;
 

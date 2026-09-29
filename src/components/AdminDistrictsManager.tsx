@@ -7,7 +7,6 @@ import {
   Trash2, 
   Building2, 
   Search, 
-  Sparkles, 
   Check, 
   X, 
   AlertTriangle,

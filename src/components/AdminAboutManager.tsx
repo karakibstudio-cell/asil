@@ -6,7 +6,6 @@ import {
   Trash2, 
   Star, 
   Plus, 
-  Sparkles, 
   Phone, 
   Mail, 
   Clock, 
@@ -88,11 +87,8 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
     licenseNumber: aboutUs.licenseNumber || '73104928',
     licenseAuthority: aboutUs.licenseAuthority || 'مرخصون من وزارة الحج والعمرة والهيئة السعودية للسياحة',
     showLicense: aboutUs.showLicense !== false,
-    photos: aboutUs.photos || [
-      'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80'
-    ],
-    mainPhoto: aboutUs.mainPhoto || 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
+    photos: Array.isArray(aboutUs.photos) ? aboutUs.photos : [],
+    mainPhoto: aboutUs.mainPhoto || '',
     logoUrl: aboutUs.logoUrl || siteLogoUrl || '',
     valuePillars: aboutUs.valuePillars && aboutUs.valuePillars.length > 0 ? aboutUs.valuePillars : DEFAULT_VALUE_PILLARS
   });
@@ -232,7 +228,7 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
       titleEn: 'New Feature',
       description: 'اكتب وصف الميزة أو الخدمة هنا...',
       descriptionEn: 'Write description of feature or service here...',
-      iconName: 'Sparkles',
+      iconName: 'Building2',
       order: (form.valuePillars?.length || 0) + 1
     };
     setForm((prev) => ({
@@ -296,7 +292,7 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-stone-200">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold mb-1">
-            <Sparkles className="w-3.5 h-3.5" />
+            <Building2 className="w-3.5 h-3.5" />
             <span>إدارة صفحة من نحن والمكتب</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-cairo font-bold text-stone-900">
@@ -356,7 +352,7 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
                     </div>
                   </>
                 ) : (
-                  <Sparkles className="w-10 h-10 text-[#B38A34]" />
+                  <Building2 className="w-10 h-10 text-[#B38A34]" />
                 )}
               </div>
               <span className="text-xs font-bold text-stone-800">

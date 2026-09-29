@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Hotel } from '../types';
-import { Star, X, CheckCircle, Send, Sparkles, Camera, Upload, Trash2, User } from 'lucide-react';
+import { Star, X, CheckCircle, Send, Building2, Camera, Upload, Trash2, User } from 'lucide-react';
 import { submitHotelReview } from '../services/firebase';
 import { optimizeImageFile } from '../utils/imageOptimizer';
 import { useLanguage } from '../context/LanguageContext';
@@ -144,7 +144,7 @@ export const AddReviewModal: React.FC<AddReviewModalProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className={isRtl ? 'text-right' : 'text-left'}>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold mb-2">
-                <Sparkles className="w-3.5 h-3.5" />
+                <Building2 className="w-3.5 h-3.5" />
                 <span>{language === 'en' ? 'Guest Reviews' : 'تقييم ضيوف الرحمن'}</span>
               </div>
               <h3 className="font-cairo font-black text-xl sm:text-2xl text-stone-900">

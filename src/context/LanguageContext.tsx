@@ -21,7 +21,7 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   // Navigation Links
   'nav.home': { ar: 'الرئيسية', en: 'Home' },
   'nav.hotels': { ar: 'الفنادق', en: 'Hotels' },
-  'nav.offers': { ar: 'العروض والمناسبات', en: 'Offers & Seasons' },
+  'nav.offers': { ar: 'الإعلانات', en: 'Ads & Offers' },
   'nav.packages': { ar: 'باقات الحج والعمرة', en: 'Hajj & Umrah Packages' },
   'nav.about': { ar: 'من نحن', en: 'About Us' },
   'nav.contact': { ar: 'تواصل معنا', en: 'Contact Us' },
@@ -93,7 +93,7 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   // Offers Spotlight in Home
   'home.offers.badge': { ar: 'عروض حصرية محدودة', en: 'Exclusive Limited Offers' },
   'home.offers.title': { ar: 'تصفح أحدث تصاميم وبوسترات عروض المواسم والمناسبات', en: 'Browse Latest Seasonal & Event Offers and Posters' },
-  'home.offers.btn': { ar: 'استعراض قسم العروض والمناسبات', en: 'Explore Offers & Events Section' },
+  'home.offers.btn': { ar: 'استعراض قسم الإعلانات والعروض', en: 'Explore Ads & Offers' },
 
   // Testimonials Section
   'home.testimonials.badge': { ar: 'شهادات نعتز بها', en: 'Valued Guest Reviews' },
@@ -192,7 +192,7 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
 
   // Offers Page
   'offers.header.badge': { ar: 'مواسم البركة والخصومات الحصرية', en: 'Seasons of Blessing & Exclusive Discounts' },
-  'offers.header.title': { ar: 'العروض والمناسبات الخاصة', en: 'Special Offers & Seasonal Events' },
+  'offers.header.title': { ar: 'الإعلانات والعروض الخاصة', en: 'Special Ads & Seasonal Offers' },
   'offers.header.subtitle': { ar: 'استفد من أقوى العروض الموسمية لحجوزات الحج والعمرة، مع خصومات حصرية على باقات التسكين وفنادق مكة والمدينة.', en: 'Benefit from seasonal Hajj & Umrah accommodation deals with exclusive discounts in Makkah and Madinah.' },
   'offers.promoVideo': { ar: 'فيديو دعائي', en: 'Promo Video' },
   'offers.posterBadge': { ar: 'بوستر العرض', en: 'Offer Poster' },
@@ -307,7 +307,7 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   'footer.link.home': { ar: 'الرئيسية', en: 'Home' },
   'footer.link.hotels': { ar: 'فنادقنا المُدارة', en: 'Hotels' },
   'footer.link.packages': { ar: 'باقات الحج والعمرة', en: 'Hajj & Umrah Packages' },
-  'footer.link.offers': { ar: 'العروض والمناسبات', en: 'Special Offers' },
+  'footer.link.offers': { ar: 'الإعلانات', en: 'Ads & Offers' },
   'footer.link.about': { ar: 'من نحن', en: 'About Us' },
   'footer.link.contact': { ar: 'تواصل معنا', en: 'Contact Us' },
   'footer.link.admin': { ar: 'لوحة التحكم', en: 'Admin Dashboard' },

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   MapPin, 
@@ -8,10 +8,10 @@ import {
   Calendar, 
   Users, 
   Check, 
-  Send,
   Building,
-  Sparkles,
-  ShieldCheck
+  Building2,
+  ShieldCheck,
+  Send
 } from 'lucide-react';
 import { Hotel, SiteSettings } from '../types';
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from './BookingIcons';
@@ -46,6 +46,18 @@ export const HotelBookingModal: React.FC<HotelBookingModalProps> = ({
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Close on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -107,34 +119,46 @@ export const HotelBookingModal: React.FC<HotelBookingModalProps> = ({
   return (
     <div 
       id="hotel-booking-modal-backdrop"
-      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-fadeIn"
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-fadeIn cursor-pointer"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }
       }}
     >
       <div 
         id="hotel-booking-modal-content"
-        className="bg-white w-full max-w-2xl rounded-3xl border border-stone-200 shadow-2xl overflow-hidden my-auto animate-scaleUp"
+        className="bg-white w-full max-w-2xl rounded-3xl border border-stone-200 shadow-2xl overflow-hidden my-auto animate-scaleUp relative cursor-default"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header with Hotel Snapshot */}
         <div className="relative bg-stone-900 text-white p-5 sm:p-6 overflow-hidden">
           <img 
             src={hotel.mainImage} 
             alt={hotel.name}
-            className="absolute inset-0 w-full h-full object-cover opacity-25 filter blur-xs" 
+            className="absolute inset-0 w-full h-full object-cover opacity-25 filter blur-xs pointer-events-none" 
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-900/80 to-stone-900/60" />
+          <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-900/80 to-stone-900/60 pointer-events-none" />
 
-          {/* Close Button */}
+          {/* Close Button - High Z-Index & Distinct Click Target */}
           <button
-            onClick={onClose}
-            className="absolute top-4 left-4 p-2 rounded-full bg-white/15 hover:bg-white/30 text-white transition-colors z-10"
+            type="button"
+            id="hotel-booking-modal-close-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }}
+            className="absolute top-4 left-4 p-2.5 rounded-full bg-black/40 hover:bg-black/70 active:scale-90 text-white transition-all z-30 cursor-pointer shadow-lg backdrop-blur-md border border-white/20"
             aria-label="إغلاق"
+            title="إغلاق (Esc)"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 pointer-events-none" />
           </button>
 
-          <div className="relative z-10">
+          <div className="relative z-10 ltr:pr-14 rtl:pl-14">
             <div className="flex items-center gap-2 mb-2">
               <span className="px-2.5 py-0.5 rounded-full bg-[#C9A24B]/30 text-[#DFBE72] text-[11px] font-bold border border-[#DFBE72]/30 flex items-center gap-1">
                 <MapPin className="w-3 h-3" />
@@ -163,7 +187,7 @@ export const HotelBookingModal: React.FC<HotelBookingModalProps> = ({
           {/* Section: Quick Direct Action Links */}
           <div>
             <h4 className="font-cairo font-bold text-sm text-stone-900 mb-3 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#B38A34]" />
+              <Building2 className="w-4 h-4 text-[#B38A34]" />
               <span>{language === 'en' ? 'Direct Booking & Instant Contact' : 'خيارات التواصل والحجز المباشر والسريع'}</span>
             </h4>
 

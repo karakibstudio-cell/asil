@@ -7,8 +7,7 @@ import {
   ChevronUp, 
   Footprints, 
   Star, 
-  ArrowLeft,
-  Sparkles
+  ArrowLeft
 } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { useLanguage } from '../context/LanguageContext';
@@ -35,15 +34,23 @@ export const OurHotelsAccordion: React.FC<OurHotelsAccordionProps> = ({
       'المدينة المنورة': {}
     };
 
-    hotels.forEach((hotel) => {
-      const city = hotel.city === 'مكة المكرمة' ? 'مكة المكرمة' : 'المدينة المنورة';
-      const district = hotel.district || (city === 'مكة المكرمة' ? 'أجياد' : 'المنطقة المركزية الشمالية');
-      
-      if (!data[city][district]) {
-        data[city][district] = [];
-      }
-      data[city][district].push(hotel);
-    });
+    hotels
+      .filter((hotel) => hotel.isActive !== false)
+      .sort((a, b) => {
+        const orderA = typeof a.order === 'number' && a.order > 0 ? a.order : 9999;
+        const orderB = typeof b.order === 'number' && b.order > 0 ? b.order : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (b.rating || 0) - (a.rating || 0);
+      })
+      .forEach((hotel) => {
+        const city = hotel.city === 'مكة المكرمة' ? 'مكة المكرمة' : 'المدينة المنورة';
+        const district = hotel.district || (city === 'مكة المكرمة' ? 'أجياد' : 'المنطقة المركزية الشمالية');
+        
+        if (!data[city][district]) {
+          data[city][district] = [];
+        }
+        data[city][district].push(hotel);
+      });
 
     return data;
   }, [hotels]);
@@ -77,7 +84,7 @@ export const OurHotelsAccordion: React.FC<OurHotelsAccordionProps> = ({
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold border border-[#C9A24B]/30 mb-3">
-            <Sparkles className="w-3.5 h-3.5" />
+            <Building2 className="w-3.5 h-3.5" />
             <EditableText 
               contentKey="home.accordion.badge" 
               fallback="دليل التسكين الشامل" 

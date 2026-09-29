@@ -27,14 +27,14 @@ import {
   ChevronDown, 
   ChevronUp, 
   PhoneCall, 
-  Sparkles,
   ArrowRight,
   Tv,
   Accessibility,
   MessageSquarePlus,
   BedDouble,
   Users,
-  Copy
+  Copy,
+  Crown
 } from 'lucide-react';
 import { getHotelShareUrl, getHotelSlug } from '../utils/routing';
 
@@ -139,7 +139,10 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
   }
 
   // Combine main and gallery images without duplicates
-  const uniqueImages = Array.from(new Set([hotel.mainImage, ...hotel.galleryImages]));
+  const rawGalleryUrls = (hotel.galleryImages || [])
+    .map(img => typeof img === 'string' ? img : img.url)
+    .filter(Boolean);
+  const uniqueImages = Array.from(new Set([hotel.mainImage, ...rawGalleryUrls]));
   uniqueImages.forEach((imgUrl, i) => {
     allMediaItems.push({
       type: 'image',
@@ -207,7 +210,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
     if (text.includes('نقل') || text.includes('حافلات') || text.includes('سيارات')) return <Bus className="w-5 h-5" />;
     if (text.includes('احتياجات') || text.includes('كراسي')) return <Accessibility className="w-5 h-5" />;
     if (text.includes('تلفزيون') || text.includes('شاشة')) return <Tv className="w-5 h-5" />;
-    return <Sparkles className="w-5 h-5" />;
+    return <Building2 className="w-5 h-5" />;
   };
 
   return (
@@ -432,8 +435,8 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
 
             {/* Left 4 Smaller Images Grid */}
             <div className="hidden md:grid col-span-2 grid-cols-2 gap-2.5 sm:gap-3">
-              {(hotel.galleryImages.slice(1, 5).length > 0
-                ? hotel.galleryImages.slice(1, 5)
+              {(rawGalleryUrls.slice(0, 4).length > 0
+                ? rawGalleryUrls.slice(0, 4)
                 : [hotel.mainImage, hotel.mainImage, hotel.mainImage, hotel.mainImage]
               ).map((imgUrl, idx) => (
                 <div
@@ -765,7 +768,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                   <div className="p-5 rounded-2xl bg-[#FAF8F5] border border-[#C9A24B]/40 hover:border-[#C9A24B] transition-all md:col-span-2">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-xl bg-[#C9A24B] text-white flex items-center justify-center shadow-sm">
-                        <Sparkles className="w-5 h-5" />
+                        <Crown className="w-5 h-5" />
                       </div>
                       <div>
                         <h4 className="font-cairo font-bold text-base text-stone-900">
@@ -836,7 +839,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                 <div className="pt-6 border-t border-stone-200">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-cairo font-bold text-base text-stone-900 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-[#B38A34]" />
+                      <Building2 className="w-4 h-4 text-[#B38A34]" />
                       <span>{language === 'en' ? 'Live Snapshots of Hotel Facilities' : 'لقطات حية لمرافق الفندق'}</span>
                     </h4>
                     <button

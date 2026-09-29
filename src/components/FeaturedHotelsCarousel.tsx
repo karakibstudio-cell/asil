@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Hotel, HotelCategory } from '../types';
 import { 
-  Sparkles, 
   MapPin, 
   Footprints, 
   Star, 
@@ -31,10 +30,18 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
   onSelectHotel
 }) => {
   const { language, t, translateDynamic, isRtl } = useLanguage();
-  // Only show hotels marked as featured; fallback to all hotels if none are marked
+  // Only show hotels marked as featured and active; sort by custom order
   const featuredHotels = useMemo(() => {
-    const featured = hotels.filter((h) => h.featured);
-    return featured.length > 0 ? featured : hotels.slice(0, 5);
+    const activeList = hotels
+      .filter((h) => h.isActive !== false)
+      .sort((a, b) => {
+        const orderA = typeof a.order === 'number' && a.order > 0 ? a.order : 9999;
+        const orderB = typeof b.order === 'number' && b.order > 0 ? b.order : 9999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (b.rating || 0) - (a.rating || 0);
+      });
+    const featured = activeList.filter((h) => h.featured);
+    return featured.length > 0 ? featured : activeList.slice(0, 5);
   }, [hotels]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -100,7 +107,7 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold border border-[#C9A24B]/30 mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-[#B38A34]" />
+              <Building className="w-3.5 h-3.5 text-[#B38A34]" />
               <span>
                 <EditableText
                   contentKey="home.featuredCarousel.badge"

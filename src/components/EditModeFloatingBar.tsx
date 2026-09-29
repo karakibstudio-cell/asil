@@ -11,7 +11,6 @@ import {
   X, 
   Check, 
   Search, 
-  Sparkles,
   HelpCircle
 } from 'lucide-react';
 import { ActivePage } from '../types';

@@ -19,7 +19,6 @@ import {
   GripVertical,
   Eye,
   EyeOff,
-  Sparkles,
   Share2
 } from 'lucide-react';
 

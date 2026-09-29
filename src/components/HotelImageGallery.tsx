@@ -7,7 +7,6 @@ import {
   ChevronLeft, 
   Play, 
   Pause, 
-  Sparkles, 
   BedDouble, 
   Utensils, 
   Building2, 
@@ -25,7 +24,7 @@ export interface GalleryItem {
   id: string;
   url: string;
   title: string;
-  category: 'rooms' | 'dining' | 'lobby' | 'views' | 'facilities';
+  category: 'rooms' | 'dining' | 'lobby' | 'views' | 'facilities' | 'all';
   categoryLabel: string;
   description?: string;
   facilityTag?: string;
@@ -54,7 +53,7 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
     { key: 'views', label: 'إطلالات الحرم', icon: Eye },
     { key: 'dining', label: 'المطاعم والبوفيه', icon: Utensils },
     { key: 'lobby', label: 'الاستقبال والبهو', icon: Building2 },
-    { key: 'facilities', label: 'الخدمات والمرافق', icon: Sparkles },
+    { key: 'facilities', label: 'الخدمات والمرافق', icon: Coffee },
   ];
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -65,121 +64,82 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
   const touchStartX = useRef<number | null>(null);
   const thumbnailScrollRef = useRef<HTMLDivElement>(null);
 
-  // Generate enriched gallery items for the hotel
+  // Generate authentic gallery items for the hotel (no artificial modulo or external filler photos)
   const galleryItems = useMemo<GalleryItem[]>(() => {
     const items: GalleryItem[] = [];
-    const uniqueUrls = Array.from(new Set([hotel.mainImage, ...(hotel.galleryImages || [])]));
+    const addedUrls = new Set<string>();
 
-    // Facility contextual presets for rich display
-    const facilityPresets: { title: string; category: GalleryItem['category']; categoryLabel: string; description: string; facilityTag: string }[] = [
-      {
-        title: `الواجهة الرئيسية والفخامة - ${hotel.name}`,
-        category: 'views',
-        categoryLabel: 'إطلالات الحرم',
-        description: `موقع استثنائي في ${hotel.city} على بُعد ${hotel.distanceText}.`,
-        facilityTag: 'موقع مميز'
-      },
-      {
-        title: 'جناح فندقي ملكي مطل',
-        category: 'rooms',
-        categoryLabel: 'الغرف والأجنحة',
-        description: 'أسرّة فندقية فاخرة مع أحدث أنظمة الراحة والهدوء ومساحات واسعة.',
-        facilityTag: 'أجنحة VIP'
-      },
-      {
-        title: 'بوفيه المطعم المفتوح والمأكولات العالمية',
-        category: 'dining',
-        categoryLabel: 'المطاعم والبوفيه',
-        description: 'تشكيلة يومية من أشهى الأطباق الشرقية والعالمية ووجبات الإفطار الملكية.',
-        facilityTag: 'بوفيه مفتوح'
-      },
-      {
-        title: 'بهو الفندق الفسيح وصالة الاستقبال',
-        category: 'lobby',
-        categoryLabel: 'الاستقبال والبهو',
-        description: 'خدمة استقبال وكونسيرج على مدار الساعة للترحيب بضيوف الرحمن.',
-        facilityTag: 'استقبال 24/7'
-      },
-      {
-        title: 'غرفة تنفيذية عائلية مجهزة بالكامل',
-        category: 'rooms',
-        categoryLabel: 'الغرف والأجنحة',
-        description: 'تصميم يجمع بين الأصالة والحداثة لراحة ضيوف بيت الله الحرام.',
-        facilityTag: 'إقامة عائلية'
-      },
-      {
-        title: 'إطلالة بانورامية ساحرة على الحرم الشريف',
-        category: 'views',
-        categoryLabel: 'إطلالات الحرم',
-        description: `مشهد روحاني مهيب يطل على ${hotel.city === 'مكة المكرمة' ? 'الكعبة المشرفة وساحات المسجد الحرام' : 'المسجد النبوي الشريف والساحات'}.`,
-        facilityTag: 'إطلالة روحانية'
-      },
-      {
-        title: 'مصلى خاص ومرافق الصلاة والسكينة',
-        category: 'facilities',
-        categoryLabel: 'الخدمات والمرافق',
-        description: 'متصل بنظام الصوت المباشر للحرم الشريف لأداء الصلوات في راحة تامة.',
-        facilityTag: 'نظام صوت الحرم'
-      },
-      {
-        title: 'صالة المشروبات والمقهى الفاخر',
-        category: 'dining',
-        categoryLabel: 'المطاعم والبوفيه',
-        description: 'مشروبات ساخنة وباردة وقهوة عربية أصيلة مع تمور فاخرة.',
-        facilityTag: 'مقهى ولاونج'
-      }
-    ];
+    const categoryLabels: Record<string, string> = {
+      rooms: 'الغرف والأجنحة',
+      views: 'إطلالات وموقع',
+      dining: 'المطاعم والبوفيه',
+      lobby: 'الاستقبال والبهو',
+      facilities: 'الخدمات والمرافق',
+      all: 'ألبوم الفندق'
+    };
 
-    // High quality themed fallback images if hotel only has few photos
-    const fallbackMakkahFacilities = [
-      'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80'
-    ];
-
-    // Combine provided photos with facility representations
-    const combinedPhotos = [...uniqueUrls];
-    if (combinedPhotos.length < 6) {
-      fallbackMakkahFacilities.forEach(url => {
-        if (!combinedPhotos.includes(url) && combinedPhotos.length < 8) {
-          combinedPhotos.push(url);
-        }
-      });
-    }
-
-    combinedPhotos.forEach((url, index) => {
-      const preset = facilityPresets[index % facilityPresets.length];
-      items.push({
-        id: `img-${hotel.id}-${index}`,
-        url,
-        title: index === 0 ? `الواجهة الرئيسية - ${hotel.name}` : preset.title,
-        category: preset.category,
-        categoryLabel: preset.categoryLabel,
-        description: preset.description,
-        facilityTag: preset.facilityTag,
-        isVideo: false
-      });
-    });
-
-    // Add main promotional video if exists
+    // 1. Add promotional video first if available
     if (hotel.videoUrl) {
-      items.unshift({
+      items.push({
         id: `vid-${hotel.id}-main`,
-        url: hotel.mainImage,
+        url: hotel.mainImage || '',
         title: `جولة فيديو تعريفية شاملة - ${hotel.name}`,
         category: 'views',
         categoryLabel: 'فيديو وجولة',
         description: 'جولة مرئية عالية الدقة تستعرض مرافق الفندق والأجنحة عن قُرب.',
-        facilityTag: 'فيديو حصري',
+        facilityTag: 'فيديو الفندق',
         isVideo: true,
         videoUrl: hotel.videoUrl
       });
     }
+
+    // 2. Add main image
+    if (hotel.mainImage && hotel.mainImage.trim()) {
+      addedUrls.add(hotel.mainImage);
+      items.push({
+        id: `img-${hotel.id}-main`,
+        url: hotel.mainImage,
+        title: `الواجهة الرئيسية - ${hotel.name}`,
+        category: 'views',
+        categoryLabel: 'إطلالات وموقع',
+        description: `موقع استثنائي في ${hotel.city} على بُعد ${hotel.distanceText}.`,
+        facilityTag: 'صورة الغلاف',
+        isVideo: false
+      });
+    }
+
+    // 3. Add hotel's actual gallery images
+    (hotel.galleryImages || []).forEach((item: any, index: number) => {
+      if (!item) return;
+      
+      let url = '';
+      let category: GalleryItem['category'] = 'all';
+      let title = '';
+
+      if (typeof item === 'string') {
+        url = item.trim();
+        category = 'all';
+        title = `${hotel.name} - صورة ${items.length + 1}`;
+      } else if (typeof item === 'object' && item.url) {
+        url = (item.url || '').trim();
+        category = (item.category && item.category !== 'all' ? item.category : 'all') as GalleryItem['category'];
+        title = item.title?.trim() || `${hotel.name} - صورة ${items.length + 1}`;
+      }
+
+      if (!url || addedUrls.has(url)) return;
+      addedUrls.add(url);
+
+      items.push({
+        id: `img-${hotel.id}-${index}`,
+        url,
+        title,
+        category,
+        categoryLabel: categoryLabels[category] || 'ألبوم الفندق',
+        description: '',
+        facilityTag: categoryLabels[category] || 'فندق',
+        isVideo: false
+      });
+    });
 
     return items;
   }, [hotel]);
@@ -391,7 +351,7 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
             <div className="absolute top-4 inset-x-4 flex items-center justify-between z-10">
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white text-xs font-semibold flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-[#DFBE72]" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#DFBE72]" />
                   <span>{currentItem.categoryLabel}</span>
                 </span>
                 {currentItem.facilityTag && (

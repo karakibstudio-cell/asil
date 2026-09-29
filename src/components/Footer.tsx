@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivePage, Offer, SiteSettings } from '../types';
 import { 
-  Sparkles, 
+  Building2, 
   Phone, 
   Mail, 
   MapPin, 
@@ -58,7 +58,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, activeOffers, siteSe
               ) : (
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#DFBE72] via-[#C9A24B] to-[#98752B] p-[1.5px] shadow-xs">
                   <div className="w-full h-full bg-white rounded-[10px] flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-[#B38A34]" />
+                    <Building2 className="w-5 h-5 text-[#B38A34]" />
                   </div>
                 </div>
               )}
@@ -170,20 +170,23 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, activeOffers, siteSe
               />
             </h4>
             <ul className="space-y-3.5 text-sm">
-              {(siteSettings?.branches && siteSettings.branches.length > 0 ? siteSettings.branches : [
-                {
-                  id: 'branch_makkah',
-                  name: language === 'en' ? 'Makkah Branch:' : 'فرع مكة المكرمة:',
-                  address: language === 'en' ? 'King Abdulaziz Endowment Towers, Ajyad St, Makkah' : 'أبراج وقف الملك عبدالعزيز، طريق أجياد، مكة',
-                  mapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah'
-                },
-                {
-                  id: 'branch_madinah',
-                  name: language === 'en' ? 'Madinah Branch:' : 'فرع المدينة المنورة:',
-                  address: language === 'en' ? 'Northern Central Area, King Fahd Rd, Madinah' : 'المنطقة المركزية الشمالية، طريق الملك فهد',
-                  mapUrl: 'https://maps.google.com/?q=Northern+Central+Area+Madinah'
-                }
-              ]).map((branch, index) => {
+              {(siteSettings?.branches && siteSettings.branches.length > 0 
+                ? siteSettings.branches.filter(b => b.isActive !== false).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                : [
+                    {
+                      id: 'branch_makkah',
+                      name: language === 'en' ? 'Makkah Branch:' : 'فرع مكة المكرمة:',
+                      address: language === 'en' ? 'King Abdulaziz Endowment Towers, Ajyad St, Makkah' : 'أبراج وقف الملك عبدالعزيز، طريق أجياد، مكة',
+                      mapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah'
+                    },
+                    {
+                      id: 'branch_madinah',
+                      name: language === 'en' ? 'Madinah Branch:' : 'فرع المدينة المنورة:',
+                      address: language === 'en' ? 'Northern Central Area, King Fahd Rd, Madinah' : 'المنطقة المركزية الشمالية، طريق الملك فهد',
+                      mapUrl: 'https://maps.google.com/?q=Northern+Central+Area+Madinah'
+                    }
+                  ]
+              ).map((branch, index) => {
                 const mapUrl = branch.mapUrl || (index === 0
                   ? 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah'
                   : 'https://maps.google.com/?q=Northern+Central+Area+Madinah');

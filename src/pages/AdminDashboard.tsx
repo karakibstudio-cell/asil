@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Hotel, Offer, ContactMessage, ActivePage, SiteSettings, ContactChannel, HotelCategory, ALL_HOTEL_CATEGORIES, HotelReview, District, AdminUser, UserRole, BranchLocation, QuickLinkItem } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Hotel, Offer, ContactMessage, ActivePage, SiteSettings, ContactChannel, HotelCategory, ALL_HOTEL_CATEGORIES, HotelReview, District, AdminUser, UserRole, BranchLocation, DepartmentContact, QuickLinkItem } from '../types';
 import { AdminChannelsManager } from '../components/AdminChannelsManager';
 import { AdminHeroSlidesManager } from '../components/AdminHeroSlidesManager';
 import { AdminDistrictsManager } from '../components/AdminDistrictsManager';
 import { AdminUsersManager } from '../components/AdminUsersManager';
 import { AdminBranchesManager } from '../components/AdminBranchesManager';
+import { AdminDepartmentContactsManager } from '../components/AdminDepartmentContactsManager';
 import { AdminQuickLinksManager } from '../components/AdminQuickLinksManager';
 import { HotelMediaAlbumManager } from '../components/HotelMediaAlbumManager';
 import { AdminAboutManager } from '../components/AdminAboutManager';
@@ -50,7 +51,6 @@ import {
   Film, 
   LogOut, 
   AlertTriangle, 
-  Sparkles, 
   ArrowLeft, 
   ArrowRight, 
   ExternalLink,
@@ -70,14 +70,22 @@ import {
   Phone,
   Database,
   Key,
-  Copy
+  Copy,
+  ChevronUp,
+  ChevronDown,
+  Play,
+  Volume2,
+  VolumeX,
+  Sparkles
 } from 'lucide-react';
 import { 
   getSupabaseConfig, 
   saveSupabaseConfig, 
   testSupabaseConnection, 
-  isSupabaseConfigured 
+  isSupabaseConfigured,
+  uploadMediaToSupabase
 } from '../services/supabase';
+import { SafeVideoPlayer } from '../components/SafeVideoPlayer';
 
 interface AdminDashboardProps {
   hotels: Hotel[];
@@ -109,8 +117,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [loginError, setLoginError] = useState('');
 
   // Dashboard Sidebar Navigation
-  type AdminTab = 'hotels' | 'districts' | 'users' | 'slides' | 'offers' | 'about' | 'reviews' | 'messages' | 'settings';
+  type AdminTab = 'hotels' | 'districts' | 'users' | 'intro-video' | 'slides' | 'offers' | 'about' | 'reviews' | 'messages' | 'settings';
   const [activeTab, setActiveTab] = useState<AdminTab>('hotels');
+
+  // Local optimistic state for instant 0ms response on reorder and toggle
+  const [localHotels, setLocalHotels] = useState<Hotel[]>(hotels);
+
+  useEffect(() => {
+    setLocalHotels(hotels);
+  }, [hotels]);
 
   // Districts & Admin Users State
   const [districts, setDistricts] = useState<District[]>([]);
@@ -158,12 +173,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     featured: true,
     categories: ['فنادق العمرة'],
     rating: 4.8,
-    reviewCount: 150,
-    mainImage: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
-    galleryImages: [
-      'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80',
-      'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80'
-    ],
+    reviewCount: 0,
+    mainImage: '',
+    galleryImages: [],
     videoUrl: '',
     overview: '',
     detailedDescription: '',
@@ -192,17 +204,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     shortDescription: '',
     fullDescription: '',
     mediaType: 'image',
-    mediaUrl: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
+    mediaUrl: '',
     videoUrl: '',
     discountPercentage: 20,
     endDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString().split('T')[0],
     isActive: true,
-    badgeText: 'عرض موسمي',
+    badgeText: 'إعلان مميز',
+    showDiscount: true,
+    showCountdown: true,
+    showInHeroSlides: false,
+    gallery: [],
     keywords: 'عروض العمرة, خصومات فنادق مكة, باقات الحج والعمرة',
     metaDescription: 'استفد من أقوى عروض وباقات التسكين الفاخرة في مكة والمدينة بأسعار حصرية من شركة برستيج لإدارة وتشغيل الفنادق.'
   });
   const [offerUploadProgress, setOfferUploadProgress] = useState<number>(0);
   const [isOfferUploading, setIsOfferUploading] = useState(false);
+  const [newGalleryUrl, setNewGalleryUrl] = useState('');
+  const [newGalleryType, setNewGalleryType] = useState<'image' | 'video'>('image');
+  const [newGalleryCaption, setNewGalleryCaption] = useState('');
+  const [isUploadingGalleryItem, setIsUploadingGalleryItem] = useState(false);
 
   // Standalone Hotel Album Modal State
   const [albumModalHotel, setAlbumModalHotel] = useState<Hotel | null>(null);
@@ -210,7 +230,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleSaveAlbumModal = async (updatedData: {
     mainImage: string;
-    galleryImages: string[];
+    galleryImages: any[];
     videoUrl?: string;
     additionalVideos?: any[];
   }) => {
@@ -236,9 +256,94 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // Site Settings Form State
+  // Site Settings Form State & Debounced Auto-Save
   const [settingsForm, setSettingsForm] = useState<SiteSettings>(siteSettings);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const initialSettingsLoadedRef = React.useRef(false);
+  const settingsTimerRef = React.useRef<any>(null);
+
+  // Automatic Debounced Save for Settings & Intro Video
+  const triggerAutoSaveSettings = (newSettings: SiteSettings) => {
+    setSettingsForm(newSettings);
+    if (!initialSettingsLoadedRef.current) return;
+    if (settingsTimerRef.current) clearTimeout(settingsTimerRef.current);
+    setAutoSaveStatus('saving');
+    settingsTimerRef.current = setTimeout(async () => {
+      try {
+        await onUpdateSiteSettings(newSettings);
+        setAutoSaveStatus('saved');
+        setTimeout(() => setAutoSaveStatus('idle'), 2500);
+      } catch (err) {
+        console.error('Auto-save settings error:', err);
+        setAutoSaveStatus('idle');
+      }
+    }, 700);
+  };
+
+  const [isUploadingIntroVideo, setIsUploadingIntroVideo] = useState(false);
+  const [introVideoUploadProgress, setIntroVideoUploadProgress] = useState(0);
+
+  const handleIntroVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 150 * 1024 * 1024) {
+      onShowToast('حجم ملف الفيديو يتجاوز 150 ميجابايت', 'error');
+      return;
+    }
+    setIsUploadingIntroVideo(true);
+    setIntroVideoUploadProgress(30);
+    try {
+      const res = await uploadMediaToSupabase(file, 'videos');
+      setIntroVideoUploadProgress(100);
+      const uploadedUrl = typeof res === 'string' ? res : (res?.url || '');
+      if (uploadedUrl) {
+        const currentIntro = settingsForm.introVideo || {
+          enabled: true,
+          videoUrl: ''
+        };
+        const updatedIntro = {
+          ...currentIntro,
+          enabled: true,
+          videoUrl: uploadedUrl
+        };
+        const updated = {
+          ...settingsForm,
+          introVideo: updatedIntro
+        };
+        triggerAutoSaveSettings(updated);
+        onShowToast('تم رفع فيديو الإنترو وحفظه تلقائياً بنجاح 🎬', 'success');
+      } else {
+        onShowToast(res?.error || 'تعذر رفع الفيديو إلى التخزين، يرجى استخدام رابط مباشر', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      onShowToast('حدث خطأ أثناء رفع ملف الفيديو', 'error');
+    } finally {
+      setIsUploadingIntroVideo(false);
+      setIntroVideoUploadProgress(0);
+    }
+  };
+
+  const handleIntroPosterFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const res = await uploadMediaToSupabase(file, 'images');
+      const uploadedUrl = typeof res === 'string' ? res : (res?.url || '');
+      const posterUrl = uploadedUrl || await optimizeImageFile(file, { maxWidth: 1600, maxHeight: 900 });
+      const currentIntro = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+      const updated = {
+        ...settingsForm,
+        introVideo: { ...currentIntro, posterUrl }
+      };
+      triggerAutoSaveSettings(updated);
+      onShowToast('تم تحديث غلاف بوستر الفيديو الترحيبي بنجاح', 'success');
+    } catch (err) {
+      console.error(err);
+      onShowToast('حدث خطأ أثناء رفع البوستر', 'error');
+    }
+  };
 
   // Supabase Database Connection State
   const [supabaseUrl, setSupabaseUrl] = useState(() => getSupabaseConfig().url);
@@ -287,31 +392,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     if (siteSettings) {
       setSettingsForm(siteSettings);
+      setTimeout(() => {
+        initialSettingsLoadedRef.current = true;
+      }, 400);
     }
   }, [siteSettings]);
 
   const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        onShowToast('حجم الصورة كبير جداً، يرجى اختيار صورة أقل من 5 ميجابايت', 'error');
-        return;
-      }
-      try {
-        const optimized = await optimizeImageFile(file, {
-          maxWidth: 512,
-          maxHeight: 512,
-          forcePng: file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')
-        });
-        setSettingsForm(prev => ({
-          ...prev,
-          logoUrl: optimized
-        }));
-        onShowToast('تم تجهيز الشعار بنجاح (مع الحفاظ على الشفافية). اضغط "حفظ التعديلات" لتطبيقه.', 'success');
-      } catch (err) {
-        console.error('Error optimizing logo image:', err);
-        onShowToast('حدث خطأ أثناء معالجة ملف الصورة', 'error');
-      }
+    if (!file) return;
+
+    if (file.size > 8 * 1024 * 1024) {
+      onShowToast('حجم الملف يتجاوز 8 ميجابايت، يرجى اختيار ملف أصغر', 'error');
+      return;
+    }
+
+    try {
+      const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+      const optimizedLogo = await optimizeImageFile(file, {
+        maxWidth: 512,
+        maxHeight: 512,
+        forcePng: isPng
+      });
+
+      const updated: SiteSettings = {
+        ...settingsForm,
+        logoUrl: optimizedLogo,
+        aboutUs: {
+          ...(settingsForm.aboutUs || {}),
+          logoUrl: optimizedLogo
+        }
+      };
+
+      setSettingsForm(updated);
+      await onUpdateSiteSettings(updated);
+      onShowToast('تم رفع وتحديث شعار الموقع وأيقونة علامة التبويب (Favicon) بنجاح', 'success');
+    } catch (err) {
+      console.error('Error uploading logo:', err);
+      onShowToast('حدث خطأ أثناء معالجة الشعار', 'error');
     }
   };
 
@@ -323,12 +441,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSavingSettings(true);
     try {
       await onUpdateSiteSettings(settingsForm);
-      onShowToast('تم حفظ وتحديث إعدادات الموقع والشعار في Firestore بنجاح', 'success');
+      onShowToast('تم حفظ وتحديث إعدادات الموقع والشعار في قاعدة البيانات بنجاح', 'success');
     } catch (err) {
       console.error(err);
-      onShowToast('حدث خطأ أثناء حفظ الإعدادات في Firestore', 'error');
+      onShowToast('حدث خطأ أثناء حفظ الإعدادات', 'error');
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleFaviconFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const optimizedFavicon = await optimizeImageFile(file, {
+        maxWidth: 128,
+        maxHeight: 128,
+        forcePng: true
+      });
+
+      const updated: SiteSettings = {
+        ...settingsForm,
+        faviconUrl: optimizedFavicon
+      };
+
+      setSettingsForm(updated);
+      await onUpdateSiteSettings(updated);
+      onShowToast('تم تحديث أيقونة علامة التبويب (Favicon) بنجاح', 'success');
+    } catch (err) {
+      console.error('Error uploading favicon:', err);
+      onShowToast('حدث خطأ أثناء معالجة الأيقونة', 'error');
     }
   };
 
@@ -355,6 +498,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await onUpdateSiteSettings(updated);
     } catch (err) {
       console.error('Failed to auto-save branches:', err);
+    }
+  };
+
+  const handleDepartmentContactsChange = async (updatedContacts: DepartmentContact[]) => {
+    const updated: SiteSettings = {
+      ...settingsForm,
+      departmentContacts: updatedContacts,
+    };
+    setSettingsForm(updated);
+    try {
+      await onUpdateSiteSettings(updated);
+    } catch (err) {
+      console.error('Failed to auto-save department contacts:', err);
     }
   };
 
@@ -569,6 +725,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onShowToast('تم تسجيل الخروج بنجاح', 'info');
   };
 
+  // Sorted hotels by order (with fallback to rating) - Uses localHotels for 0ms instant UI reaction
+  const sortedHotels = useMemo(() => {
+    return [...localHotels].sort((a, b) => {
+      const orderA = typeof a.order === 'number' && a.order > 0 ? a.order : 9999;
+      const orderB = typeof b.order === 'number' && b.order > 0 ? b.order : 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return (b.rating || 0) - (a.rating || 0);
+    });
+  }, [localHotels]);
+
   // Hotel Actions
   const handleOpenAddHotel = () => {
     setEditingHotelId(null);
@@ -584,14 +750,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       distanceText: '١٢٠ متراً عن ساحة الحرم',
       walkingTimeMinutes: 2,
       featured: true,
+      isActive: true,
+      order: hotels.length + 1,
       categories: ['فنادق العمرة'],
       rating: 4.8,
-      reviewCount: 80,
-      mainImage: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
-      galleryImages: [
-        'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80'
-      ],
+      reviewCount: 0,
+      mainImage: '',
+      galleryImages: [],
       videoUrl: '',
       overview: 'فندق راقٍ يوفر إقامة هادئة بالقرب من الحرم الشريف مع بوفيه إفطار وخدمات متميزة.',
       detailedDescription: 'يتميز الفندق بموقعه الاستراتيجي وقربه من بوابات الحرم مع غرف وأجنحة مجهزة بأعلى المقاييس الفندقية العالمية لخدمة الحجاج والمعتمرين.',
@@ -629,6 +794,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...hotel,
       district: hotel.district || (hotel.city === 'مكة المكرمة' ? 'المنطقة المركزية' : 'المنطقة المركزية الشمالية'),
       featured: hotel.featured ?? true,
+      isActive: hotel.isActive !== false,
+      order: typeof hotel.order === 'number' && hotel.order > 0 ? hotel.order : (sortedHotels.findIndex(h => h.id === hotel.id) + 1),
       categories: hotel.categories && hotel.categories.length > 0 ? hotel.categories : ['فنادق العمرة'],
       bookingUrl: hotel.bookingUrl || '',
       showBookingUrl: hotel.showBookingUrl !== false,
@@ -662,20 +829,91 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  const handleToggleHotelFeatured = async (hotel: Hotel) => {
+  // Toggle Hotel Active / Hidden (تفعيل أو إخفاء الفندق من الموقع) - Instant 0ms Optimistic Update
+  const handleToggleHotelActive = async (hotel: Hotel) => {
+    const newActive = hotel.isActive === false ? true : false;
+    const updated: Hotel = { ...hotel, isActive: newActive };
+
+    // 1. INSTANT 0ms OPTIMISTIC UI: Toggle pill switches in the exact millisecond!
+    setLocalHotels(prev => prev.map(h => h.id === hotel.id ? updated : h));
+
+    onShowToast(
+      newActive
+        ? `تم تفعيل فندق "${hotel.name}" وظهوره في الموقع للزوار`
+        : `تم إخفاء فندق "${hotel.name}" من الموقع ولن يظهر للزوار`,
+      'success'
+    );
+
+    // 2. Background async sync to Supabase (non-blocking)
     try {
-      const newFeatured = !hotel.featured;
-      const updated: Hotel = { ...hotel, featured: newFeatured };
       await saveHotelToDb(updated);
-      await onRefreshData();
-      onShowToast(
-        newFeatured
-          ? `تمت إضافة فندق "${hotel.name}" إلى البار المتغيّر بالرئيسية`
-          : `تمت إزالة فندق "${hotel.name}" من البار المتغيّر بالرئيسية`,
-        'success'
-      );
+      onRefreshData();
+    } catch (err) {
+      console.error('Error toggling hotel active:', err);
+      // Revert if error
+      setLocalHotels(hotels);
+      onShowToast('حدث خطأ أثناء تعديل حالة الفندق', 'error');
+    }
+  };
+
+  // Move hotel up or down in display order (ترتيب الظهور) - Instant 0ms Optimistic Reorder
+  const handleMoveHotelOrder = async (hotelId: string, direction: 'up' | 'down') => {
+    const currentIndex = sortedHotels.findIndex(h => h.id === hotelId);
+    if (currentIndex === -1) return;
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= sortedHotels.length) return;
+
+    const currentHotel = sortedHotels[currentIndex];
+    const targetHotel = sortedHotels[targetIndex];
+
+    const updatedCurrent = { ...currentHotel, order: targetIndex + 1 };
+    const updatedTarget = { ...targetHotel, order: currentIndex + 1 };
+
+    // 1. INSTANT 0ms OPTIMISTIC REORDER: Row swaps position immediately!
+    setLocalHotels(prev => prev.map(h => {
+      if (h.id === currentHotel.id) return updatedCurrent;
+      if (h.id === targetHotel.id) return updatedTarget;
+      return h;
+    }));
+
+    onShowToast(`تم تعديل ترتيب ظهور فندق "${currentHotel.name}" بنجاح`, 'success');
+
+    // 2. Background async sync to Supabase (non-blocking)
+    try {
+      await Promise.all([
+        saveHotelToDb(updatedCurrent),
+        saveHotelToDb(updatedTarget)
+      ]);
+      onRefreshData();
+    } catch (err) {
+      console.error('Error moving hotel order:', err);
+      // Revert if error
+      setLocalHotels(hotels);
+      onShowToast('حدث خطأ أثناء حفظ الترتيب الجديد', 'error');
+    }
+  };
+
+  const handleToggleHotelFeatured = async (hotel: Hotel) => {
+    const newFeatured = !hotel.featured;
+    const updated: Hotel = { ...hotel, featured: newFeatured };
+
+    // 1. INSTANT 0ms OPTIMISTIC UPDATE
+    setLocalHotels(prev => prev.map(h => h.id === hotel.id ? updated : h));
+
+    onShowToast(
+      newFeatured
+        ? `تمت إضافة فندق "${hotel.name}" إلى البار المتغيّر بالرئيسية`
+        : `تمت إزالة فندق "${hotel.name}" من البار المتغيّر بالرئيسية`,
+      'success'
+    );
+
+    try {
+      await saveHotelToDb(updated);
+      onRefreshData();
     } catch (err) {
       console.error('Error toggling hotel featured:', err);
+      setLocalHotels(hotels);
       onShowToast('حدث خطأ أثناء تعديل حالة التمييز', 'error');
     }
   };
@@ -694,12 +932,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     try {
-      await saveHotelToDb(hotelForm);
-      await onRefreshData();
+      // Optimistic update
+      const isEdit = Boolean(editingHotelId);
+      setLocalHotels(prev => isEdit ? prev.map(h => h.id === hotelForm.id ? hotelForm : h) : [hotelForm, ...prev]);
       setIsHotelModalOpen(false);
       onShowToast(editingHotelId ? 'تم تحديث بيانات الفندق بنجاح' : 'تمت إضافة الفندق الجديد بنجاح', 'success');
+
+      await saveHotelToDb(hotelForm);
+      onRefreshData();
     } catch (err) {
       console.error(err);
+      setLocalHotels(hotels);
       onShowToast('حدث خطأ أثناء حفظ الفندق في قاعدة البيانات', 'error');
     }
   };
@@ -713,7 +956,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  // Offer Actions
+  // Offer / Ad Actions
   const handleOpenAddOffer = () => {
     setEditingOfferId(null);
     setOfferForm({
@@ -722,15 +965,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       shortDescription: '',
       fullDescription: '',
       mediaType: 'image',
-      mediaUrl: 'https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80',
+      mediaUrl: '',
       videoUrl: '',
       discountPercentage: 20,
       endDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString().split('T')[0],
       isActive: true,
-      badgeText: 'عرض خاص',
+      badgeText: 'إعلان مميز',
+      showDiscount: true,
+      showCountdown: true,
+      showInHeroSlides: false,
+      gallery: [],
       keywords: '',
       metaDescription: ''
     });
+    setNewGalleryUrl('');
+    setNewGalleryCaption('');
     setIsOfferModalOpen(true);
   };
 
@@ -738,37 +987,108 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingOfferId(offer.id);
     setOfferForm({ 
       ...offer,
+      showDiscount: offer.showDiscount ?? true,
+      showCountdown: offer.showCountdown ?? true,
+      showInHeroSlides: offer.showInHeroSlides ?? false,
+      gallery: offer.gallery || [],
       keywords: offer.keywords || '',
       metaDescription: offer.metaDescription || ''
     });
+    setNewGalleryUrl('');
+    setNewGalleryCaption('');
     setIsOfferModalOpen(true);
   };
 
   const handleOfferImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 8 * 1024 * 1024) {
-        onShowToast('حجم الصورة يتجاوز 8 ميجابايت، يرجى اختيار ملف أصغر', 'error');
+      if (file.size > 15 * 1024 * 1024) {
+        onShowToast('حجم الملف يتجاوز 15 ميجابايت، يرجى اختيار ملف أصغر', 'error');
         return;
       }
+      setIsOfferUploading(true);
+      setOfferUploadProgress(20);
       try {
-        const optimized = await optimizeImageFile(file, {
-          maxWidth: 1200,
-          maxHeight: 800,
-          forcePng: file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')
-        });
-        setOfferForm((prev) => ({ ...prev, mediaUrl: optimized }));
-        onShowToast('تم تحميل وضغط صورة العرض بنجاح', 'success');
+        // Try uploading to Supabase Storage first for cloud persistence
+        const res = await uploadMediaToSupabase(file, 'images');
+        setOfferUploadProgress(100);
+        const uploadedUrl = typeof res === 'string' ? res : (res?.url || '');
+        if (uploadedUrl) {
+          setOfferForm((prev) => ({ ...prev, mediaUrl: uploadedUrl }));
+          onShowToast('تم رفع الصورة إلى التخزين السحابي بنجاح', 'success');
+        } else {
+          // Fallback to optimized base64
+          const optimized = await optimizeImageFile(file, {
+            maxWidth: 1400,
+            maxHeight: 900,
+            forcePng: file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')
+          });
+          setOfferForm((prev) => ({ ...prev, mediaUrl: optimized }));
+          onShowToast('تم ضغط وحفظ صورة الإعلان بنجاح', 'success');
+        }
       } catch (err) {
         console.error('Error optimizing offer image:', err);
         onShowToast('حدث خطأ أثناء معالجة ملف الصورة', 'error');
+      } finally {
+        setIsOfferUploading(false);
+        setOfferUploadProgress(0);
       }
+    }
+  };
+
+  const handleAddGalleryItem = (type: 'image' | 'video', url: string, caption?: string) => {
+    if (!url.trim()) return;
+    const newItem = {
+      id: 'gallery_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+      type,
+      url: url.trim(),
+      caption: caption?.trim() || undefined
+    };
+    setOfferForm(prev => ({
+      ...prev,
+      gallery: [...(prev.gallery || []), newItem]
+    }));
+    setNewGalleryUrl('');
+    setNewGalleryCaption('');
+    onShowToast('تمت إضافة الوسائط إلى معرض الإعلان بنجاح', 'info');
+  };
+
+  const handleRemoveGalleryItem = (id: string) => {
+    setOfferForm(prev => ({
+      ...prev,
+      gallery: (prev.gallery || []).filter(item => item.id !== id)
+    }));
+  };
+
+  const handleUploadGalleryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingGalleryItem(true);
+    try {
+      const isVideo = file.type.startsWith('video/');
+      const res = await uploadMediaToSupabase(file, isVideo ? 'videos' : 'images');
+      const uploadedUrl = typeof res === 'string' ? res : (res?.url || '');
+      if (uploadedUrl) {
+        handleAddGalleryItem(isVideo ? 'video' : 'image', uploadedUrl, file.name);
+      } else {
+        if (!isVideo) {
+          const opt = await optimizeImageFile(file, { maxWidth: 1400, maxHeight: 900 });
+          handleAddGalleryItem('image', opt, file.name);
+        } else {
+          onShowToast('يرجى التأكد من إعدادات سوبابيس لرفع الفيديو المباشر أو استخدم رابط مباشر', 'error');
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      onShowToast('حدث خطأ أثناء رفع ملف المعرض', 'error');
+    } finally {
+      setIsUploadingGalleryItem(false);
     }
   };
 
   const handleSaveOffer = async () => {
     if (!offerForm.title.trim()) {
-      onShowToast('يرجى إدخال عنوان العرض أو المناسبة', 'error');
+      onShowToast('يرجى إدخال عنوان الإعلان أو المناسبة', 'error');
       return;
     }
 
@@ -776,22 +1096,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await saveOfferToDb(offerForm);
       await onRefreshData();
       setIsOfferModalOpen(false);
-      onShowToast(editingOfferId ? 'تم تحديث العرض بنجاح' : 'تمت إضافة العرض الجديد بنجاح', 'success');
+      onShowToast(editingOfferId ? 'تم تحديث الإعلان وحفظه تلقائياً بنجاح' : 'تمت إضافة الإعلان الجديد بنجاح', 'success');
     } catch (err) {
       console.error(err);
-      onShowToast('حدث خطأ أثناء حفظ العرض', 'error');
+      onShowToast('حدث خطأ أثناء حفظ الإعلان', 'error');
     }
   };
 
+  // Quick Toggles with Instant Auto-Save for Ads
   const handleToggleOfferActive = async (offer: Offer) => {
     try {
       const updated = { ...offer, isActive: !offer.isActive };
       await saveOfferToDb(updated);
       await onRefreshData();
-      onShowToast(updated.isActive ? 'تم تفعيل العرض وإظهاره للزوار' : 'تم إخفاء العرض عن الزوار', 'info');
+      onShowToast(updated.isActive ? 'تم تفعيل الإعلان وإظهاره للزوار' : 'تم إخفاء الإعلان عن الزوار', 'info');
     } catch (err) {
       console.error(err);
-      onShowToast('حدث خطأ أثناء تحديث حالة العرض', 'error');
+      onShowToast('حدث خطأ أثناء تحديث حالة الإعلان', 'error');
+    }
+  };
+
+  const handleToggleOfferHeroSlides = async (offer: Offer) => {
+    try {
+      const updated = { ...offer, showInHeroSlides: !offer.showInHeroSlides };
+      await saveOfferToDb(updated);
+      await onRefreshData();
+      onShowToast(
+        updated.showInHeroSlides 
+          ? 'تم إدراج الإعلان في شرائح الترحيب (الهيرو) بالأعلى بنجاح ✓' 
+          : 'تم إلغاء ظهور الإعلان من شرائح الترحيب', 
+        'info'
+      );
+    } catch (err) {
+      console.error(err);
+      onShowToast('حدث خطأ أثناء تحديث ظهور الإعلان في الهيرو', 'error');
+    }
+  };
+
+  const handleToggleOfferCountdown = async (offer: Offer) => {
+    try {
+      const updated = { ...offer, showCountdown: offer.showCountdown === false ? true : false };
+      await saveOfferToDb(updated);
+      await onRefreshData();
+      onShowToast(updated.showCountdown ? 'تم تفعيل مؤقت العد التنازلي' : 'تم إخفاء مؤقت العد التنازلي', 'info');
+    } catch (err) {
+      console.error(err);
+      onShowToast('حدث خطأ أثناء تحديث العد التنازلي', 'error');
+    }
+  };
+
+  const handleToggleOfferDiscount = async (offer: Offer) => {
+    try {
+      const updated = { ...offer, showDiscount: offer.showDiscount === false ? true : false };
+      await saveOfferToDb(updated);
+      await onRefreshData();
+      onShowToast(updated.showDiscount ? 'تم تفعيل شارة ونسبة الخصم' : 'تم إخفاء شارة الخصم', 'info');
+    } catch (err) {
+      console.error(err);
+      onShowToast('حدث خطأ أثناء تحديث شارة الخصم', 'error');
     }
   };
 
@@ -808,6 +1170,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleExecuteDelete = async () => {
     try {
       if (deleteModal.type === 'hotel') {
+        setLocalHotels(prev => prev.filter(h => h.id !== deleteModal.id));
         await deleteHotelFromDb(deleteModal.id);
         onShowToast(`تم حذف الفندق "${deleteModal.title}" نهائياً`, 'success');
       } else if (deleteModal.type === 'offer') {
@@ -946,7 +1309,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // LOGGED IN DASHBOARD
   return (
     <div id="admin-dashboard-container" className="min-h-screen bg-[#F8F7F4] text-stone-900 pt-28 pb-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-[1780px] mx-auto px-3 sm:px-6 lg:px-8">
         {/* Dashboard Top Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 pb-6 border-b border-stone-200">
           <div className="flex items-center gap-3">
@@ -994,16 +1357,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
-        {/* Dashboard Grid Layout */}
+        {/* Dashboard Grid Layout: Compact 2-cols sidebar on desktop gives 10-cols spacious width for main tables */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-          {/* Sidebar Tabs (3 cols on desktop, responsive horizontal swipe bar on mobile) */}
-          <div className="lg:col-span-3 flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 gap-2 no-scrollbar">
+          {/* Sidebar Tabs (2 cols on xl, 3 on lg, responsive horizontal swipe bar on mobile) */}
+          <div className="lg:col-span-3 xl:col-span-2 flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 gap-2 no-scrollbar">
             {[
               { id: 'hotels' as AdminTab, label: 'الفنادق المعتمدة', icon: Building2, count: hotels.length },
               { id: 'districts' as AdminTab, label: 'المناطق والأحياء', icon: MapPin, count: districts.length || undefined },
               { id: 'users' as AdminTab, label: 'المستخدمين والصلاحيات', icon: Users, count: adminUsers.length || undefined, restricted: currentUser?.role === 'controller' },
-              { id: 'slides' as AdminTab, label: 'شرائح الهيرو', icon: ImageIcon, count: siteSettings?.heroSlides?.length || 4 },
-              { id: 'offers' as AdminTab, label: 'العروض والمناسبات', icon: Tag, count: offers.length },
+              { id: 'intro-video' as AdminTab, label: 'فيديو الإنترو (الرئيسية)', icon: Film },
+              { id: 'slides' as AdminTab, label: 'شرائح الترحيب (الهيرو)', icon: ImageIcon, count: siteSettings?.heroSlides?.length || undefined },
+              { id: 'offers' as AdminTab, label: 'إدارة الإعلانات', icon: Tag, count: offers.length },
               { id: 'about' as AdminTab, label: 'من نحن والمكتب', icon: Info },
               { id: 'reviews' as AdminTab, label: 'إدارة التقييمات', icon: MessageSquare, count: pendingReviewsCount > 0 ? pendingReviewsCount : (reviews.length || undefined), badgeAlert: pendingReviewsCount > 0 },
               { id: 'messages' as AdminTab, label: 'الرسائل الواردة', icon: Mail, count: unreadMessagesCount > 0 ? unreadMessagesCount : (messages.length || undefined), badgeAlert: unreadMessagesCount > 0 },
@@ -1047,8 +1411,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             })}
           </div>
 
-          {/* Main Content Area (9 cols) */}
-          <div className="lg:col-span-9">
+          {/* Main Content Area (10 cols on xl, 9 on lg) */}
+          <div className="lg:col-span-9 xl:col-span-10">
             {/* 1. HOTELS MANAGEMENT TAB */}
             {activeTab === 'hotels' && (
               <div id="admin-hotels-section" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
@@ -1068,76 +1432,176 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
 
-                {/* Hotels Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs sm:text-sm">
+                {/* Hotels Table - Spacious Wide Design */}
+                <div className="overflow-x-auto -mx-2 sm:mx-0">
+                  <table className="w-full text-right text-xs sm:text-sm min-w-[1050px]">
                     <thead>
-                      <tr className="border-b border-stone-200 text-stone-500 text-xs font-semibold">
-                        <th className="pb-3 pr-2">الفندق</th>
-                        <th className="pb-3">المدينة والحي</th>
-                        <th className="pb-3">النجوم</th>
-                        <th className="pb-3">التصنيفات</th>
-                        <th className="pb-3 text-center">البار الرئيسي</th>
-                        <th className="pb-3">المسافة</th>
-                        <th className="pb-3 pl-2 text-left">الإجراءات</th>
+                      <tr className="border-b border-stone-200 text-stone-500 text-xs font-semibold whitespace-nowrap">
+                        <th className="pb-3 text-center w-20">الترتيب</th>
+                        <th className="pb-3 pr-2 min-w-[200px]">الفندق</th>
+                        <th className="pb-3 min-w-[140px]">المدينة والحي</th>
+                        <th className="pb-3 min-w-[90px]">النجوم</th>
+                        <th className="pb-3 min-w-[180px]">التصنيفات</th>
+                        <th className="pb-3 text-center min-w-[130px]">حالة الفندق</th>
+                        <th className="pb-3 text-center min-w-[110px]">البار الرئيسي</th>
+                        <th className="pb-3 min-w-[90px]">المسافة</th>
+                        <th className="pb-3 pl-2 text-left min-w-[120px]">الإجراءات</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
-                      {hotels.map((hotel) => (
-                        <tr key={hotel.id} className="hover:bg-stone-50 transition-colors">
+                      {sortedHotels.map((hotel, index) => (
+                        <tr 
+                          key={hotel.id} 
+                          className={`transition-colors ${
+                            hotel.isActive === false 
+                              ? 'bg-stone-50/80 hover:bg-stone-100/60' 
+                              : 'hover:bg-stone-50'
+                          }`}
+                        >
+                          {/* 1. Reorder Column */}
+                          <td className="py-3.5 text-center whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5 bg-stone-100 px-2.5 py-1 rounded-xl border border-stone-200 shadow-2xs">
+                              <span className="font-mono font-bold text-xs text-stone-800 min-w-[22px] text-center" title={`ترتيب الظهور: #${index + 1}`}>
+                                #{index + 1}
+                              </span>
+                              <div className="flex flex-col gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={index === 0}
+                                  onClick={() => handleMoveHotelOrder(hotel.id, 'up')}
+                                  className={`p-1 rounded transition-colors ${
+                                    index === 0 
+                                      ? 'text-stone-300 cursor-not-allowed' 
+                                      : 'text-stone-700 hover:text-[#C9A24B] hover:bg-white cursor-pointer active:scale-95'
+                                  }`}
+                                  title="تقديم ترتيب الفندق لأعلى"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={index === sortedHotels.length - 1}
+                                  onClick={() => handleMoveHotelOrder(hotel.id, 'down')}
+                                  className={`p-1 rounded transition-colors ${
+                                    index === sortedHotels.length - 1 
+                                      ? 'text-stone-300 cursor-not-allowed' 
+                                      : 'text-stone-700 hover:text-[#C9A24B] hover:bg-white cursor-pointer active:scale-95'
+                                  }`}
+                                  title="تأخير ترتيب الفندق لأسفل"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 2. Hotel Details */}
                           <td className="py-3.5 pr-2">
                             <div className="flex items-center gap-3">
                               <img
                                 src={hotel.mainImage}
                                 alt=""
-                                className="w-10 h-10 rounded-lg object-cover bg-stone-100 shrink-0 border border-stone-200"
+                                className={`w-11 h-11 rounded-xl object-cover bg-stone-100 shrink-0 border border-stone-200 shadow-2xs ${
+                                  hotel.isActive === false ? 'grayscale opacity-75' : ''
+                                }`}
                               />
                               <div>
-                                <strong className="text-stone-900 font-bold block truncate max-w-[180px]">
-                                  {hotel.name}
-                                </strong>
+                                <div className="flex items-center gap-2">
+                                  <strong className="text-stone-900 font-bold block text-sm sm:text-base whitespace-nowrap">
+                                    {hotel.name}
+                                  </strong>
+                                  {hotel.isActive === false && (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-stone-200 text-stone-600 shrink-0">
+                                      مخفي
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-[11px] text-stone-500 font-mono">
                                   {hotel.rating} ★ ({hotel.reviewCount} تقييم)
                                 </span>
                               </div>
                             </div>
                           </td>
-                          <td className="py-3.5">
-                            <span className="text-stone-900 font-semibold block">{hotel.city}</span>
-                            <span className="text-[11px] text-[#B38A34]">حي {hotel.district}</span>
+
+                          {/* 3. City and District */}
+                          <td className="py-3.5 whitespace-nowrap">
+                            <div className="flex flex-col">
+                              <span className="text-stone-900 font-bold text-xs sm:text-sm">{hotel.city}</span>
+                              <span className="text-[11px] text-[#B38A34] font-semibold">حي {hotel.district}</span>
+                            </div>
                           </td>
-                          <td className="py-3.5 text-[#B38A34] font-bold">{hotel.stars} نجوم</td>
+
+                          {/* 4. Stars */}
+                          <td className="py-3.5 whitespace-nowrap text-[#B38A34] font-bold text-xs sm:text-sm">
+                            {hotel.stars} نجوم
+                          </td>
+
+                          {/* 5. Categories */}
                           <td className="py-3.5">
-                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            <div className="flex flex-wrap gap-1 max-w-[260px]">
                               {(hotel.categories && hotel.categories.length > 0 ? hotel.categories : ['عادي']).map(c => (
-                                <span key={c} className="text-[10px] font-semibold px-2 py-0.5 rounded bg-stone-100 text-[#B38A34] border border-stone-200">
+                                <span key={c} className="text-[10px] font-semibold px-2.5 py-0.5 rounded-md bg-stone-100 text-[#B38A34] border border-stone-200 whitespace-nowrap">
                                   {c}
                                 </span>
                               ))}
                             </div>
                           </td>
-                          <td className="py-3.5 text-center">
+
+                          {/* 6. Active / Hidden Toggle Button (تفعيل وإخفاء الفندق) */}
+                          <td className="py-3.5 text-center whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleHotelActive(hotel)}
+                              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer active:scale-95 shadow-2xs ${
+                                hotel.isActive !== false
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                  : 'bg-stone-100 text-stone-500 border-stone-300 hover:bg-stone-200'
+                              }`}
+                              title={hotel.isActive !== false ? 'الفندق ظاهر للزوار بالموقع - اضغط لإخفائه' : 'الفندق مخفي من الموقع - اضغط لتفعيله'}
+                            >
+                              {hotel.isActive !== false ? (
+                                <>
+                                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>مفعل (معروض)</span>
+                                </>
+                              ) : (
+                                <>
+                                  <EyeOff className="w-3.5 h-3.5 text-stone-400" />
+                                  <span>مخفي</span>
+                                </>
+                              )}
+                            </button>
+                          </td>
+
+                          {/* 7. Featured Bar Toggle */}
+                          <td className="py-3.5 text-center whitespace-nowrap">
                             <button
                               type="button"
                               onClick={() => handleToggleHotelFeatured(hotel)}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border ${
+                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold transition-all border cursor-pointer active:scale-95 shadow-2xs ${
                                 hotel.featured
                                   ? 'bg-[#C9A24B]/15 text-[#B38A34] border-[#C9A24B]/40 hover:bg-[#C9A24B]/25'
                                   : 'bg-stone-100 text-stone-500 border-stone-200 hover:text-stone-800'
                               }`}
                               title={hotel.featured ? 'اضغط لإلغاء التمييز في البار المتغيّر' : 'اضغط لتفعيل الظهور في البار المتغيّر'}
                             >
-                              <Sparkles className="w-3 h-3" />
+                              <Eye className="w-3 h-3" />
                               <span>{hotel.featured ? 'معروض' : 'مخفي'}</span>
                             </button>
                           </td>
-                          <td className="py-3.5 text-stone-700 font-mono">{hotel.distanceToHaram} م</td>
-                          <td className="py-3.5 pl-2 text-left">
+
+                          {/* 8. Distance */}
+                          <td className="py-3.5 text-stone-700 font-mono font-medium whitespace-nowrap">
+                            {hotel.distanceText || `${hotel.distanceToHaram} م`}
+                          </td>
+
+                          {/* 9. Actions */}
+                          <td className="py-3.5 pl-2 text-left whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2">
                               <button
                                 id={`album-hotel-btn-${hotel.id}`}
                                 onClick={() => setAlbumModalHotel(hotel)}
-                                className="p-2 rounded-lg bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors"
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors cursor-pointer"
                                 title="إدارة ألبوم الصور والفيديوهات"
                               >
                                 <Images className="w-4 h-4" />
@@ -1145,7 +1609,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <button
                                 id={`edit-hotel-btn-${hotel.id}`}
                                 onClick={() => handleEditHotel(hotel)}
-                                className="p-2 rounded-lg bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors"
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors cursor-pointer"
                                 title="تعديل بيانات الفندق"
                               >
                                 <Edit3 className="w-4 h-4" />
@@ -1153,7 +1617,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <button
                                 id={`delete-hotel-btn-${hotel.id}`}
                                 onClick={() => confirmDeleteHotel(hotel)}
-                                className="p-2 rounded-lg bg-stone-100 hover:bg-red-500 hover:text-white text-stone-700 transition-colors"
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-red-500 hover:text-white text-stone-700 transition-colors cursor-pointer"
                                 title="حذف الفندق"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1206,6 +1670,406 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
+            {/* INTRO VIDEO MANAGEMENT TAB */}
+            {activeTab === 'intro-video' && (
+              <div id="admin-intro-video-section" className="space-y-8 animate-fadeIn">
+                {/* Intro Video Header Card */}
+                <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center">
+                          <Film className="w-4 h-4" />
+                        </div>
+                        <h2 className="text-xl font-cairo font-bold text-stone-900">
+                          فيديو الإنترو الترحيبي (Intro Video)
+                        </h2>
+                      </div>
+                      <p className="text-xs text-stone-500 mt-1">
+                        يظهر كأول عنصر في أعلى الصفحة الرئيسية لجذب الزوار، يليه مباشرة الشرائح الترحيبية ثم باقي أقسام الموقع.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {/* Auto-Save Indicator */}
+                      {autoSaveStatus === 'saving' && (
+                        <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl flex items-center gap-1.5 animate-pulse">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>جاري الحفظ التلقائي...</span>
+                        </span>
+                      )}
+                      {autoSaveStatus === 'saved' && (
+                        <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>تم الحفظ تلقائياً ✓</span>
+                        </span>
+                      )}
+
+                      {/* Main Enable / Disable Switch */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = settingsForm.introVideo || { enabled: false, videoUrl: '' };
+                          const updated = {
+                            ...settingsForm,
+                            introVideo: {
+                              ...current,
+                              enabled: !current.enabled
+                            }
+                          };
+                          triggerAutoSaveSettings(updated);
+                          onShowToast(
+                            !current.enabled
+                              ? 'تم تفعيل فيديو الإنترو وسيظهر في أعلى الموقع للزوار 🎬'
+                              : 'تم إخفاء فيديو الإنترو من الموقع',
+                            'info'
+                          );
+                        }}
+                        className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer ${
+                          settingsForm.introVideo?.enabled
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-stone-100 hover:bg-stone-200 text-stone-600 border border-stone-300'
+                        }`}
+                      >
+                        {settingsForm.introVideo?.enabled ? (
+                          <>
+                            <Eye className="w-4 h-4" />
+                            <span>مفعّل في الرئيسية (ظاهر)</span>
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff className="w-4 h-4" />
+                            <span>معطّل (مخفي حالياً)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Settings Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Column 1: Video Source & Media */}
+                    <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-stone-800 flex items-center gap-2">
+                          <Film className="w-4 h-4 text-[#C9A24B]" />
+                          <span>مصدر مقطع الفيديو (URL أو رفع ملف): *</span>
+                        </label>
+
+                        {/* Direct Video Upload Button to Supabase Storage */}
+                        <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-[#C9A24B] text-white text-xs font-bold transition-colors">
+                          <UploadCloud className="w-3.5 h-3.5" />
+                          <span>{isUploadingIntroVideo ? 'جاري الرفع...' : 'رفع فيديو من جهازك'}</span>
+                          <input
+                            type="file"
+                            accept="video/mp4, video/webm, video/quicktime, .mp4, .webm, .mov"
+                            onChange={handleIntroVideoFileUpload}
+                            disabled={isUploadingIntroVideo}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+
+                      {isUploadingIntroVideo && (
+                        <div className="space-y-1.5">
+                          <div className="w-full bg-stone-200 rounded-full h-2 overflow-hidden">
+                            <div 
+                              className="bg-[#C9A24B] h-full transition-all duration-300"
+                              style={{ width: `${introVideoUploadProgress}%` }}
+                            />
+                          </div>
+                          <span className="text-[11px] text-stone-500 font-mono text-center block">
+                            جاري رفع الفيديو إلى السحابة... يرجى الانتظار
+                          </span>
+                        </div>
+                      )}
+
+                      <input
+                        type="url"
+                        value={settingsForm.introVideo?.videoUrl || ''}
+                        onChange={(e) => {
+                          const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                          const updated = {
+                            ...settingsForm,
+                            introVideo: { ...current, videoUrl: e.target.value }
+                          };
+                          triggerAutoSaveSettings(updated);
+                        }}
+                        placeholder="https://.../video.mp4 أو رابط فيديو مباشر"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:outline-none dir-ltr text-left"
+                      />
+
+                      {/* Poster Image */}
+                      <div className="pt-2 border-t border-stone-200">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold text-stone-700">
+                            صورة غلاف الفيديو (Poster - اختياري):
+                          </label>
+                          <label className="cursor-pointer text-[11px] font-bold text-[#B38A34] hover:underline flex items-center gap-1">
+                            <UploadCloud className="w-3 h-3" />
+                            <span>رفع بوستر</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleIntroPosterFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                        <input
+                          type="url"
+                          value={settingsForm.introVideo?.posterUrl || ''}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, posterUrl: e.target.value }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          placeholder="رابط صورة الغلاف أو ارفع من جهازك"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:outline-none dir-ltr text-left"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Column 2: Titles & Texts Overlay */}
+                    <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+                      <div>
+                        <label className="text-xs font-bold text-stone-800 block mb-1">
+                          العنوان الترحيبي العريض (Title):
+                        </label>
+                        <input
+                          type="text"
+                          value={settingsForm.introVideo?.title || ''}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, title: e.target.value }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          placeholder="مثال: مرحباً بكم في شركة برستيج لإدارة وتشغيل الفنادق"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-semibold focus:border-[#C9A24B] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-800 block mb-1">
+                          الوصف الترحيبي (Subtitle):
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={settingsForm.introVideo?.subtitle || ''}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, subtitle: e.target.value }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          placeholder="مثال: نأخذكم في جولة حصرية للتعرف على معايير الضيافة الفاخرة وخدمات تسكين الحجاج والمعتمرين."
+                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-800 block mb-1">
+                          شارة الفيديو العلوية (Badge):
+                        </label>
+                        <input
+                          type="text"
+                          value={settingsForm.introVideo?.badgeText || ''}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, badgeText: e.target.value }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          placeholder="مثال: جولة تعريفية حصرية"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Playback Toggles & Skip Button */}
+                  <div className="p-5 rounded-2xl bg-stone-900 text-white space-y-4">
+                    <h4 className="font-cairo font-bold text-sm text-stone-100 border-b border-stone-800 pb-2">
+                      خيارات التشغيل والتحكم التفاعلي
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      {/* Autoplay Toggle */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={settingsForm.introVideo?.autoPlay !== false}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, autoPlay: e.target.checked }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                        />
+                        <div>
+                          <strong className="text-xs block text-stone-100">تشغيل تلقائي</strong>
+                          <span className="text-[10px] text-stone-400">يبدأ الفيديو عند فتح الموقع</span>
+                        </div>
+                      </label>
+
+                      {/* Muted Toggle */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={settingsForm.introVideo?.muted !== false}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, muted: e.target.checked }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                        />
+                        <div>
+                          <strong className="text-xs block text-stone-100">صامت افتراضياً</strong>
+                          <span className="text-[10px] text-stone-400">مع زر تحكم بالصوت للزائر</span>
+                        </div>
+                      </label>
+
+                      {/* Loop Toggle */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={settingsForm.introVideo?.loop !== false}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, loop: e.target.checked }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                        />
+                        <div>
+                          <strong className="text-xs block text-stone-100">تكرار الفيديو</strong>
+                          <span className="text-[10px] text-stone-400">إعادة التشغيل بعد الانتهاء</span>
+                        </div>
+                      </label>
+
+                      {/* Skip Button Toggle */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={settingsForm.introVideo?.showSkipButton !== false}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, showSkipButton: e.target.checked }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                        />
+                        <div>
+                          <strong className="text-xs block text-stone-100">زر التخطي للأسفل</strong>
+                          <span className="text-[10px] text-stone-400">ينقل الزائر لباقي الأقسام</span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Skip Button Text Customization */}
+                    {settingsForm.introVideo?.showSkipButton !== false && (
+                      <div className="pt-2 flex items-center gap-3">
+                        <label className="text-xs text-stone-300 font-semibold whitespace-nowrap">
+                          نص زر التخطي:
+                        </label>
+                        <input
+                          type="text"
+                          value={settingsForm.introVideo?.skipButtonText || ''}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, skipButtonText: e.target.value }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          placeholder="تخطي إلى محتوى الموقع ⬇"
+                          className="max-w-xs w-full px-3 py-1.5 rounded-xl bg-stone-800 border border-stone-700 text-stone-100 text-xs focus:border-[#C9A24B] focus:outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Live Interactive Video Preview */}
+                  <div className="rounded-2xl border border-stone-200 overflow-hidden bg-stone-950">
+                    <div className="p-3 bg-stone-900 border-b border-stone-800 flex items-center justify-between text-xs text-stone-300">
+                      <span className="font-bold flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-[#C9A24B]" />
+                        <span>معاينة حية لفيديو الإنترو (كما يظهر للنزيل)</span>
+                      </span>
+                      {settingsForm.introVideo?.videoUrl ? (
+                        <span className="text-emerald-400 text-[11px] font-mono">● جاهز للعرض</span>
+                      ) : (
+                        <span className="text-amber-400 text-[11px]">يرجى إدخال رابط فيديو أو رفعه للمعاينة</span>
+                      )}
+                    </div>
+
+                    <div className="relative aspect-video max-h-[380px] w-full flex items-center justify-center bg-black overflow-hidden">
+                      {settingsForm.introVideo?.videoUrl ? (
+                        <SafeVideoPlayer
+                          src={settingsForm.introVideo.videoUrl}
+                          poster={settingsForm.introVideo.posterUrl}
+                          autoPlay={false}
+                          muted={true}
+                          loop={settingsForm.introVideo.loop !== false}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="text-center p-8 text-stone-500">
+                          <Film className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                          <p className="text-xs">لم يتم تحديد رابط فيديو إنترو حتى الآن</p>
+                        </div>
+                      )}
+
+                      {/* Simulation Overlays */}
+                      {settingsForm.introVideo?.videoUrl && (
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40 pointer-events-none p-6 flex flex-col justify-between">
+                          <div>
+                            {settingsForm.introVideo?.badgeText && (
+                              <span className="inline-block bg-[#C9A24B] text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-md">
+                                {settingsForm.introVideo.badgeText}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <h3 className="text-lg sm:text-2xl font-cairo font-bold text-white mb-1 drop-shadow-md">
+                              {settingsForm.introVideo?.title || 'عنوان فيديو الإنترو الترحيبي'}
+                            </h3>
+                            <p className="text-xs text-stone-200 max-w-xl drop-shadow-sm line-clamp-2">
+                              {settingsForm.introVideo?.subtitle || 'الوصف الترحيبي لشركة برستيج للفنادق'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* 2. HERO SLIDES MANAGEMENT TAB */}
             {activeTab === 'slides' && (
               <div id="admin-slides-section">
@@ -1217,14 +2081,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* 3. OFFERS MANAGEMENT TAB */}
+            {/* 3. ADS & OFFERS MANAGEMENT TAB */}
             {activeTab === 'offers' && (
               <div id="admin-offers-section" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-stone-200">
                   <div>
-                    <h2 className="text-xl font-cairo font-bold text-stone-900">إدارة العروض والمناسبات</h2>
+                    <h2 className="text-xl font-cairo font-bold text-stone-900">إدارة الإعلانات الترويجية والعروض</h2>
                     <p className="text-xs text-stone-500 mt-1">
-                      يمكنك تفعيل أو إخفاء أي عرض بضغطة زر دون حذف بياناته.
+                      تحكم كامل في إعلانات الموقع: إدراج في شرائح الترحيب (الهيرو)، والتحكم في العد التنازلي والخصومات بضغطة زر مع حفظ فوري.
                     </p>
                   </div>
 
@@ -1234,81 +2098,166 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="px-5 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-xs shrink-0"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>+ إضافة عرض أو مناسبة</span>
+                    <span>+ إضافة إعلان جديد</span>
                   </button>
                 </div>
 
-                {/* Offers Table */}
+                {/* Ads Table */}
                 <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs sm:text-sm">
+                  <table className="w-full text-right text-xs sm:text-sm min-w-[850px]">
                     <thead>
                       <tr className="border-b border-stone-200 text-stone-500 text-xs font-semibold">
-                        <th className="pb-3 pr-2">العرض والمناسبة</th>
+                        <th className="pb-3 pr-2">الإعلان والمحتوى</th>
                         <th className="pb-3">النوع</th>
-                        <th className="pb-3">الخصم</th>
-                        <th className="pb-3">الحالة في الموقع</th>
+                        <th className="pb-3 text-center">الخصم</th>
+                        <th className="pb-3 text-center">العد التنازلي</th>
+                        <th className="pb-3 text-center">في شرائح الهيرو</th>
+                        <th className="pb-3 text-center">الحالة في الموقع</th>
                         <th className="pb-3 pl-2 text-left">الإجراءات</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
-                      {offers.map((offer) => (
-                        <tr key={offer.id} className="hover:bg-stone-50 transition-colors">
-                          <td className="py-3.5 pr-2">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={offer.mediaUrl}
-                                alt=""
-                                className="w-12 h-9 rounded-lg object-cover bg-stone-100 shrink-0 border border-stone-200"
-                              />
-                              <div>
-                                <strong className="text-stone-900 font-bold block truncate max-w-[200px]">
-                                  {offer.title}
-                                </strong>
-                                <span className="text-[11px] text-stone-500 line-clamp-1 max-w-[240px]">
-                                  {offer.shortDescription}
-                                </span>
+                      {offers.map((offer) => {
+                        const galleryCount = offer.gallery?.length || 0;
+                        return (
+                          <tr key={offer.id} className="hover:bg-stone-50 transition-colors">
+                            <td className="py-3.5 pr-2">
+                              <div className="flex items-center gap-3">
+                                <div className="relative shrink-0">
+                                  <img
+                                    src={offer.mediaUrl}
+                                    alt=""
+                                    className="w-14 h-10 rounded-lg object-cover bg-stone-100 border border-stone-200 shadow-2xs"
+                                  />
+                                  {galleryCount > 0 && (
+                                    <span className="absolute -top-1.5 -right-1.5 bg-[#C9A24B] text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full shadow-xs">
+                                      +{galleryCount}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <strong className="text-stone-900 font-bold block truncate max-w-[200px]">
+                                      {offer.title}
+                                    </strong>
+                                    {offer.badgeText && (
+                                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                                        {offer.badgeText}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[11px] text-stone-500 line-clamp-1 max-w-[240px]">
+                                    {offer.shortDescription || 'لا يوجد وصف مختصر'}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="py-3.5 text-stone-700">
-                            {offer.mediaType === 'video' ? 'فيديو دعائي' : 'بوستر تصميم'}
-                          </td>
-                          <td className="py-3.5 text-[#B38A34] font-bold">
-                            {offer.discountPercentage ? `${offer.discountPercentage}٪` : '-'}
-                          </td>
-                          <td className="py-3.5">
-                            <button
-                              onClick={() => handleToggleOfferActive(offer)}
-                              className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
-                                offer.isActive
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                                  : 'bg-stone-100 text-stone-500 border border-stone-200 hover:bg-stone-200'
-                              }`}
-                            >
-                              {offer.isActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                              <span>{offer.isActive ? 'نشط ومعروض' : 'مخفي'}</span>
-                            </button>
-                          </td>
-                          <td className="py-3.5 pl-2 text-left">
-                            <div className="flex items-center justify-end gap-2">
+                            </td>
+
+                            <td className="py-3.5 text-stone-700">
+                              <span className="inline-flex items-center gap-1">
+                                {offer.mediaType === 'video' ? (
+                                  <>
+                                    <Film className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>فيديو</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>صورة</span>
+                                  </>
+                                )}
+                              </span>
+                            </td>
+
+                            {/* Discount quick toggle */}
+                            <td className="py-3.5 text-center">
                               <button
-                                onClick={() => handleEditOffer(offer)}
-                                className="p-2 rounded-lg bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors"
-                                title="تعديل العرض"
+                                type="button"
+                                onClick={() => handleToggleOfferDiscount(offer)}
+                                className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                                  offer.showDiscount !== false && offer.discountPercentage
+                                    ? 'bg-amber-50 text-[#B38A34] border border-amber-200 hover:bg-amber-100'
+                                    : 'bg-stone-100 text-stone-400 border border-stone-200 hover:bg-stone-200'
+                                }`}
+                                title="اضغط لتبديل إظهار شارة الخصم"
                               >
-                                <Edit3 className="w-4 h-4" />
+                                {offer.showDiscount !== false && offer.discountPercentage
+                                  ? `${offer.discountPercentage}٪ (معروض)`
+                                  : 'مخفي'}
                               </button>
+                            </td>
+
+                            {/* Countdown quick toggle */}
+                            <td className="py-3.5 text-center">
                               <button
-                                onClick={() => confirmDeleteOffer(offer)}
-                                className="p-2 rounded-lg bg-stone-100 hover:bg-red-500 hover:text-white text-stone-700 transition-colors"
-                                title="حذف العرض"
+                                type="button"
+                                onClick={() => handleToggleOfferCountdown(offer)}
+                                className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto ${
+                                  offer.showCountdown !== false
+                                    ? 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
+                                    : 'bg-stone-100 text-stone-400 border border-stone-200 hover:bg-stone-200'
+                                }`}
+                                title="اضغط لتفعيل أو إخفاء مؤقت الوقت التنازلي"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Clock className="w-3 h-3" />
+                                <span>{offer.showCountdown !== false ? 'مفعّل' : 'مخفي'}</span>
                               </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+
+                            {/* Hero Slides inclusion quick toggle */}
+                            <td className="py-3.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleOfferHeroSlides(offer)}
+                                className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 mx-auto ${
+                                  offer.showInHeroSlides
+                                    ? 'bg-[#C9A24B]/15 text-[#B38A34] border border-[#C9A24B]/30 hover:bg-[#C9A24B]/25'
+                                    : 'bg-stone-100 text-stone-400 border border-stone-200 hover:bg-stone-200'
+                                }`}
+                                title="اضغط لإدراج الإعلان في شرائح الترحيب بأعلى الصفحة الرئيسية"
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                <span>{offer.showInHeroSlides ? 'ظاهر بالهيرو ✓' : 'غير مدرج'}</span>
+                              </button>
+                            </td>
+
+                            {/* Status in site toggle */}
+                            <td className="py-3.5 text-center">
+                              <button
+                                onClick={() => handleToggleOfferActive(offer)}
+                                className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center justify-center gap-1.5 mx-auto ${
+                                  offer.isActive
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                    : 'bg-stone-100 text-stone-500 border border-stone-200 hover:bg-stone-200'
+                                }`}
+                              >
+                                {offer.isActive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                                <span>{offer.isActive ? 'نشط ومعروض' : 'مخفي'}</span>
+                              </button>
+                            </td>
+
+                            {/* Actions */}
+                            <td className="py-3.5 pl-2 text-left">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => handleEditOffer(offer)}
+                                  className="p-2 rounded-lg bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors"
+                                  title="تعديل الإعلان"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => confirmDeleteOffer(offer)}
+                                  className="p-2 rounded-lg bg-stone-100 hover:bg-red-500 hover:text-white text-stone-700 transition-colors"
+                                  title="حذف الإعلان"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1691,14 +2640,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </p>
                     </div>
 
-                    <button
-                      onClick={handleSaveSettings}
-                      disabled={savingSettings}
-                      className="px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center gap-2"
-                    >
-                      <Check className="w-4 h-4" />
-                      <span>{savingSettings ? 'جاري الحفظ...' : 'حفظ التغييرات'}</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {autoSaveStatus === 'saving' && (
+                        <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl flex items-center gap-1.5 animate-pulse">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>جاري الحفظ التلقائي...</span>
+                        </span>
+                      )}
+                      {autoSaveStatus === 'saved' && (
+                        <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>تم الحفظ تلقائياً ✓</span>
+                        </span>
+                      )}
+
+                      <button
+                        onClick={handleSaveSettings}
+                        disabled={savingSettings}
+                        className="px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center gap-2"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>{savingSettings ? 'جاري الحفظ...' : 'حفظ التغييرات'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1707,7 +2671,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <input
                         type="text"
                         value={settingsForm.siteTitle}
-                        onChange={(e) => setSettingsForm(prev => ({ ...prev, siteTitle: e.target.value }))}
+                        onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, siteTitle: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
                       />
                     </div>
@@ -1717,52 +2681,151 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <input
                         type="text"
                         value={settingsForm.siteSubtitle}
-                        onChange={(e) => setSettingsForm(prev => ({ ...prev, siteSubtitle: e.target.value }))}
+                        onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, siteSubtitle: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
                       />
                     </div>
                   </div>
 
                   {/* Logo Management */}
-                  <div className="pt-4 border-t border-stone-200">
-                    <label className="text-xs font-bold text-stone-700 block mb-3">شعار الموقع (Logo):</label>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
-                      <div className="w-20 h-20 rounded-2xl bg-stone-50 border border-stone-200 p-2 flex items-center justify-center shrink-0">
-                        {settingsForm.logoUrl ? (
-                          <img
-                            src={settingsForm.logoUrl}
-                            alt="Logo"
-                            className="max-h-full max-w-full object-contain"
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center">
-                            <Sparkles className="w-6 h-6" />
+                  <div className="pt-4 border-t border-stone-200 space-y-6">
+                    <div>
+                      <label className="text-xs font-bold text-stone-700 block mb-3">شعار الموقع والهوية الرسمية (Logo):</label>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+                        <div className="w-20 h-20 rounded-2xl bg-stone-50 border border-stone-200 p-2 flex items-center justify-center shrink-0">
+                          {settingsForm.logoUrl ? (
+                            <img
+                              src={settingsForm.logoUrl}
+                              alt="Logo"
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center">
+                              <Building2 className="w-6 h-6" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-1 space-y-3">
+                          <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] text-stone-800 hover:text-white text-xs font-bold border border-stone-300 transition-colors">
+                            <UploadCloud className="w-4 h-4" />
+                            <span>رفع ملف شعار من الجهاز (PNG شفاف، JPG، WebP، SVG)</span>
+                            <input
+                              type="file"
+                              accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, .png, .jpg, .jpeg, .webp, .svg, image/*"
+                              onChange={handleLogoFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+
+                          <div>
+                            <span className="text-xs text-stone-600 block mb-1 font-semibold">أو رابط صورة الشعار:</span>
+                            <input
+                              type="url"
+                              value={settingsForm.logoUrl}
+                              onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, logoUrl: e.target.value })}
+                              placeholder="https://example.com/logo.png"
+                              className="w-full px-3.5 py-2 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                            />
                           </div>
-                        )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Browser Tab Favicon & Tab Name Customization */}
+                    <div className="p-5 rounded-2xl bg-stone-900 text-white space-y-5 shadow-inner">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-[#C9A24B]/20 text-[#DFBE72] flex items-center justify-center">
+                            <Building2 className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-cairo font-bold text-sm text-stone-100">
+                              تخصيص علامة تبويب المتصفح (شعار + اسم التبويب)
+                            </h4>
+                            <span className="text-[11px] text-stone-400">
+                              تحكم كامل في الأيقونة واسم الصفحة الذي يظهر للمستخدم في شريط المتصفح
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className="text-[11px] font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2.5 py-0.5 rounded-full self-start sm:self-auto">
+                          ✓ حفظ وتحديث فوري
+                        </span>
                       </div>
 
-                      <div className="flex-1 space-y-3">
-                        <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] text-stone-800 hover:text-white text-xs font-bold border border-stone-300 transition-colors">
-                          <UploadCloud className="w-4 h-4" />
-                          <span>رفع ملف شعار من الجهاز (PNG شفاف، JPG، WebP، SVG)</span>
+                      {/* Custom Tab Title Input */}
+                      <div className="space-y-1.5 bg-stone-800/60 p-4 rounded-xl border border-stone-700">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-stone-200">
+                            اسم / عنوان علامة التبويب (Tab Title):
+                          </label>
+                          {settingsForm.browserTabTitle && (
+                            <button
+                              type="button"
+                              onClick={() => triggerAutoSaveSettings({ ...settingsForm, browserTabTitle: '' })}
+                              className="text-[11px] text-[#DFBE72] hover:underline"
+                            >
+                              استعادة التلقائي
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={settingsForm.browserTabTitle || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, browserTabTitle: e.target.value })}
+                          placeholder={`${settingsForm.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'} | ${settingsForm.siteSubtitle || 'Prestige Hotels'}`}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-stone-900 border border-stone-600 text-stone-100 text-xs focus:border-[#C9A24B] focus:outline-none"
+                        />
+                        <p className="text-[11px] text-stone-400">
+                          اكتب الاسم الذي تريده أن يظهر في لسان المتصفح أعلى النافذة. إذا تركته فارغاً سيتم استخدام اسم الموقع.
+                        </p>
+                      </div>
+
+                      {/* Realistic Browser Tab Mockup */}
+                      <div className="p-3 bg-stone-950/80 rounded-xl border border-stone-800/80 flex items-center justify-center">
+                        <div className="max-w-md w-full bg-[#202124] text-stone-200 px-3.5 py-2 rounded-t-xl border-t-2 border-[#C9A24B] flex items-center justify-between gap-3 shadow-md">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {/* Live Favicon */}
+                            <div className="w-5 h-5 rounded-md bg-stone-800 p-0.5 flex items-center justify-center shrink-0 border border-stone-700 overflow-hidden">
+                              {settingsForm.faviconUrl || settingsForm.logoUrl ? (
+                                <img
+                                  src={settingsForm.faviconUrl || settingsForm.logoUrl}
+                                  alt="Favicon"
+                                  className="w-full h-full object-contain"
+                                />
+                              ) : (
+                                <Building2 className="w-3.5 h-3.5 text-[#C9A24B]" />
+                              )}
+                            </div>
+                            {/* Live Tab Title */}
+                            <span className="text-xs font-semibold truncate text-stone-100">
+                              {settingsForm.browserTabTitle || `${settingsForm.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'} | ${settingsForm.siteSubtitle || 'Prestige'}`}
+                            </span>
+                          </div>
+
+                          {/* Close X */}
+                          <div className="w-4 h-4 rounded-full hover:bg-stone-700 text-stone-400 flex items-center justify-center text-[10px] shrink-0">
+                            ✕
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                        <p className="text-[11px] text-stone-400 leading-relaxed">
+                          أي تغيير في الشعار، الأيقونة، أو اسم علامة التبويب يتم تحديثه لحظياً لدى جميع زوار الموقع.
+                        </p>
+
+                        <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-[#C9A24B] text-stone-300 hover:text-white text-xs font-bold transition-colors shrink-0">
+                          <UploadCloud className="w-3.5 h-3.5" />
+                          <span>رفع أيقونة Favicon مخصصة</span>
                           <input
                             type="file"
-                            accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, .png, .jpg, .jpeg, .webp, .svg, image/*"
-                            onChange={handleLogoFileUpload}
+                            accept="image/png, image/x-icon, image/svg+xml, .ico, .png, .svg"
+                            onChange={handleFaviconFileUpload}
                             className="hidden"
                           />
                         </label>
-
-                        <div>
-                          <span className="text-xs text-stone-600 block mb-1 font-semibold">أو رابط صورة الشعار:</span>
-                          <input
-                            type="url"
-                            value={settingsForm.logoUrl}
-                            onChange={(e) => setSettingsForm(prev => ({ ...prev, logoUrl: e.target.value }))}
-                            placeholder="https://example.com/logo.png"
-                            className="w-full px-3.5 py-2 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:bg-white focus:outline-none"
-                          />
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -1782,6 +2845,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <AdminBranchesManager
                     branches={settingsForm.branches || []}
                     onChange={handleBranchesChange}
+                    onShowToast={onShowToast}
+                  />
+                </div>
+
+                {/* Specialized Department Contacts (مبيعات / حجوزات / حسابات) */}
+                <div id="admin-department-contacts-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
+                  <AdminDepartmentContactsManager
+                    contacts={settingsForm.departmentContacts || []}
+                    onChange={handleDepartmentContactsChange}
                     onShowToast={onShowToast}
                   />
                 </div>
@@ -2205,6 +3277,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     >
                       <div className="w-6 h-6 rounded-full bg-white shadow-md" />
                     </button>
+                  </div>
+
+                  {/* Active / Hidden Status Toggle (تفعيل أو إخفاء الفندق) */}
+                  <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <strong className="text-xs font-bold text-stone-900 block">
+                          حالة ظهور الفندق في الموقع للزوار
+                        </strong>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          hotelForm.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-700'
+                        }`}>
+                          {hotelForm.isActive !== false ? 'مفعل (ظاهر للزوار)' : 'مخفي (معطل مؤقتاً)'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-500">
+                        عند التعطيل والإخفاء، لن يظهر هذا الفندق للزوار في الصفحة الرئيسية أو قائمة الفنادق.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setHotelForm(prev => ({ ...prev, isActive: prev.isActive === false ? true : false }))}
+                      className={`w-14 h-8 flex items-center rounded-full p-1 transition-colors duration-300 cursor-pointer ${
+                        hotelForm.isActive !== false ? 'bg-emerald-600 justify-end' : 'bg-stone-300 justify-start'
+                      }`}
+                    >
+                      <div className="w-6 h-6 rounded-full bg-white shadow-md" />
+                    </button>
+                  </div>
+
+                  {/* Display Order (ترتيب الظهور) */}
+                  <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between gap-4">
+                    <div>
+                      <strong className="text-xs font-bold text-stone-900 block mb-1">
+                        ترتيب ظهور الفندق في الموقع
+                      </strong>
+                      <p className="text-[11px] text-stone-500">
+                        الرقم الأصغر يظهر أولاً بالموقع وقائمة الفنادق (1 ثم 2 ثم 3...).
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-stone-500 font-bold">رقم:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={hotelForm.order ?? 1}
+                        onChange={(e) => setHotelForm(prev => ({ ...prev, order: Math.max(1, parseInt(e.target.value) || 1) }))}
+                        className="w-20 px-3 py-2 bg-white border border-stone-300 rounded-xl text-center font-mono font-bold text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -2734,11 +3858,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           id="admin-offer-modal"
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
         >
-          <div className="bg-white border border-stone-200 rounded-3xl max-w-xl w-full shadow-2xl my-8 overflow-hidden animate-scaleUp">
+          <div className="bg-white border border-stone-200 rounded-3xl max-w-2xl w-full shadow-2xl my-8 overflow-hidden animate-scaleUp">
             <div className="p-6 border-b border-stone-200 bg-stone-50 flex items-center justify-between">
-              <h3 className="font-cairo font-bold text-xl text-stone-900">
-                {editingOfferId ? 'تعديل بيانات العرض' : 'إضافة عرض ومناسبة جديدة'}
-              </h3>
+              <div>
+                <h3 className="font-cairo font-bold text-xl text-stone-900">
+                  {editingOfferId ? 'تعديل بيانات الإعلان' : 'إضافة إعلان ترويجي جديد'}
+                </h3>
+                <span className="text-xs text-stone-500">
+                  تحكم كامل بالوسائط، العد التنازلي، والظهور في شرائح الترحيب
+                </span>
+              </div>
               <button
                 onClick={() => setIsOfferModalOpen(false)}
                 className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors"
@@ -2747,42 +3876,99 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Title */}
               <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">عنوان العرض والمناسبة: *</label>
+                <label className="text-xs font-bold text-stone-700 block mb-1">عنوان الإعلان والمناسبة: *</label>
                 <input
                   type="text"
                   required
                   value={offerForm.title}
                   onChange={(e) => setOfferForm({ ...offerForm, title: e.target.value })}
                   placeholder="مثال: باقة رمضان المبارك - خصم الحجز المبكر"
-                  className="w-full px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">الوصف المختصر:</label>
-                <textarea
-                  rows={2}
-                  value={offerForm.shortDescription}
-                  onChange={(e) => setOfferForm({ ...offerForm, shortDescription: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">التفاصيل الكاملة للعرض:</label>
-                <textarea
-                  rows={3}
-                  value={offerForm.fullDescription}
-                  onChange={(e) => setOfferForm({ ...offerForm, fullDescription: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              {/* Descriptions */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">نوع الوسائط:</label>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">الوصف المختصر:</label>
+                  <textarea
+                    rows={2}
+                    value={offerForm.shortDescription}
+                    onChange={(e) => setOfferForm({ ...offerForm, shortDescription: e.target.value })}
+                    placeholder="نبذة سريعة تظهر بالبطاقة"
+                    className="w-full px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">التفاصيل الكاملة للإعلان:</label>
+                  <textarea
+                    rows={2}
+                    value={offerForm.fullDescription}
+                    onChange={(e) => setOfferForm({ ...offerForm, fullDescription: e.target.value })}
+                    placeholder="تظهر عند فتح المعاينة الكاملة"
+                    className="w-full px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+              </div>
+
+              {/* Visibility & Feature Toggles */}
+              <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-3">
+                <span className="text-xs font-bold text-amber-900 block">
+                  خيارات العرض والظهور في الموقع:
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Hero Slides Inclusion Toggle */}
+                  <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white border border-amber-200/60 cursor-pointer hover:bg-amber-50 transition-colors shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={offerForm.showInHeroSlides ?? false}
+                      onChange={(e) => setOfferForm({ ...offerForm, showInHeroSlides: e.target.checked })}
+                      className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                    />
+                    <div>
+                      <strong className="text-xs block text-stone-900">ضمن شرائح الهيرو</strong>
+                      <span className="text-[10px] text-stone-500">يعرض في أعلى الرئيسية</span>
+                    </div>
+                  </label>
+
+                  {/* Countdown Timer Toggle */}
+                  <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white border border-amber-200/60 cursor-pointer hover:bg-amber-50 transition-colors shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={offerForm.showCountdown !== false}
+                      onChange={(e) => setOfferForm({ ...offerForm, showCountdown: e.target.checked })}
+                      className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                    />
+                    <div>
+                      <strong className="text-xs block text-stone-900">مؤقت العد التنازلي</strong>
+                      <span className="text-[10px] text-stone-500">إظهار الوقت المتبقي</span>
+                    </div>
+                  </label>
+
+                  {/* Discount Badge Toggle */}
+                  <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white border border-amber-200/60 cursor-pointer hover:bg-amber-50 transition-colors shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={offerForm.showDiscount !== false}
+                      onChange={(e) => setOfferForm({ ...offerForm, showDiscount: e.target.checked })}
+                      className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                    />
+                    <div>
+                      <strong className="text-xs block text-stone-900">إظهار نسبة الخصم</strong>
+                      <span className="text-[10px] text-stone-500">شارة الخصم المميزة</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Type, Discount %, End Date, Badge */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">نوع الوسائط الرئيسي:</label>
                   <select
                     value={offerForm.mediaType}
                     onChange={(e) => setOfferForm({ ...offerForm, mediaType: e.target.value as any })}
@@ -2794,79 +3980,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">نسبة الخصم (% اختياري):</label>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">نسبة الخصم (%):</label>
                   <input
                     type="number"
                     value={offerForm.discountPercentage || ''}
                     onChange={(e) => setOfferForm({ ...offerForm, discountPercentage: parseInt(e.target.value) || undefined })}
-                    placeholder="مثال: 25"
+                    placeholder="25"
                     className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B]"
                   />
                 </div>
-              </div>
 
-              {/* Media Upload & URL Section */}
-              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-stone-800 block">
-                    {offerForm.mediaType === 'video' ? 'بوستر / صورة غلاف الفيديو:' : 'بوستر أو صورة العرض الترويجي: *'}
-                  </label>
-
-                  <label className="cursor-pointer text-xs font-bold text-[#B38A34] hover:text-[#C9A24B] flex items-center gap-1.5 bg-[#C9A24B]/15 px-3 py-1.5 rounded-xl border border-[#C9A24B]/30 hover:bg-[#C9A24B]/25 transition-all">
-                    <UploadCloud className="w-4 h-4" />
-                    <span>رفع بوستر من جهازك</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleOfferImageUpload}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-
-                {/* Direct link or Base64 Input */}
                 <div>
-                  <input
-                    type="text"
-                    value={offerForm.mediaUrl}
-                    onChange={(e) => setOfferForm({ ...offerForm, mediaUrl: e.target.value })}
-                    placeholder="https://images.unsplash.com/... أو ارفع ملف من جهازك"
-                    className="w-full px-3.5 py-2 bg-white border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#C9A24B] dir-ltr text-left"
-                  />
-                </div>
-
-                {/* Poster Live Preview */}
-                {offerForm.mediaUrl && (
-                  <div className="relative rounded-2xl overflow-hidden border border-stone-300 bg-stone-900 max-h-48 aspect-video flex items-center justify-center">
-                    <img
-                      src={offerForm.mediaUrl}
-                      alt="معاينة البوستر"
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-xs text-white text-[10px] font-bold px-2.5 py-1 rounded-lg">
-                      معاينة البوستر المرفوع
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {offerForm.mediaType === 'video' && (
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">رابط مقطع الفيديو (MP4 أو YouTube):</label>
-                  <input
-                    type="url"
-                    value={offerForm.videoUrl || ''}
-                    onChange={(e) => setOfferForm({ ...offerForm, videoUrl: e.target.value })}
-                    placeholder="https://.../video.mp4 أو https://www.youtube.com/watch?v=..."
-                    className="w-full px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#C9A24B] dir-ltr text-left"
-                  />
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">تاريخ انتهاء العرض:</label>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">تاريخ الانتهاء:</label>
                   <input
                     type="date"
                     value={offerForm.endDate || ''}
@@ -2876,14 +4001,176 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">شارة العرض (Badge):</label>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">شارة الإعلان (Badge):</label>
                   <input
                     type="text"
                     value={offerForm.badgeText || ''}
                     onChange={(e) => setOfferForm({ ...offerForm, badgeText: e.target.value })}
-                    placeholder="مثال: خصم حصري"
+                    placeholder="عرض حصري"
                     className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B]"
                   />
+                </div>
+              </div>
+
+              {/* Main Media Upload & URL Section */}
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-800 block">
+                    {offerForm.mediaType === 'video' ? 'بوستر / صورة غلاف الفيديو الرئيسي: *' : 'صورة أو بوستر الإعلان الرئيسي: *'}
+                  </label>
+
+                  <label className="cursor-pointer text-xs font-bold text-[#B38A34] hover:text-[#C9A24B] flex items-center gap-1.5 bg-[#C9A24B]/15 px-3 py-1.5 rounded-xl border border-[#C9A24B]/30 hover:bg-[#C9A24B]/25 transition-all">
+                    <UploadCloud className="w-4 h-4" />
+                    <span>{isOfferUploading ? 'جاري الرفع...' : 'رفع بوستر من جهازك'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleOfferImageUpload}
+                      disabled={isOfferUploading}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    value={offerForm.mediaUrl}
+                    onChange={(e) => setOfferForm({ ...offerForm, mediaUrl: e.target.value })}
+                    placeholder="رابط الصورة أو ارفع ملف من جهازك"
+                    className="w-full px-3.5 py-2 bg-white border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#C9A24B] dir-ltr text-left"
+                  />
+                </div>
+
+                {offerForm.mediaUrl && (
+                  <div className="relative rounded-2xl overflow-hidden border border-stone-300 bg-stone-900 max-h-48 aspect-video flex items-center justify-center">
+                    <img
+                      src={offerForm.mediaUrl}
+                      alt="معاينة البوستر"
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-xs text-white text-[10px] font-bold px-2.5 py-1 rounded-lg">
+                      معاينة البوستر الرئيسي
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Video URL if video type */}
+              {offerForm.mediaType === 'video' && (
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">رابط مقطع الفيديو (MP4 أو YouTube):</label>
+                  <input
+                    type="url"
+                    value={offerForm.videoUrl || ''}
+                    onChange={(e) => setOfferForm({ ...offerForm, videoUrl: e.target.value })}
+                    placeholder="https://.../video.mp4"
+                    className="w-full px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#C9A24B] dir-ltr text-left"
+                  />
+                </div>
+              )}
+
+              {/* Multi-Media Gallery Section (Multiple Images & Videos for the Ad) */}
+              <div className="p-4 rounded-2xl bg-stone-900 text-white space-y-4 shadow-inner">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Images className="w-4 h-4 text-[#C9A24B]" />
+                    <div>
+                      <h4 className="font-cairo font-bold text-xs sm:text-sm text-stone-100">
+                        معرض وسائط الإعلان (صور وفيديوهات إضافية)
+                      </h4>
+                      <span className="text-[10px] text-stone-400">
+                        يمكنك إضافة عدة صور أو فيديوهات للزائر ليتنقل بينها بأريحية
+                      </span>
+                    </div>
+                  </div>
+
+                  <span className="text-[11px] font-mono text-[#DFBE72] bg-stone-800 px-2.5 py-0.5 rounded-full">
+                    {offerForm.gallery?.length || 0} عناصر مضافة
+                  </span>
+                </div>
+
+                {/* Existing Gallery Thumbnails */}
+                {offerForm.gallery && offerForm.gallery.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {offerForm.gallery.map((item, idx) => (
+                      <div key={item.id || idx} className="relative rounded-xl overflow-hidden bg-stone-800 border border-stone-700 group aspect-video">
+                        {item.type === 'video' ? (
+                          <div className="w-full h-full bg-stone-950 flex items-center justify-center">
+                            <Film className="w-6 h-6 text-[#C9A24B]" />
+                            <span className="absolute bottom-1 right-1 text-[9px] bg-black/80 px-1.5 py-0.5 rounded text-stone-300">
+                              فيديو
+                            </span>
+                          </div>
+                        ) : (
+                          <img
+                            src={item.url}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveGalleryItem(item.id)}
+                          className="absolute top-1 left-1 w-6 h-6 rounded-full bg-red-600/90 hover:bg-red-700 text-white flex items-center justify-center opacity-80 group-hover:opacity-100 transition-opacity"
+                          title="حذف هذا العنصر"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add New Gallery Item Row */}
+                <div className="p-3 rounded-xl bg-stone-800/80 border border-stone-700 space-y-3">
+                  <span className="text-[11px] font-bold text-stone-300 block">
+                    + إضافة صورة أو فيديو جديد للمعرض:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                    <select
+                      value={newGalleryType}
+                      onChange={(e) => setNewGalleryType(e.target.value as any)}
+                      className="sm:col-span-3 px-3 py-2 bg-stone-900 border border-stone-700 rounded-xl text-xs text-stone-200 focus:outline-none"
+                    >
+                      <option value="image">صورة (Image)</option>
+                      <option value="video">فيديو (Video)</option>
+                    </select>
+
+                    <input
+                      type="url"
+                      value={newGalleryUrl}
+                      onChange={(e) => setNewGalleryUrl(e.target.value)}
+                      placeholder="رابط الصورة أو الفيديو..."
+                      className="sm:col-span-6 px-3 py-2 bg-stone-900 border border-stone-700 rounded-xl text-xs font-mono text-stone-200 focus:outline-none dir-ltr text-left"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => handleAddGalleryItem(newGalleryType, newGalleryUrl, newGalleryCaption)}
+                      disabled={!newGalleryUrl.trim()}
+                      className="sm:col-span-3 px-4 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] disabled:opacity-50 text-white text-xs font-bold transition-colors"
+                    >
+                      إضافة للمعرض
+                    </button>
+                  </div>
+
+                  {/* Direct upload for gallery */}
+                  <div className="pt-2 border-t border-stone-700/80 flex items-center justify-between">
+                    <span className="text-[10px] text-stone-400">أو يمكنك الرفع المباشر من جهازك:</span>
+                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-stone-700 hover:bg-stone-600 text-stone-200 text-xs font-semibold transition-colors">
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>{isUploadingGalleryItem ? 'جاري الرفع...' : 'رفع ملف إلى المعرض'}</span>
+                      <input
+                        type="file"
+                        accept="image/*, video/*"
+                        onChange={handleUploadGalleryFile}
+                        disabled={isUploadingGalleryItem}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2899,9 +4186,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={handleSaveOffer}
-                className="px-6 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs"
+                className="px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs transition-all flex items-center gap-2"
               >
-                حفظ العرض
+                <Check className="w-4 h-4" />
+                <span>حفظ وتحديث الإعلان</span>
               </button>
             </div>
           </div>

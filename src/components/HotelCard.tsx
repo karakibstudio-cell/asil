@@ -16,7 +16,8 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface HotelCardProps {
   hotel: Hotel;
-  onClick: (hotelId: string) => void;
+  onClick?: (hotelId: string) => void;
+  onSelect?: (hotelId: string) => void;
   index?: number;
   siteSettings?: SiteSettings;
   onOpenBookingModal?: (hotel: Hotel) => void;
@@ -25,12 +26,20 @@ interface HotelCardProps {
 export const HotelCard: React.FC<HotelCardProps> = ({ 
   hotel, 
   onClick, 
+  onSelect,
   index = 0,
   siteSettings,
   onOpenBookingModal
 }) => {
   const { language, t, translateDynamic, isRtl } = useLanguage();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+
+  const handleSelectHotel = (e?: React.MouseEvent) => {
+    e?.stopPropagation?.();
+    const targetKey = hotel.slug || hotel.id;
+    if (onClick) onClick(targetKey);
+    if (onSelect) onSelect(targetKey);
+  };
 
   const handleBookingClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -59,7 +68,7 @@ export const HotelCard: React.FC<HotelCardProps> = ({
     <>
       <div
         id={`hotel-card-${hotel.id}`}
-        onClick={() => onClick(hotel.id)}
+        onClick={handleSelectHotel}
         className="group bg-white hover:bg-[#FAF8F5] rounded-2xl border border-[#EFE6D8] hover:border-[#C9A24B] transition-all duration-300 overflow-hidden cursor-pointer shadow-sm hover:shadow-xl hover:shadow-[#C9A24B]/10 flex flex-col relative"
         style={{ animationDelay: `${index * 80}ms` }}
       >
@@ -254,7 +263,8 @@ export const HotelCard: React.FC<HotelCardProps> = ({
             {/* View Details Button */}
             <button
               type="button"
-              onClick={() => onClick(hotel.id)}
+              id={`hotel-card-details-btn-${hotel.id}`}
+              onClick={handleSelectHotel}
               className="py-2 px-3 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-800 font-semibold text-xs transition-colors flex items-center gap-1 cursor-pointer"
             >
               <span>{t('hotels.viewDetails', 'التفاصيل')}</span>

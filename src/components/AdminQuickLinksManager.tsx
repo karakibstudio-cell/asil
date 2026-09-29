@@ -15,7 +15,6 @@ import {
   ArrowUp,
   ArrowDown,
   RotateCcw,
-  Sparkles,
   Layers,
   Compass
 } from 'lucide-react';

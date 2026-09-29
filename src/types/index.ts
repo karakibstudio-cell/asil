@@ -7,6 +7,14 @@ export const ALL_HOTEL_CATEGORIES: HotelCategory[] = [
   'عادي'
 ];
 
+export type HotelImageCategory = 'all' | 'rooms' | 'views' | 'dining' | 'lobby' | 'facilities';
+
+export interface HotelGalleryItem {
+  url: string;
+  category?: HotelImageCategory;
+  title?: string;
+}
+
 export interface Hotel {
   id: string;
   name: string;
@@ -18,11 +26,13 @@ export interface Hotel {
   distanceText: string; // e.g. "١٥٠م من الحرم المكي" or "ساحة الحرم النبوي الشريف"
   walkingTimeMinutes: number; // e.g. 2
   featured?: boolean; // يحدد ظهور الفندق في شريط الفنادق المميزة
+  isActive?: boolean; // تفعيل ظهور الفندق للزوار في الموقع أو إخفائه
+  order?: number; // ترتيب ظهور الفندق (الرقم الأصغر يظهر أولاً)
   categories: HotelCategory[]; // تصنيفات متعددة: سنوي، عمرة، رمضان، عادي
   rating: number; // e.g. 4.9 (متوسط التقييمات المعتمدة)
   reviewCount: number; // عدد التقييمات المعتمدة
   mainImage: string;
-  galleryImages: string[];
+  galleryImages: (string | HotelGalleryItem)[];
   videoUrl?: string; // Hotel promotional video
   additionalVideos?: {
     id: string;
@@ -62,6 +72,9 @@ export interface Hotel {
     address: string;
     mapEmbedUrl?: string;
     viewType: 'إطلالة مباشرة على الكعبة' | 'إطلالة على ساحات الحرم' | 'إطلالة على المدينة' | 'قريب جداً من الحرم';
+    order?: number;
+    isActive?: boolean;
+    metaDescription?: string;
   };
   reviewsList?: {
     id: string;
@@ -76,6 +89,13 @@ export interface Hotel {
   createdAt?: number;
 }
 
+export interface AdMediaItem {
+  id: string;
+  type: 'image' | 'video';
+  url: string;
+  title?: string;
+}
+
 export interface Offer {
   id: string;
   title: string;
@@ -84,9 +104,13 @@ export interface Offer {
   mediaType: 'image' | 'video';
   mediaUrl: string;
   videoUrl?: string;
+  gallery?: AdMediaItem[]; // ألبوم صور وفيديوهات إضافية للإعلان
   discountPercentage?: number;
+  showDiscount?: boolean; // إظهار أو إخفاء نسبة الخصم
   endDate?: string;
-  isActive: boolean; // مفتاح تفعيل/إخفاء للعرض
+  showCountdown?: boolean; // إظهار أو إخفاء العداد التنازلي
+  showInHeroSlides?: boolean; // خيار إظهار الإعلان ضمن الشرائح الترحيبية بالرئيسية
+  isActive: boolean; // مفتاح تفعيل/إخفاء للإعلان
   badgeText?: string;
   hotelId?: string;
   keywords?: string;
@@ -139,7 +163,7 @@ export interface FilterState {
   district: string; // 'all' or specific district name
   stars: 'all' | '3' | '4' | '5';
   maxDistance: number; // meters (e.g. 1000)
-  sortBy: 'closest' | 'highest-rated';
+  sortBy: 'recommended' | 'closest' | 'highest-rated' | 'stars';
   searchQuery: string;
   selectedCategories: HotelCategory[];
 }
@@ -184,6 +208,20 @@ export interface HeroSlide {
   isActive: boolean;
 }
 
+export interface DepartmentContact {
+  id: string;
+  department: string; // e.g. "إدارة المبيعات والشركات", "قسم الحجوزات والتسكين", "قسم الحسابات والمالية"
+  name: string; // e.g. "أ. أحمد هشام"
+  roleTitle?: string; // e.g. "مسؤول مبيعات الشركات وحجوزات المجموعات"
+  phone: string; // e.g. "+966501234567"
+  whatsapp?: string; // e.g. "+966501234567"
+  email?: string;
+  workingHours?: string; // e.g. "على مدار الساعة 24/7"
+  city?: string; // e.g. "مكة المكرمة"
+  isActive: boolean;
+  order: number;
+}
+
 export interface BranchLocation {
   id: string;
   name: string; // e.g. "فرع مكة المكرمة"
@@ -191,6 +229,11 @@ export interface BranchLocation {
   address: string; // "أبراج وقف الملك عبدالعزيز، طريق أجياد، مكة"
   mapUrl: string; // "https://maps.google.com/?q=..."
   phone?: string;
+  whatsapp?: string;
+  email?: string;
+  workingHours?: string;
+  isMainBranch?: boolean; // الفرع الرئيسي
+  isActive?: boolean; // تفعيل / إخفاء الفرع
   order?: number;
 }
 
@@ -243,16 +286,38 @@ export interface AboutPageSettings {
   valuePillars?: ValuePillar[];
 }
 
+export interface IntroVideoSettings {
+  enabled: boolean;
+  videoUrl: string;
+  posterUrl?: string;
+  title?: string;
+  subtitle?: string;
+  badge?: string;
+  autoPlay?: boolean;
+  loop?: boolean;
+  muted?: boolean;
+  showSkipButton?: boolean;
+  skipButtonText?: string;
+  actionButtonText?: string;
+  actionButtonPage?: ActivePage | 'whatsapp';
+}
+
 export interface SiteSettings {
   siteTitle: string;
   siteSubtitle: string;
+  browserTabTitle?: string; // اسم وعنوان علامة التبويب في المتصفح المخصص
   logoUrl: string;
+  faviconUrl?: string; // أيقونة علامة التبويب في المتصفح (Favicon)
+  introVideo?: IntroVideoSettings; // فيديو الإنترو الترويجي في بداية الصفحة الرئيسية
   showLicense?: boolean;
   channels?: ContactChannel[];
   heroSlides?: HeroSlide[];
   branches?: BranchLocation[];
+  departmentContacts?: DepartmentContact[]; // أقسام ومسؤولي التواصل المتخصصة (مبيعات / حجوزات / حسابات)
   quickLinks?: QuickLinkItem[];
   aboutUs?: AboutPageSettings;
+  metaDescription?: string;
+  metaKeywords?: string;
   updatedAt?: number;
 }
 

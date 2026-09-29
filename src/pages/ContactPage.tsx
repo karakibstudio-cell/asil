@@ -9,11 +9,15 @@ import {
   MessageCircle, 
   CheckCircle2, 
   Send, 
-  Sparkles,
   Clock,
   ExternalLink,
-  Share2
+  Share2,
+  Users2,
+  Briefcase,
+  Building2,
+  UserCheck
 } from 'lucide-react';
+import { WhatsAppIcon } from '../components/BookingIcons';
 import { 
   getActiveChannels, 
   getFirstActiveWhatsApp, 
@@ -36,6 +40,41 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
   const primaryWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
   const primaryPhone = getFirstActivePhone(siteSettings?.channels);
   const primaryEmail = getFirstActiveEmail(siteSettings?.channels);
+
+  // Active Branches
+  const activeBranches = (siteSettings?.branches && siteSettings.branches.length > 0
+    ? siteSettings.branches.filter(b => b.isActive !== false)
+    : [
+        {
+          id: 'branch_makkah',
+          name: language === 'en' ? 'Makkah Al-Mukarramah Branch' : 'فرع مكة المكرمة (المقر الرئيسي)',
+          city: 'مكة المكرمة',
+          address: language === 'en' ? 'King Abdulaziz Endowment Towers, Ajyad St, Central Area, Makkah' : 'أبراج وقف الملك عبدالعزيز (الصفوة)، شارع أجياد، المنطقة المركزية، مكة',
+          mapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah',
+          phone: '+966501234567',
+          whatsapp: '+966501234567',
+          isMainBranch: true,
+          isActive: true
+        },
+        {
+          id: 'branch_madinah',
+          name: language === 'en' ? 'Madinah Al-Munawwarah Branch' : 'فرع المدينة المنورة',
+          city: 'المدينة المنورة',
+          address: language === 'en' ? 'Northern Central Area, Facing King Fahd Gate, Madinah' : 'المنطقة المركزية الشمالية، أمام بوابة الملك فهد، المدينة المنورة',
+          mapUrl: 'https://maps.google.com/?q=Northern+Central+Area+Madinah',
+          phone: '+966501234568',
+          whatsapp: '+966501234568',
+          isMainBranch: false,
+          isActive: true
+        }
+      ]
+  ).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  // Specialized Department Contacts
+  const departmentContacts = (siteSettings?.departmentContacts && siteSettings.departmentContacts.length > 0
+    ? siteSettings.departmentContacts.filter(c => c.isActive !== false)
+    : []
+  ).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -91,7 +130,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
       <div className="max-w-[1720px] mx-auto px-4 sm:px-8 md:px-12 lg:px-16">
         <div className="text-center max-w-3xl mx-auto mb-16">
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold border border-[#C9A24B]/30 mb-3">
-            <Sparkles className="w-3.5 h-3.5" />
+            <Building2 className="w-3.5 h-3.5" />
             <EditableText 
               contentKey="contact.header.badge"
               fallback="نحن في خدمتكم دائماً"
@@ -114,6 +153,104 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
             />
           </div>
         </div>
+
+        {/* ========================================================= */}
+        {/* SPECIALIZED DEPARTMENT CONTACTS SECTION */}
+        {/* ========================================================= */}
+        {departmentContacts.length > 0 && (
+          <div className="mb-14 bg-gradient-to-br from-white via-white to-amber-50/50 rounded-3xl border border-[#C9A24B]/30 p-6 sm:p-8 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-6 border-b border-stone-200">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center border border-[#C9A24B]/30 shrink-0">
+                  <Users2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-cairo font-bold text-lg sm:text-xl text-stone-900">
+                    <EditableText
+                      contentKey="contact.dept.title"
+                      fallback="أرقام ومسؤولو التواصل المتخصص (مبيعات / حجوزات / حسابات)"
+                      inline={true}
+                    />
+                  </h3>
+                  <p className="text-xs text-stone-500">
+                    {language === 'en'
+                      ? 'Contact specific department representatives directly for fast inquiries and booking confirmations'
+                      : 'تواصل مباشرة مع مسؤول القسم والإدارة المختصة لخدمتكم وإنجاز حجزكم بأعلى سرعة'}
+                  </p>
+                </div>
+              </div>
+
+              <span className="text-xs font-bold text-[#B38A34] bg-[#C9A24B]/10 px-3 py-1 rounded-full shrink-0 border border-[#C9A24B]/20">
+                {departmentContacts.length} {language === 'en' ? 'Departments' : 'أقسام متخصصة'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {departmentContacts.map((dept) => {
+                const cleanPhone = (dept.phone || '').replace(/[^0-9]/g, '');
+                const cleanWa = (dept.whatsapp || dept.phone || '').replace(/[^0-9]/g, '');
+                const waDeptUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(
+                  language === 'en'
+                    ? `Hello, I would like to contact ${dept.department} regarding hotel bookings and services.`
+                    : `السلام عليكم ورحمة الله، أود التواصل مع ${dept.department} بخصوص خدمات وحجوزات الفنادق.`
+                )}`;
+
+                return (
+                  <div
+                    key={dept.id}
+                    className="p-5 rounded-2xl bg-white border border-stone-200 hover:border-[#C9A24B] shadow-2xs hover:shadow-md transition-all flex flex-col justify-between gap-4 group"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#C9A24B]/15 text-[#B38A34] border border-[#C9A24B]/25">
+                          <Briefcase className="w-3 h-3" />
+                          <span>{translateDynamic(dept.department)}</span>
+                        </span>
+                        {dept.workingHours && (
+                          <span className="text-[10px] text-stone-500 font-medium flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-stone-400 shrink-0" />
+                            <span>{translateDynamic(dept.workingHours)}</span>
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="font-cairo font-bold text-sm sm:text-base text-stone-900 group-hover:text-[#B38A34] transition-colors">
+                          {translateDynamic(dept.name)}
+                        </h4>
+                        {dept.roleTitle && (
+                          <p className="text-xs text-stone-600 font-medium mt-0.5">
+                            {translateDynamic(dept.roleTitle)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-stone-100 grid grid-cols-2 gap-2">
+                      <a
+                        href={`tel:${dept.phone}`}
+                        className="py-2 px-3 rounded-xl bg-stone-50 hover:bg-stone-100 border border-stone-200 text-stone-800 hover:text-[#B38A34] text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-[#B38A34]" />
+                        <span>{language === 'en' ? 'Call' : 'اتصال'}</span>
+                      </a>
+
+                      <a
+                        href={waDeptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-2 px-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-all"
+                      >
+                        <WhatsAppIcon className="w-3.5 h-3.5 fill-white text-white" />
+                        <span>{language === 'en' ? 'WhatsApp' : 'واتساب'}</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           {/* Left Column: Contact Details & Branches (5 cols) */}
@@ -241,22 +378,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
               </div>
 
               <div className="space-y-4">
-                {(siteSettings?.branches && siteSettings.branches.length > 0 ? siteSettings.branches : [
-                  {
-                    id: 'branch_makkah',
-                    name: language === 'en' ? 'Makkah Al-Mukarramah Branch' : 'فرع مكة المكرمة',
-                    city: 'مكة المكرمة',
-                    address: language === 'en' ? 'King Abdulaziz Endowment Towers, Ajyad St, Central Area, Makkah' : 'أبراج وقف الملك عبدالعزيز (الصفوة)، شارع أجياد، المنطقة المركزية، مكة',
-                    mapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah'
-                  },
-                  {
-                    id: 'branch_madinah',
-                    name: language === 'en' ? 'Madinah Al-Munawwarah Branch' : 'فرع المدينة المنورة',
-                    city: 'المدينة المنورة',
-                    address: language === 'en' ? 'Northern Central Area, Facing King Fahd Gate, Madinah' : 'المنطقة المركزية الشمالية، أمام بوابة الملك فهد، المدينة المنورة',
-                    mapUrl: 'https://maps.google.com/?q=Northern+Central+Area+Madinah'
-                  }
-                ]).map((branch, idx) => {
+                {activeBranches.map((branch, idx) => {
                   const mapUrl = branch.mapUrl || (idx === 0
                     ? 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah'
                     : 'https://maps.google.com/?q=Northern+Central+Area+Madinah');
@@ -266,12 +388,19 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-start gap-3">
                           <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center shrink-0 mt-0.5 border border-[#C9A24B]/30">
-                            <MapPin className="w-4 h-4" />
+                            <Building2 className="w-4 h-4" />
                           </div>
                           <div>
-                            <strong className="text-stone-900 text-sm block font-bold">
-                              {translateDynamic(branch.name)}
-                            </strong>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <strong className="text-stone-900 text-sm block font-bold">
+                                {translateDynamic(branch.name)}
+                              </strong>
+                              {branch.isMainBranch && (
+                                <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-[#C9A24B]/15 text-[#B38A34]">
+                                  {language === 'en' ? 'Headquarters' : 'المقر الرئيسي'}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-stone-600 mt-0.5 leading-relaxed">
                               {translateDynamic(branch.address)}
                             </p>
@@ -279,22 +408,37 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-stone-200/60 flex items-center justify-between">
+                      <div className="pt-2 border-t border-stone-200/60 flex items-center justify-between flex-wrap gap-2">
                         <a
                           href={mapUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-[#B38A34] hover:text-[#98752B] font-bold hover:underline"
                         >
+                          <MapPin className="w-3 h-3" />
                           <span>{language === 'en' ? 'View on Google Maps' : 'عرض على خرائط Google'}</span>
                           <ExternalLink className="w-3 h-3" />
                         </a>
 
-                        {branch.phone && (
-                          <span className="text-[11px] text-stone-500 font-mono dir-ltr">
-                            {branch.phone}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-3 text-[11px] font-mono dir-ltr">
+                          {branch.phone && (
+                            <a href={`tel:${branch.phone}`} className="text-stone-600 hover:text-[#B38A34] transition-colors flex items-center gap-1">
+                              <Phone className="w-3 h-3 text-[#B38A34]" />
+                              <span>{branch.phone}</span>
+                            </a>
+                          )}
+                          {branch.whatsapp && (
+                            <a
+                              href={`https://wa.me/${branch.whatsapp.replace(/[^0-9]/g, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-emerald-700 hover:text-emerald-800 transition-colors flex items-center gap-1 font-bold"
+                            >
+                              <WhatsAppIcon className="w-3 h-3 text-[#25D366]" />
+                              <span>واتساب</span>
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );

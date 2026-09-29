@@ -9,6 +9,8 @@ import {
   auth,
   onAuthStateChanged
 } from './services/firebase';
+import { INITIAL_HOTELS, INITIAL_OFFERS, INITIAL_SITE_SETTINGS } from './data/mockHotels';
+import { subscribeToSupabaseRealtime } from './services/supabase';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { WhatsAppFAB } from './components/WhatsAppFAB';
@@ -22,6 +24,7 @@ import {
   findHotelBySlugOrId, 
   getHotelSlug 
 } from './utils/routing';
+import { updateFavicon } from './utils/favicon';
 
 // Pages
 import { HomePage } from './pages/HomePage';
@@ -36,11 +39,52 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<ActivePage>('home');
   const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
 
-  // Data States
-  const [hotels, setHotels] = useState<Hotel[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  // Data States - Instant Cache-First Hydration (0ms load time for all visitors)
+  const [hotels, setHotels] = useState<Hotel[]>(() => {
+    try {
+      const saved = localStorage.getItem('diy_hotels');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      // Seed localStorage immediately for subsequent zero-latency reads by any hook
+      if (INITIAL_HOTELS.length > 0) {
+        localStorage.setItem('diy_hotels', JSON.stringify(INITIAL_HOTELS));
+      }
+    } catch {}
+    return INITIAL_HOTELS;
+  });
+
+  const [offers, setOffers] = useState<Offer[]>(() => {
+    try {
+      const saved = localStorage.getItem('diy_offers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      if (INITIAL_OFFERS.length > 0) {
+        localStorage.setItem('diy_offers', JSON.stringify(INITIAL_OFFERS));
+      }
+    } catch {}
+    return INITIAL_OFFERS;
+  });
+
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
+    try {
+      const saved = localStorage.getItem('diy_site_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return { ...INITIAL_SITE_SETTINGS, ...DEFAULT_SITE_SETTINGS, ...parsed };
+      }
+      if (INITIAL_SITE_SETTINGS) {
+        localStorage.setItem('diy_site_settings', JSON.stringify(INITIAL_SITE_SETTINGS));
+      }
+    } catch {}
+    return INITIAL_SITE_SETTINGS || DEFAULT_SITE_SETTINGS;
+  });
+
+  // Zero-latency initial load: Never block or show full-screen lag on mount
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Admin Auth State with persistence & Firebase Auth sync
   const [isAdminLoggedIn, setIsAdminLoggedInState] = useState<boolean>(() => {
@@ -86,35 +130,68 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Fetch initial data from Firestore / local service
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
+  // Fetch data from Supabase (primary cloud database) with instant local cache
+  const loadData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setIsLoading(true);
     try {
       const [fetchedHotels, fetchedOffers, fetchedSettings] = await Promise.all([
         getHotelsFromDb(),
         getOffersFromDb(),
         getSiteSettingsFromDb()
       ]);
-      setHotels(fetchedHotels);
-      setOffers(fetchedOffers);
-      if (fetchedSettings) {
+      if (Array.isArray(fetchedHotels) && fetchedHotels.length > 0) {
+        setHotels(fetchedHotels);
+      }
+      if (Array.isArray(fetchedOffers) && fetchedOffers.length > 0) {
+        setOffers(fetchedOffers);
+      }
+      if (fetchedSettings && typeof fetchedSettings === 'object') {
         setSiteSettings(fetchedSettings);
       }
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
-      setIsLoading(false);
+      if (!isSilent) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadData();
+    // Initial load: ALWAYS silent background sync so UI is 100% interactive at 0ms
+    loadData(true);
+
+    // Realtime live subscription: automatically updates on any database change in Supabase
+    const unsubscribe = subscribeToSupabaseRealtime((payload) => {
+      console.log('[Supabase Realtime Sync] Received change in:', payload.table, payload.eventType);
+      if (payload.table === 'site_settings' && payload.new?.settings_data) {
+        try {
+          const raw = payload.new.settings_data;
+          const fresh = typeof raw === 'object' ? raw : JSON.parse(raw);
+          setSiteSettings(prev => ({ ...prev, ...fresh }));
+        } catch {
+          loadData(true);
+        }
+      } else {
+        loadData(true);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [loadData]);
 
-  // Sync document.title (browser tab title) with siteSettings
+  // Sync document.title (browser tab title) & dynamic Favicon with siteSettings
   useEffect(() => {
-    if (siteSettings?.siteTitle) {
+    const customTabTitle = siteSettings?.browserTabTitle?.trim();
+    if (customTabTitle) {
+      document.title = customTabTitle;
+    } else if (siteSettings?.siteTitle) {
       document.title = `${siteSettings.siteTitle} | ${siteSettings.siteSubtitle || 'إدارة وتشغيل الفنادق والضيافة الفاخرة'}`;
+    }
+    // Dynamically update browser tab favicon to match company logo or custom favicon
+    const activeFavicon = siteSettings?.faviconUrl || siteSettings?.logoUrl;
+    if (activeFavicon) {
+      updateFavicon(activeFavicon);
     }
   }, [siteSettings]);
 
@@ -133,8 +210,13 @@ export default function App() {
   }, []);
 
   const handleUpdateSiteSettings = async (newSettings: SiteSettings) => {
-    await saveSiteSettingsToDb(newSettings);
+    // 0ms Optimistic UI update: instant update on all pages & components
     setSiteSettings(newSettings);
+    try {
+      await saveSiteSettingsToDb(newSettings);
+    } catch (err) {
+      console.error('Failed to sync site settings to DB:', err);
+    }
   };
 
   // URL Route Sync for deep linking, bookmarking & browser back/forward support
