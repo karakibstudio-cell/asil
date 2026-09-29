@@ -109,16 +109,18 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
       return;
     }
 
-    // Role enforcement: ahmed.tito.h1@gmail.com is Super Admin, all others are controllers
-    const enforcedRole: UserRole = userForm.email.trim().toLowerCase() === 'ahmed.tito.h1@gmail.com' ? 'admin' : 'controller';
+    // Role enforcement: A.hesham is the fixed Super Admin, all others are controllers (مشرفين)
+    const isTargetSuperAdmin = userForm.username.trim().toLowerCase() === 'a.hesham' || userForm.id === 'usr_super_admin_hesham';
+    const enforcedRole: UserRole = isTargetSuperAdmin ? 'admin' : 'controller';
+    const enforcedPassword = isTargetSuperAdmin ? '199991' : (userForm.password || '123456');
 
     setSaving(true);
     try {
       await saveAdminUserToDb({
         ...userForm,
-        username: userForm.username.trim().toLowerCase(),
-        email: userForm.email.trim().toLowerCase(),
-        role: enforcedRole
+        username: isTargetSuperAdmin ? 'A.hesham' : userForm.username.trim(),
+        role: enforcedRole,
+        password: enforcedPassword
       });
       await onRefreshUsers();
       setIsModalOpen(false);
@@ -132,6 +134,10 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
   };
 
   const handleToggleStatus = async (user: AdminUser) => {
+    if (user.username?.toLowerCase() === 'a.hesham' || user.id === 'usr_super_admin_hesham') {
+      onShowToast('لا يمكن تعطيل حساب المدير العام الرئيسي الثابت (A.hesham)', 'error');
+      return;
+    }
     try {
       const updated: AdminUser = {
         ...user,
@@ -147,6 +153,10 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
   };
 
   const confirmDeleteUser = (user: AdminUser) => {
+    if (user.username?.toLowerCase() === 'a.hesham' || user.id === 'usr_super_admin_hesham') {
+      onShowToast('لا يمكن حذف حساب المدير العام الرئيسي الثابت (A.hesham)', 'error');
+      return;
+    }
     if (users.length <= 1) {
       onShowToast('لا يمكن حذف المستخدم الوحيد في النظام', 'error');
       return;

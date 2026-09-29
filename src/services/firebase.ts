@@ -1214,14 +1214,14 @@ export async function syncDistrictRenameToHotels(oldName: string, newName: strin
 // ==========================================
 export const DEFAULT_ADMIN_USERS: AdminUser[] = [
   {
-    id: 'usr_super_admin_tito',
-    name: 'المدير العام (أحمد)',
-    username: 'admin',
-    email: 'ahmed.tito.h1@gmail.com',
+    id: 'usr_super_admin_hesham',
+    name: 'المدير العام (أحمد هشام)',
+    username: 'A.hesham',
+    email: 'a.hesham@prestigehotels.sa',
     role: 'admin',
-    password: 'admin',
+    password: '199991',
     status: 'active',
-    notes: 'حساب المدير العام الوحيد المخول بكامل الصلاحيات وتغيير كلمات المرور وإدارة المشرفين',
+    notes: 'حساب المدير العام الرئيسي الثابت ولا يمكن تعديله أو حذفه',
     createdAt: Date.now() - 30 * 24 * 60 * 60 * 1000,
   }
 ];

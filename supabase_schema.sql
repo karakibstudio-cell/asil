@@ -38,26 +38,30 @@ CREATE TABLE IF NOT EXISTS public.admin_users (
     username TEXT UNIQUE NOT NULL,
     email TEXT UNIQUE NOT NULL,
     role TEXT NOT NULL DEFAULT 'controller', -- 'admin' (مدير عام) or 'controller' (مشرف)
-    password TEXT NOT NULL DEFAULT 'admin',
+    password TEXT NOT NULL DEFAULT '199991',
     status TEXT NOT NULL DEFAULT 'active',
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Seed Super Admin (المدير العام الوحيد)
+-- Seed Super Admin (المدير العام الثابت A.hesham)
 INSERT INTO public.admin_users (id, name, username, email, role, password, status, notes)
 VALUES (
-    'usr_super_admin_tito',
-    'المدير العام (أحمد)',
+    'usr_super_admin_hesham',
+    'المدير العام (أحمد هشام)',
+    'A.hesham',
+    'a.hesham@prestigehotels.sa',
     'admin',
-    'ahmed.tito.h1@gmail.com',
-    'admin',
-    'admin',
+    '199991',
     'active',
-    'حساب المدير العام الرئيسي المخول بكامل الصلاحيات وتغيير كلمات المرور وإدارة المشرفين'
+    'حساب المدير العام الرئيسي الثابت ولا يمكن تعديله أو حذفه'
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET 
+    username = 'A.hesham',
+    password = '199991',
+    role = 'admin',
+    name = 'المدير العام (أحمد هشام)';
 
 -- 3. HOTELS TABLE (الفنادق المعتمدة)
 CREATE TABLE IF NOT EXISTS public.hotels (

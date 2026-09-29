@@ -106,7 +106,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
   // Dashboard Sidebar Navigation
@@ -466,28 +465,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  // Auth Handlers with RBAC (Strictly Registered Users & Super Admin ahmed.tito.h1@gmail.com)
+  // Auth Handlers with RBAC (Strictly Fixed Super Admin A.hesham & Database Registered Users)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginLoading(true);
     setLoginError('');
 
     try {
-      const input = email.trim().toLowerCase();
-      // 1. Check against registered admin users in Database / Supabase / Storage
+      const input = email.trim();
+      const inputLower = input.toLowerCase();
+
+      // 1. Direct Fixed Super Admin Verification (A.hesham / 199991)
+      if ((inputLower === 'a.hesham' || inputLower === 'admin') && password === '199991') {
+        const superAdmin: AdminUser = {
+          id: 'usr_super_admin_hesham',
+          name: 'المدير العام (أحمد هشام)',
+          username: 'A.hesham',
+          email: 'a.hesham@prestigehotels.sa',
+          role: 'admin',
+          status: 'active',
+          createdAt: Date.now()
+        };
+        setCurrentUser(superAdmin);
+        setCurrentAdminUser(superAdmin);
+        setIsAdminLoggedIn(true);
+        onShowToast('مرحباً بكم المدير العام أحمد هشام في لوحة تحكم شركة برستيج 👑', 'success');
+        setLoginLoading(false);
+        return;
+      }
+
+      // 2. Check against registered admin users in Database / Supabase / Storage
       const usersList = adminUsers.length > 0 ? adminUsers : await getAdminUsersFromDb();
       const matched = usersList.find(
-        u => u.email.toLowerCase() === input || (u.username && u.username.toLowerCase() === input)
+        u => u.username?.toLowerCase() === inputLower || u.email?.toLowerCase() === inputLower
       );
 
       if (matched) {
         if (matched.status === 'inactive') {
-          setLoginError('عذراً، هذا الحساب معطل حالياً. يرجى مراجعة المدير العام.');
+          setLoginError('عذراً، هذا الحساب معطل حالياً من قبل المدير العام.');
           setLoginLoading(false);
           return;
         }
-        if (matched.password && matched.password === password) {
-          const isSuper = matched.email.toLowerCase() === 'ahmed.tito.h1@gmail.com';
+        if (matched.password === password) {
+          const isSuper = matched.username?.toLowerCase() === 'a.hesham' || matched.id === 'usr_super_admin_hesham';
           const verifiedUser: AdminUser = {
             ...matched,
             role: isSuper ? 'admin' : 'controller'
@@ -501,15 +521,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // 2. Try Firebase Auth (if identifier is email)
+      // 3. Fallback for Firebase Email Auth (if registered)
       if (auth && input.includes('@') && password) {
         try {
           const res = await signInWithEmailAndPassword(auth, input, password);
           if (res.user) {
-            const isSuper = res.user.email?.toLowerCase() === 'ahmed.tito.h1@gmail.com';
+            const isSuper = inputLower === 'a.hesham@prestigehotels.sa';
             const adminProfile: AdminUser = matched || {
               id: res.user.uid,
-              name: res.user.displayName || (isSuper ? 'المدير العام (أحمد تيتو)' : input.split('@')[0]),
+              name: isSuper ? 'المدير العام (أحمد هشام)' : (res.user.displayName || input.split('@')[0]),
               username: input.split('@')[0],
               email: res.user.email || input,
               role: isSuper ? 'admin' : 'controller',
@@ -527,81 +547,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      // 3. Super Admin Direct Credential Fallback (ahmed.tito.h1@gmail.com or username admin)
-      if ((input === 'ahmed.tito.h1@gmail.com' || input === 'admin') && (password === 'admin' || password === 'admin123' || password === 'admin123456')) {
-        const defaultAdmin: AdminUser = {
-          id: 'usr_super_admin_tito',
-          name: 'المدير العام (أحمد تيتو)',
-          username: 'admin',
-          email: 'ahmed.tito.h1@gmail.com',
-          role: 'admin',
-          status: 'active',
-          createdAt: Date.now()
-        };
-        setCurrentUser(defaultAdmin);
-        setCurrentAdminUser(defaultAdmin);
-        setIsAdminLoggedIn(true);
-        onShowToast('مرحباً بكم المدير العام أحمد تيتو في لوحة تحكم شركة برستيج', 'success');
-      } else {
-        setLoginError('اسم المستخدم / البريد الإلكتروني أو كلمة المرور غير صحيحة');
-      }
+      setLoginError('اسم المستخدم أو كلمة المرور غير صحيحة');
     } catch (err: any) {
       setLoginError(err.message || 'حدث خطأ أثناء تسجيل الدخول');
     } finally {
       setLoginLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    setGoogleLoading(true);
-    setLoginError('');
-    try {
-      const user = await signInWithGoogle();
-      if (user) {
-        const isSuperAdmin = user.email?.toLowerCase() === 'ahmed.tito.h1@gmail.com';
-        
-        // Find existing profile in registered users
-        const usersList = adminUsers.length > 0 ? adminUsers : await getAdminUsersFromDb();
-        const existing = usersList.find(u => u.email.toLowerCase() === user.email?.toLowerCase());
-
-        if (existing && existing.status === 'inactive') {
-          setLoginError('عذراً، هذا الحساب معطل حالياً من قبل المدير العام.');
-          setGoogleLoading(false);
-          return;
-        }
-
-        const googleAdmin: AdminUser = existing ? {
-          ...existing,
-          role: isSuperAdmin ? 'admin' : 'controller'
-        } : {
-          id: user.uid,
-          name: user.displayName || (isSuperAdmin ? 'المدير العام (أحمد تيتو)' : 'مشرف Google'),
-          username: user.email ? user.email.split('@')[0] : 'google_user',
-          email: user.email || 'user@google.com',
-          role: isSuperAdmin ? 'admin' : 'controller',
-          status: 'active',
-          createdAt: Date.now()
-        };
-
-        setCurrentUser(googleAdmin);
-        setCurrentAdminUser(googleAdmin);
-        setIsAdminLoggedIn(true);
-        onShowToast(`تم تسجيل الدخول بنجاح كـ ${googleAdmin.role === 'admin' ? 'المدير العام' : 'مشرف'} (${user.displayName || user.email})`, 'success');
-      }
-    } catch (err: any) {
-      console.warn('Google sign-in error:', err);
-      if (err.code === 'auth/unauthorized-domain') {
-        const currentHost = window.location.hostname;
-        setLoginError(`النطاق الحالي (${currentHost}) غير مضاف في قائمة النطاقات المصرح بها لـ Google OAuth. يمكنك تسجيل الدخول باسم المستخدم (admin) وكلمة المرور مباشرة، أو إضافة النطاق في Firebase Console -> Authentication -> Settings -> Authorized domains.`);
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        // User closed the popup intentionally
-      } else if (err.code === 'auth/popup-blocked') {
-        setLoginError('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة ثم المحاولة مجدداً.');
-      } else {
-        setLoginError(err.message || 'تعذر تسجيل الدخول عبر Google. يمكنك استخدام اسم المستخدم وكلمة المرور.');
-      }
-    } finally {
-      setGoogleLoading(false);
     }
   };
 
@@ -948,19 +898,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-xs font-semibold text-stone-700 block mb-1.5">اسم المستخدم أو البريد الإلكتروني:</label>
+              <label className="text-xs font-semibold text-stone-700 block mb-1.5">اسم المستخدم (Username):</label>
               <input
                 type="text"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin أو ahmed.tito.h1@gmail.com"
+                placeholder="A.hesham أو اسم المستخدم المسجل"
                 className="w-full px-4 py-3 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors dir-ltr text-right"
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-stone-700 block mb-1.5">كلمة المرور:</label>
+              <label className="text-xs font-semibold text-stone-700 block mb-1.5">كلمة المرور (Password):</label>
               <input
                 type="password"
                 required
@@ -977,26 +927,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               className="w-full py-3.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 mt-2 cursor-pointer"
             >
               {loginLoading ? 'جاري التحقق...' : 'تسجيل الدخول'}
-            </button>
-
-            <div className="relative my-4 text-center">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-200" /></div>
-              <span className="relative bg-white px-3 text-[11px] text-stone-400">أو</span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={googleLoading}
-              className="w-full py-3 rounded-xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-300 font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-              </svg>
-              <span>تسجيل الدخول عبر حساب Google / Gmail</span>
             </button>
           </form>
 
@@ -3113,19 +3043,23 @@ CREATE TABLE IF NOT EXISTS public.admin_users (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Seed Super Admin (المدير العام الوحيد)
+-- Seed Super Admin (المدير العام الثابت A.hesham)
 INSERT INTO public.admin_users (id, name, username, email, role, password, status, notes)
 VALUES (
-    'usr_super_admin_tito',
-    'المدير العام (أحمد)',
+    'usr_super_admin_hesham',
+    'المدير العام (أحمد هشام)',
+    'A.hesham',
+    'a.hesham@prestigehotels.sa',
     'admin',
-    'ahmed.tito.h1@gmail.com',
-    'admin',
-    'admin',
+    '199991',
     'active',
-    'حساب المدير العام الرئيسي المخول بكامل الصلاحيات وتغيير كلمات المرور وإدارة المشرفين'
+    'حساب المدير العام الرئيسي الثابت ولا يمكن تعديله أو حذفه'
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET 
+    username = 'A.hesham',
+    password = '199991',
+    role = 'admin',
+    name = 'المدير العام (أحمد هشام)';
 
 -- 3. HOTELS TABLE (الفنادق المعتمدة)
 CREATE TABLE IF NOT EXISTS public.hotels (
