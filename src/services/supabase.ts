@@ -196,7 +196,9 @@ export async function fetchHotelsFromSupabase(): Promise<Hotel[] | null> {
           : (loc.isActive !== false),
         onlineBookingEnabled: typeof row.online_booking_enabled === 'boolean'
           ? row.online_booking_enabled
-          : (row.onlineBookingEnabled !== false),
+          : (typeof loc.onlineBookingEnabled === 'boolean' 
+              ? loc.onlineBookingEnabled 
+              : (row.onlineBookingEnabled === false ? false : true)),
         bookingPolicy: row.booking_policy || row.bookingPolicy || undefined
       };
     });
@@ -211,10 +213,12 @@ export async function upsertHotelToSupabase(hotel: Hotel): Promise<boolean> {
   if (!client) return false;
 
   try {
+    const isOnline = hotel.onlineBookingEnabled === false ? false : true;
     const loc = {
       ...(hotel.location || {}),
       order: typeof hotel.order === 'number' ? hotel.order : 0,
       isActive: hotel.isActive !== false,
+      onlineBookingEnabled: isOnline,
       metaDescription: hotel.metaDescription || ''
     };
 
@@ -253,7 +257,7 @@ export async function upsertHotelToSupabase(hotel: Hotel): Promise<boolean> {
       location: loc,
       keywords: hotel.keywords || '',
       is_active: hotel.isActive !== false,
-      online_booking_enabled: hotel.onlineBookingEnabled !== false,
+      online_booking_enabled: isOnline,
       booking_policy: hotel.bookingPolicy || null,
       order_num: typeof hotel.order === 'number' ? hotel.order : 0,
       updated_at: new Date().toISOString()

@@ -70,6 +70,7 @@ interface AdminRoomsManagerProps {
   hotels: Hotel[];
   onShowToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
   onRefreshHotels?: () => Promise<void>;
+  onUpdateHotel?: (hotel: Hotel) => void;
 }
 
 // Predefined Luxury Hotel Amenities for Easy One-Click Selection
@@ -163,7 +164,8 @@ const SEASON_PRESETS = [
 export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
   hotels,
   onShowToast,
-  onRefreshHotels
+  onRefreshHotels,
+  onUpdateHotel
 }) => {
   // Selected Hotel to Configure
   const [selectedHotelId, setSelectedHotelId] = useState<string>(hotels[0]?.id || '');
@@ -343,20 +345,28 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
   // Toggle Hotel Online Booking Availability
   const handleToggleHotelOnline = async (hotel: Hotel) => {
     const currentStatus = hotel.onlineBookingEnabled !== false;
+    const newStatus = !currentStatus;
     const updatedHotel: Hotel = {
       ...hotel,
-      onlineBookingEnabled: !currentStatus
+      onlineBookingEnabled: newStatus
     };
 
     setHotelList(prev => prev.map(h => h.id === hotel.id ? updatedHotel : h));
+    if (onUpdateHotel) {
+      onUpdateHotel(updatedHotel);
+    }
+
     try {
       await saveHotelToDb(updatedHotel);
       onShowToast(
-        !currentStatus 
+        newStatus 
           ? `تم تفعيل الحجز أونلاين لفندق "${hotel.name}" بنجاح` 
-          : `تم إيقاف الحجز أونلاين لفندق "${hotel.name}"`
+          : `تم إيقاف الحجز أونلاين لفندق "${hotel.name}"`,
+        'success'
       );
-      if (onRefreshHotels) onRefreshHotels();
+      if (onRefreshHotels) {
+        await onRefreshHotels();
+      }
     } catch {
       onShowToast('فشل تحديث حالة إتاحة الفندق', 'error');
     }

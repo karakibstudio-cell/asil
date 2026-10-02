@@ -1618,8 +1618,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* ROOMS & KEYS INVENTORY TAB */}
             {activeTab === 'rooms-inventory' && (
               <AdminRoomsManager 
-                hotels={hotels}
+                hotels={localHotels}
                 onShowToast={onShowToast}
+                onRefreshHotels={onRefreshData}
+                onUpdateHotel={(updatedHotel) => {
+                  setLocalHotels(prev => prev.map(h => h.id === updatedHotel.id ? updatedHotel : h));
+                }}
               />
             )}
 

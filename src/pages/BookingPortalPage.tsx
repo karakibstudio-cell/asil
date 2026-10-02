@@ -432,10 +432,10 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                         <option value="city_مكة المكرمة">🕋 مكة المكرمة</option>
                         <option value="city_المدينة المنورة">🕌 المدينة المنورة</option>
                       </optgroup>
-                      <optgroup label="الفنادق المتاحة للحجز">
-                        {hotels.map(h => (
+                      <optgroup label="الفنادق المتاحة للحجز الإلكتروني">
+                        {hotels.filter(h => h.isActive !== false && h.onlineBookingEnabled !== false).map(h => (
                           <option key={h.id} value={`hotel_${h.id}`}>
-                            {h.name} ({h.city}) {h.onlineBookingEnabled === false ? '• (حجز هاتفي فقط)' : ''}
+                            {h.name} ({h.city})
                           </option>
                         ))}
                       </optgroup>

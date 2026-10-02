@@ -756,7 +756,11 @@ export async function getHotelsFromDb(skipCache = false): Promise<Hotel[]> {
     isActive: h.isActive !== false,
     onlineBookingEnabled: typeof h.onlineBookingEnabled === 'boolean'
       ? h.onlineBookingEnabled
-      : (typeof h.online_booking_enabled === 'boolean' ? h.online_booking_enabled : true),
+      : (typeof h.online_booking_enabled === 'boolean' 
+          ? h.online_booking_enabled 
+          : (typeof (h.location as any)?.onlineBookingEnabled === 'boolean' 
+              ? (h.location as any).onlineBookingEnabled 
+              : true)),
     bookingPolicy: h.bookingPolicy || h.booking_policy || undefined,
     order: typeof h.order === 'number' 
       ? h.order 
