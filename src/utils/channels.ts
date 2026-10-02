@@ -90,8 +90,16 @@ export const CHANNEL_METAS: Record<ChannelType, ChannelMeta> = {
  */
 export function cleanPhoneNumber(raw: string): string {
   if (!raw) return '';
+  let text = raw.trim();
+
+  // If input contains wa.me or phone= URL, extract phone portion
+  const matchWa = text.match(/(?:wa\.me\/|phone=)(\+?\d+)/i);
+  if (matchWa) {
+    text = matchWa[1];
+  }
+
   // Remove all non-numeric characters except +
-  let cleaned = raw.replace(/[^\d+]/g, '');
+  let cleaned = text.replace(/[^\d+]/g, '');
   if (cleaned.startsWith('+')) {
     cleaned = cleaned.substring(1);
   }
@@ -103,7 +111,59 @@ export function cleanPhoneNumber(raw: string): string {
   if (cleaned.startsWith('05') && cleaned.length === 10) {
     cleaned = '966' + cleaned.substring(1);
   }
+  // 9-digit Saudi local without leading zero: 5XXXXXXXX -> 9665XXXXXXXX
+  if (cleaned.startsWith('5') && cleaned.length === 9) {
+    cleaned = '966' + cleaned;
+  }
   return cleaned;
+}
+
+/**
+ * Builds a 100% valid WhatsApp URL from a phone number, Saudi mobile (05X), or existing URL.
+ * Properly attaches custom inquiry message if provided.
+ */
+export function buildWhatsAppLink(rawInput: string | undefined | null, defaultMessage?: string): string {
+  if (!rawInput || !rawInput.trim()) return '';
+
+  const trimmed = rawInput.trim();
+
+  // 1. Direct Chat short links or group links (e.g. wa.me/message/XYZ or chat.whatsapp.com/XYZ)
+  if (trimmed.includes('wa.me/message/') || trimmed.includes('chat.whatsapp.com/')) {
+    let url = trimmed;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    return url;
+  }
+
+  // 2. Existing wa.me or api.whatsapp.com URLs
+  if (trimmed.includes('wa.me/') || trimmed.includes('api.whatsapp.com/')) {
+    let url = trimmed;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+
+    // Fix potential 05 numbers inside wa.me/05XXXXXXXX
+    const waMeMatch = url.match(/^https?:\/\/wa\.me\/(\+?0?5\d{8})(\?.*)?$/i);
+    if (waMeMatch) {
+      const fixedNum = cleanPhoneNumber(waMeMatch[1]);
+      const query = waMeMatch[2] || '';
+      url = `https://wa.me/${fixedNum}${query}`;
+    }
+
+    if (defaultMessage && !url.includes('text=')) {
+      const sep = url.includes('?') ? '&' : '?';
+      url += `${sep}text=${encodeURIComponent(defaultMessage)}`;
+    }
+    return url;
+  }
+
+  // 3. Phone number (local or international)
+  const cleaned = cleanPhoneNumber(trimmed);
+  if (!cleaned) return '';
+
+  const query = defaultMessage ? `?text=${encodeURIComponent(defaultMessage)}` : '';
+  return `https://wa.me/${cleaned}${query}`;
 }
 
 /**
@@ -121,7 +181,7 @@ export function validateChannelValue(type: ChannelType, value: string): string |
     // Should have digits only, between 7 and 15 digits
     if (!/^\d{7,15}$/.test(cleaned)) {
       return type === 'whatsapp' 
-        ? 'يرجى إدخال رقم هاتف صحيح للواتساب (بين 7 إلى 15 رقماً، مثال: +966501234567)'
+        ? 'يرجى إدخال رقم هاتف صحيح للواتساب (بين 7 إلى 15 رقماً، مثال: +966501234567 أو 0501234567)'
         : 'يرجى إدخال رقم هاتف صحيح (مثال: +966501234567 أو 0501234567)';
     }
     return null;
@@ -164,10 +224,7 @@ export function getChannelHref(channel: ContactChannel, customMessage?: string):
   const trimmed = value.trim();
 
   if (type === 'whatsapp') {
-    const cleanNum = cleanPhoneNumber(trimmed);
-    if (!cleanNum) return '#';
-    const textQuery = customMessage ? `?text=${encodeURIComponent(customMessage)}` : '';
-    return `https://wa.me/${cleanNum}${textQuery}`;
+    return buildWhatsAppLink(trimmed, customMessage) || '#';
   }
 
   if (type === 'phone') {

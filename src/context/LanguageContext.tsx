@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 
 export type Language = 'ar' | 'en';
 
@@ -9,7 +9,7 @@ export interface Translations {
   };
 }
 
-// Comprehensive bilingual dictionary for the entire application
+// Comprehensive bilingual dictionary for all platform UI elements
 export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   // Brand & General
   'brand.title': { ar: 'برستيج لإدارة وتشغيل الفنادق', en: 'Prestige Hotels Management & Hospitality' },
@@ -21,7 +21,7 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   // Navigation Links
   'nav.home': { ar: 'الرئيسية', en: 'Home' },
   'nav.hotels': { ar: 'الفنادق', en: 'Hotels' },
-  'nav.offers': { ar: 'الإعلانات', en: 'Ads & Offers' },
+  'nav.offers': { ar: 'الإعلانات والعروض', en: 'Ads & Offers' },
   'nav.packages': { ar: 'باقات الحج والعمرة', en: 'Hajj & Umrah Packages' },
   'nav.about': { ar: 'من نحن', en: 'About Us' },
   'nav.contact': { ar: 'تواصل معنا', en: 'Contact Us' },
@@ -34,11 +34,13 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   'lang.tooltip': { ar: 'التحويل إلى اللغة الإنجليزية (Switch to English)', en: 'Switch to Arabic (التحويل إلى العربية)' },
 
   // Hero Section
+  'hero.welcomeBadge': { ar: 'الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين', en: 'Royal Hospitality Closest to the Two Holy Mosques' },
   'hero.badge': { ar: 'الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين', en: 'Royal Hospitality Closest to the Two Holy Mosques' },
   'hero.title': { ar: 'تسكين في أرقى فنادق مكة المكرمة والمدينة المنورة', en: 'Stay at the Finest Hotels in Makkah & Madinah' },
   'hero.subtitle': { ar: 'نوفر لضيوف الرحمن وشركات السياحة أفضل خيارات الإقامة في فنادق الصف الأول المقابلة للحرم المكي والمسجد النبوي، مع تسهيلات حجز معتمدة ومباشرة.', en: 'Providing pilgrims and travel agencies with premier first-row accommodation directly facing the Grand Mosque and Prophet’s Mosque, with certified direct bookings.' },
   'hero.exploreHotels': { ar: 'استعرض الفنادق المتاحة', en: 'Explore Available Hotels' },
   'hero.contactConsultant': { ar: 'تواصل مع مستشار الحجز', en: 'Contact Booking Consultant' },
+  'hero.contactWhatsApp': { ar: 'تواصل عبر الواتساب', en: 'Chat on WhatsApp' },
   'hero.discoverMore': { ar: 'اكتشف المزيد', en: 'Discover More' },
   'hero.exploreShort': { ar: 'استكشف الفنادق', en: 'Explore Hotels' },
   'hero.zoomMedia': { ar: 'تكبير الصورة', en: 'Zoom Image' },
@@ -91,9 +93,9 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   'accordion.filterDistrict': { ar: 'عرض وتصفية جميع فنادق حي {district} في صفحة الفنادق', en: 'View & filter all hotels of {district} District in Hotels page' },
 
   // Offers Spotlight in Home
-  'home.offers.badge': { ar: 'عروض حصرية محدودة', en: 'Exclusive Limited Offers' },
-  'home.offers.title': { ar: 'تصفح أحدث تصاميم وبوسترات عروض المواسم والمناسبات', en: 'Browse Latest Seasonal & Event Offers and Posters' },
-  'home.offers.btn': { ar: 'استعراض قسم الإعلانات والعروض', en: 'Explore Ads & Offers' },
+  'home.offers.badge': { ar: 'إعلانات وبوسترات حصرية', en: 'Exclusive Ads & Posters' },
+  'home.offers.title': { ar: 'تصفح أحدث إعلانات وبوسترات مواسم برستيج الفندقية', en: 'Browse Latest Prestige Hotel Seasonal Posters & Ads' },
+  'home.offers.btn': { ar: 'استعراض كافة الإعلانات', en: 'Explore All Ads & Offers' },
 
   // Testimonials Section
   'home.testimonials.badge': { ar: 'شهادات نعتز بها', en: 'Valued Guest Reviews' },
@@ -145,6 +147,8 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   'hotels.noHotelsFound': { ar: 'لم نعثر على فنادق مطابقة للبحث', en: 'No matching hotels found' },
   'hotels.noHotelsFoundDesc': { ar: 'جرّب تغيير خيارات التصفية أو توسيع نطاق المسافة لعرض المزيد من فنادق مكة والمدينة المعتمدة.', en: 'Try adjusting your filters or expanding distance to view more certified hotels in Makkah & Madinah.' },
   'hotels.showAll': { ar: 'عرض جميع الفنادق', en: 'Show All Hotels' },
+  'hotels.bookNow': { ar: 'للتواصل والحجز', en: 'Book & Inquire' },
+  'hotels.viewDetails': { ar: 'التفاصيل', en: 'Details' },
 
   // Hotel Card Details & Badges
   'card.from': { ar: 'يبدأ من', en: 'From' },
@@ -191,18 +195,18 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
   'detail.similarSubtitle': { ar: 'خيارات فندقية إضافية تلبي تطلعات ضيوف الرحمن بأعلى مستويات الراحة.', en: 'Additional hotel options meeting pilgrim expectations with utmost comfort.' },
 
   // Offers Page
-  'offers.header.badge': { ar: 'مواسم البركة والخصومات الحصرية', en: 'Seasons of Blessing & Exclusive Discounts' },
-  'offers.header.title': { ar: 'الإعلانات والعروض الخاصة', en: 'Special Ads & Seasonal Offers' },
-  'offers.header.subtitle': { ar: 'استفد من أقوى العروض الموسمية لحجوزات الحج والعمرة، مع خصومات حصرية على باقات التسكين وفنادق مكة والمدينة.', en: 'Benefit from seasonal Hajj & Umrah accommodation deals with exclusive discounts in Makkah and Madinah.' },
+  'offers.header.badge': { ar: 'إعلانات وبوسترات حصرية', en: 'Exclusive Ads & Posters' },
+  'offers.header.title': { ar: 'إعلانات برستيج ومواسم الضيافة', en: 'Prestige Hotel Ads & Hospitality Seasons' },
+  'offers.header.subtitle': { ar: 'تصفح أحدث إعلانات وبوسترات مواسم برستيج الفندقية لحجوزات الحج والعمرة والضيافة الروحانية في مكة المكرمة والمدينة المنورة.', en: 'Browse the latest Prestige Hotel accommodation posters and seasonal deals for Hajj, Umrah, and spiritual stays in Makkah and Madinah.' },
   'offers.promoVideo': { ar: 'فيديو دعائي', en: 'Promo Video' },
-  'offers.posterBadge': { ar: 'بوستر العرض', en: 'Offer Poster' },
+  'offers.posterBadge': { ar: 'بوستر إعلاني', en: 'Ad Poster' },
   'offers.discountOff': { ar: 'خصم {discount}٪', en: '{discount}% OFF' },
-  'offers.endsIn': { ar: 'ينتهي العرض خلال:', en: 'Offer ends in:' },
-  'offers.fullDetails': { ar: 'تفاصيل العرض الكاملة', en: 'Full Offer Details' },
-  'offers.bookViaWhatsApp': { ar: 'احجز هذا العرض عبر الواتساب', en: 'Book This Offer via WhatsApp' },
-  'offers.closeModal': { ar: 'إغلاق النافذة', en: 'Close Window' },
-  'offers.empty.title': { ar: 'لا توجد عروض موسمية نشطة حالياً', en: 'No Active Seasonal Offers Currently' },
-  'offers.empty.desc': { ar: 'تابعونا باستمرار للاطلاع على أحدث عروض مواسم الحج والعمرة والاعتكاف في الحرمين الشريفين.', en: 'Stay tuned for upcoming Hajj, Umrah, and Ramadan stay packages.' },
+  'offers.endsIn': { ar: 'ينتهي الإعلان خلال:', en: 'Offer ends in:' },
+  'offers.fullDetails': { ar: 'عرض تفاصيل الإعلان', en: 'Full Ad Details' },
+  'offers.bookViaWhatsApp': { ar: 'تواصل واستفسر عبر واتساب فوراً', en: 'Inquire on WhatsApp Now' },
+  'offers.closeModal': { ar: 'إغلاق', en: 'Close' },
+  'offers.empty.title': { ar: 'لا توجد إعلانات نشطة حالياً', en: 'No Active Ads Currently' },
+  'offers.empty.desc': { ar: 'تابعونا باستمرار للاطلاع على أحدث إعلانات وبوسترات مواسم الحج والعمرة وفنادق مكة والمدينة.', en: 'Stay tuned for upcoming Hajj, Umrah, and Ramadan accommodation posters.' },
   'offers.empty.cta': { ar: 'استعرض فنادق مكة والمدينة', en: 'Explore Makkah & Madinah Hotels' },
 
   // About Us Page
@@ -305,9 +309,11 @@ export const DICTIONARY: Record<string, { ar: string; en: string }> = {
 
   // Footer Link Keys
   'footer.link.home': { ar: 'الرئيسية', en: 'Home' },
-  'footer.link.hotels': { ar: 'فنادقنا المُدارة', en: 'Hotels' },
+  'footer.link.hotels': { ar: 'جميع فنادق مكة والمدينة', en: 'All Hotels' },
+  'footer.link.hotels-makkah': { ar: 'فنادق مكة المكرمة', en: 'Makkah Hotels' },
+  'footer.link.hotels-madinah': { ar: 'فنادق المدينة المنورة', en: 'Madinah Hotels' },
   'footer.link.packages': { ar: 'باقات الحج والعمرة', en: 'Hajj & Umrah Packages' },
-  'footer.link.offers': { ar: 'الإعلانات', en: 'Ads & Offers' },
+  'footer.link.offers': { ar: 'الإعلانات والعروض', en: 'Ads & Offers' },
   'footer.link.about': { ar: 'من نحن', en: 'About Us' },
   'footer.link.contact': { ar: 'تواصل معنا', en: 'Contact Us' },
   'footer.link.admin': { ar: 'لوحة التحكم', en: 'Admin Dashboard' },
@@ -346,9 +352,16 @@ export const DYNAMIC_TERMS_MAP: Record<string, string> = {
   'المدينة': 'Madinah',
   'فنادق مكة المكرمة': 'Makkah Hotels',
   'فنادق المدينة المنورة': 'Madinah Hotels',
+  'فنادقنا المُدارة': 'Our Managed Hotels',
+  'فنادق مكة والمدينة': 'Makkah & Madinah Hotels',
+  'جميع فنادق مكة والمدينة': 'All Makkah & Madinah Hotels',
+  'الإعلانات والعروض': 'Ads & Offers',
+  'العروض والمناسبات': 'Ads & Offers',
+  'باقات الحج والعمرة': 'Hajj & Umrah Packages',
 
   // Districts
   'أجياد': 'Ajyad',
+  'اجياد': 'Ajyad',
   'محبس الجن': 'Mahbas Al-Jin',
   'العزيزية': 'Al-Aziziyah',
   'المنطقة المركزية': 'Central Area',
@@ -367,9 +380,11 @@ export const DYNAMIC_TERMS_MAP: Record<string, string> = {
   'بضاعة': 'Bida\'ah',
   'سيد الشهداء': 'Sayyid Al-Shuhada',
 
-  // Hotel Names (Arabized -> English Brand Names)
+  // Hotel Names
   'برستيج اجياد': 'Prestige Ajyad Hotel',
   'برستيج أجياد': 'Prestige Ajyad Hotel',
+  'فندق برستيج اجياد': 'Prestige Ajyad Hotel',
+  'فندق برستيج أجياد': 'Prestige Ajyad Hotel',
   'ميسان المقام': 'Maysan Al Maqam Hotel',
   'سويس اوتيل المقام': 'Swissôtel Al Maqam Makkah',
   'سويس أوتيل المقام': 'Swissôtel Al Maqam Makkah',
@@ -395,14 +410,6 @@ export const DYNAMIC_TERMS_MAP: Record<string, string> = {
   // Categories
   'فنادق سنوية': 'Annual Hotels',
   'فنادق العمرة': 'Umrah Hotels',
-
-  // Core Value Pillars
-  'المصداقية المطلقة': 'Absolute Integrity',
-  'رعاية وتواجد ميداني': 'On-Ground Field Support',
-  'عقود مباشرة وأفضل الأسعار': 'Direct Contracts & Best Rates',
-  'ما تراه وتتفق عليه هو ما تجده تماماً، دون مفاجآت في المسافة أو مستوى الغرفة أو الخدمات المتفق عليها.': 'What you see and agree upon is exactly what you receive, with no surprises in distances, room standards, or agreed services.',
-  'فريقنا الميداني في مكة المكرمة والمدينة المنورة على أهبة الاستعداد على مدار الساعة لاستقبالكم وتلبية كافة متطلباتكم.': 'Our field representatives in Makkah and Madinah are on standby 24/7 to welcome you and assist with all your requirements.',
-  'عقود موسمية وسنوية مباشرة مع كبرى فنادق الحرمين تتيح لنا تقديم أسعار حصرية ومنافسة تلبي كافة الميزانيات.': 'Direct seasonal and annual contracts with premier Haramain hotels enable us to offer exclusive, competitive rates for all budgets.',
   'فنادق رمضان': 'Ramadan Hotels',
   'عادي': 'Standard',
   'فنادق الحج': 'Hajj Hotels',
@@ -423,119 +430,28 @@ export const DYNAMIC_TERMS_MAP: Record<string, string> = {
   'إطلالة مميزة': 'Premier View',
   'إطلالة بانورامية': 'Panoramic View',
 
-  // Distance Phrases
-  '٢٥٠ متراً عن ساحة الحرم المكي (شارع أجياد)': '250m from Holy Mosque courtyards (Ajyad St)',
-  '١٠٠ متراً عن ساحة الحرم المكي (إطلالة مباشرة)': '100m from Holy Mosque courtyards (Direct View)',
-  '٣٥٠ متراً عن الحرم المكي (شارع أجياد)': '350m from Holy Mosque (Ajyad St)',
-  '٤٠٠ متراً عن الحرم المكي الشريف': '400m from the Holy Mosque',
-  '١٥٠ متراً عن المسجد النبوي الشريف': '150m from Prophet Mosque',
-  '٥٠ متراً عن ساحات المسجد النبوي': '50m from Prophet Mosque courtyards',
-  '٢٠٠ متراً عن المسجد النبوي الشريف': '200m from Prophet Mosque',
-  '١٠٠ متراً عن ساحة الحرم النبوي': '100m from Prophet Mosque courtyards',
-  '١٥٠ متراً عن ساحة الحرم المكي': '150m from Holy Mosque courtyards',
-  '٥٠ متراً عن ساحة الحرم المكي': '50m from Holy Mosque courtyards',
-
   // Common Amenities & Services
-  'مسافة 4 دقائق سيراً إلى ساحات الحرم المكي': '4-minute walk to Grand Mosque courtyards',
-  'واي فاي فائق السرعة مجاني في الغرف واللوبي': 'Free high-speed Wi-Fi in rooms and lobby',
-  'واي فاي مجاني فائق السرعة': 'Free High-speed Wi-Fi',
   'واي فاي مجاني': 'Free Wi-Fi',
-  'بوفيه مفتوح مع تشكيلة أطباق عالمية وشرقية': 'Open buffet with international and oriental dishes',
-  'إفطار بوفيه فاخر مجاني': 'Complimentary Buffet Breakfast',
-  'إفطار بوفيه مفتوح': 'Open Buffet Breakfast',
+  'واي فاي مجاني فائق السرعة': 'Free High-Speed Wi-Fi',
   'شامل الإفطار': 'Breakfast Included',
   'بدون إفطار': 'Room Only (No Breakfast)',
-  'شامل الإفطار والعشاء': 'Half Board (Breakfast & Dinner)',
-  'شامل جميع الوجبات': 'Full Board (All Meals)',
-  'خدمة استقبال واستعلامات على مدار 24 ساعة': '24/7 reception and concierge service',
+  'بوفيه مفتوح': 'Open Buffet',
+  'بوفيه إفطار فاخر': 'Gourmet Breakfast Buffet',
+  'خدمة الغرف': 'Room Service',
   'خدمة استقبال على مدار 24 ساعة': '24/7 Reception Desk',
-  'خدمة كونسيرج واستقبال 24/7': '24/7 Concierge & Reception',
-  'خدمة كونسيرج وغرف VIP 24 ساعة': '24/7 Concierge & VIP room service',
-  'خدمة الغرف على مدار 24 ساعة': '24/7 Room Service',
-  'تكييف مركزي متطور مع تحكم فردي': 'Advanced central AC with individual control',
+  'خدمة استقبال واستعلامات على مدار 24 ساعة': '24/7 Reception & Concierge',
   'تكييف مركزي': 'Central Air Conditioning',
-  'مصاعد حديثة وسريعة': 'Modern high-speed elevators',
-  'مصاعد سريعة ومهيأة لكبار السن': 'High-Speed Elevators for Seniors',
-  'شاشات تلفزيون ذكية ونظام صوتي متصل بالحرم': 'Smart TVs with direct Haram audio system',
-  'شاشات تلفزيون ذكية': 'Smart LED TV',
-  'إطلالة مباشرة على ساحات الحرم المكي الشريف': 'Direct view of the Holy Mosque courtyards',
-  'دقيقتان سيراً فقط لساحات الصلاة': 'Only 2-minute walk to prayer courtyards',
-  'بوفيه إفطار ملكي مفتوح يومياً': 'Daily royal open buffet breakfast',
-  'مصلى خاص متصل بنظام صوت الحرم المكي': 'Private prayer hall linked to Haram audio',
-  'مصلى خاص داخل الفندق': 'In-Hotel Prayer Hall',
-  'إنترنت عالي السرعة في جميع المرافق': 'High-speed internet in all areas',
-  'إنترنت فائق السرعة مجاني': 'Free high-speed internet',
-  'حافلات نقل ترددية مجانية على مدار 24 ساعة': '24/7 Free Shuttle Bus to Haram',
-  'حافلات ترددية للحرم': 'Haram Shuttle Service',
+  'مصاعد سريعة': 'High-Speed Elevators',
+  'مصاعد سريعة للساحة': 'Fast Elevators to Courtyard',
+  'مصلى خاص': 'In-Hotel Prayer Hall',
   'حافلات ترددية': 'Shuttle Buses',
-  'مطاعم عالمية ومحلية راقية': 'Fine Dining & Global Restaurants',
+  'حافلات ترددية للحرم': 'Haram Shuttle Service',
   'مطاعم فاخرة': 'Luxury Restaurants',
   'مطعم فاخر': 'Fine Dining Restaurant',
+  'مواقف سيارات': 'Parking Area',
   'موقف سيارات خاص': 'Private Parking',
-  'مواقف سيارات خاصة وخدمة صف السيارات': 'Private parking & valet service',
-  'إطلالة بانورامية ساحرة على الكعبة المشرفة والحرم': 'Panoramic breathtaking view of the Holy Kaaba & Haram',
-  'مدخل مباشر من أبراج البيت إلى ساحات الحرم': 'Direct entrance from Abraj Al-Bait to Haram courtyards',
-  'مطاعم عالمية فاخرة تقدم أرقى المأكولات': 'Luxury global fine-dining restaurants',
-  'خدمة غرف فاخرة وخدمة المساعد الشخصي': 'Luxury room service & butler service',
-  'مركز أعمال وصالونات استقبال فخمة': 'Business center & luxury VIP lounges',
-  'خطوات معدودة من ساحة الحرم النبوي الشريف': 'Few steps from the Prophet Mosque courtyards',
-  'تصميم عربي وإسلامي فاخر مفعم بالسكينة': 'Luxurious Islamic & Arabic design filled with serenity',
-  'بوفيه إفطار عالمي متنوع وغني': 'Rich international buffet breakfast',
-  'صالون شاي ومقهى راقٍ في بهو الفندق': 'Elegant tea lounge & café in hotel lobby',
-  'خدمات استقبال وإرشاد على مدار الساعة': '24/7 reception & tour assistance',
-  'إطلالة فريدة ومباشرة على ساحات المسجد النبوي الشريف': 'Unique direct view of Prophet Mosque courtyards',
-  'أجنحة عائلية وغرف تنفيذية مجهزة بأحدث وسائل الراحة': 'Family suites & executive rooms with state-of-the-art comforts',
-  'مطاعم متعددة تقدم بوفيهات مفتوحة وقوائم طعام شرقية وغربية': 'Multiple restaurants serving international & oriental buffets',
-  'خدمة تنظيف وغسيل الملابس السريعة': 'Fast laundry and dry cleaning service',
-  'مكتب حجوزات وتنظيم زيارات المزارات والمعالم الدينية': 'Tour & historical site excursions desk',
-
-  // Room Types
-  'غرفة ثنائية قياسية': 'Standard Twin / Double Room',
-  'غرفة ثنائية': 'Twin Room',
-  'غرفة ثلاثية': 'Triple Room',
-  'غرفة رباعية عائلية': 'Family Quad Room',
-  'غرفة رباعية': 'Quad Room',
-  'جناح جونيور': 'Junior Suite',
-  'جناح تنفيذي مطل على الحرم': 'Executive Suite with Haram View',
-  'جناح رئاسي مطل على الكعبة': 'Presidential Suite with Kaaba View',
-  'سرير كينج': 'King Bed',
-  'سريران مفردان': '2 Single Beds',
-  '3 أسرة مفردة': '3 Single Beds',
-  '4 أسرة مفردة': '4 Single Beds',
-
-  // Default Testimonials
-  'المهندس عبدالرحمن السعيد': 'Eng. Abdulrahman Al-Saeed',
-  'معتمر من دولة الكويت': 'Pilgrim from Kuwait',
-  'تجربة إقامة تفوق الوصف! المصداقية العالية في حجز الغرفة المطلة وسرعة تسجيل الدخول بدون أي انتظار جعلت رحلتنا مع الوالدة في قمة الراحة والسكينة.':
-    'An accommodation experience beyond words! The high credibility in reserving the view room and rapid check-in with zero waiting made our trip with my mother deeply serene and comfortable.',
-  'الأستاذ طارق بن فيصل': 'Mr. Tariq Bin Faisal',
-  'منظم رحلات سياحية - الإمارات': 'Tour Operator - UAE',
-  'نتعامل مع شركة برستيج لتسكين مجموعاتنا منذ ٤ سنوات. الالتزام بالوعود والأسعار المميزة والمتابعة الميدانية الدائمة تجعلهم شريكنا الأول والموثوق دائماً.':
-    'We have partnered with Prestige Hotels Management for our group accommodation for 4 years. Punctual commitments, premier rates, and continuous on-ground support make them our foremost trusted partner.',
-  'الدكتور محمد فاروق': 'Dr. Mohamed Farouk',
-  'حاج ومعتمر من مصر': 'Pilgrim from Egypt',
-  'قرب الفندق المباشر من ساحة الحرم المكي ساعد والدي المسن على أداء كل الصلوات في المسجد الحرام دون مشقة. شكراً لفريق شركة برستيج على حسن الضيافة والاهتمام.':
-    'The hotel’s direct proximity to the Grand Mosque courtyards helped my elderly father attend all prayers with total ease. Thank you to the Prestige Hotels Management team for outstanding hospitality and care.',
-
-  // Default Offers
-  'عرض رمضان المبارك - فندق برستيج اجياد': 'Blessed Ramadan Offer - Prestige Ajyad Hotel',
-  'إقامة فاخرة على بُعد خطوات من الحرم المكي مع بوفيه إفطار وسحور فاخر.':
-    'Luxury accommodation steps from the Holy Mosque with gourmet Iftar & Suhoor buffet.',
-  'عش الأجواء الروحانية لشهر رمضان المبارك في فندق برستيج أجياد بالقرب من ساحة الحرم المكي الشريف.\n\nيشمل العرض:\n- إقامة راقية في غرف وأجنحة مجهزة.\n- بوفيه إفطار وسحور ملكي يومياً.\n- خدمة استقبال ومساعدة على مدار الساعة.\n- إنترنت سريع مجاني.':
-    'Experience the spiritual atmosphere of the blessed month of Ramadan at Prestige Ajyad Hotel near the Holy Mosque courtyards.\n\nOffer includes:\n- Elegant stay in equipped rooms & suites.\n- Daily royal Iftar & Suhoor buffet.\n- 24/7 reception and assistance.\n- Free high-speed internet.',
-  'عرض رمضان': 'Ramadan Offer',
-  'باقة العمرة المتميزة - فندق ميسان المقام': 'Premium Umrah Package - Maysan Al-Maqam Hotel',
-  'إطلالة بانورامية مباشرة على ساحات الحرم وبوفيه ملكي مفتوح.':
-    'Direct panoramic view of Haram courtyards with open royal buffet.',
-  'استمتع بأعلى درجات الراحة والسكينة في ميسان المقام على بُعد 100 متر فقط من ساحة الحرم.\n\nيشمل العرض ترقية مجانية للغرف حسب التوافر وبوفيه إفطار ملكي متكامل.':
-    'Enjoy utmost serenity and comfort at Maysan Al-Maqam, only 100 meters from Haram courtyards.\n\nOffer includes complimentary room upgrade subject to availability and full royal breakfast buffet.',
-  'باقة مميزة': 'Special Package',
-  'عرض الإقامة الاقتصادية والعائلية - فندق اركان بكه': 'Budget & Family Stay Offer - Arkan Bakkah Hotel',
-  'غرف عائلية واسعة مع حافلات نقل ترددي مجاني للحرم على مدار 24 ساعة.':
-    'Spacious family rooms with 24/7 complimentary shuttle buses to the Holy Mosque.',
-  'الخيار الأفضل للمجموعات والعائلات الباحثين عن إقامة مريحة وواسعة مع مواصلات مجانية سريعة ومستمرة لبوابات الحرم المكي.':
-    'The top choice for families and groups seeking spacious, comfortable stays with free 24/7 rapid shuttle transit to Haram gates.',
-  'نقل مجاني 24/7': 'Free 24/7 Shuttle'
+  'شاشات تلفزيون ذكية': 'Smart LED TV',
+  'مكتب استقبال 24/7': '24/7 Front Desk'
 };
 
 interface LanguageContextType {
@@ -545,6 +461,7 @@ interface LanguageContextType {
   isRtl: boolean;
   t: (key: string, fallback?: string) => string;
   translateDynamic: (text: string) => string;
+  translateAsync: (text: string) => Promise<string>;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
@@ -564,12 +481,24 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
     }
   });
 
+  // Persistent dynamic translation cache in memory and localStorage
+  const translationCache = useRef<Record<string, string>>((() => {
+    try {
+      const saved = localStorage.getItem('prestige_translations_cache');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  })());
+
+  const [, setCacheVersion] = useState(0);
   const isRtl = language === 'ar';
 
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
     try {
       localStorage.setItem('diy_app_language', lang);
+      // Sync google translate cookie for full DOM translation bridge
+      document.cookie = `googtrans=/ar/${lang}; path=/;`;
     } catch {}
   }, []);
 
@@ -578,12 +507,127 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
       const next = prev === 'ar' ? 'en' : 'ar';
       try {
         localStorage.setItem('diy_app_language', next);
+        document.cookie = `googtrans=/ar/${next}; path=/;`;
       } catch {}
       return next;
     });
   }, []);
 
-  // Sync HTML & Body tags lang, dir, and typography classes
+  // Async neural translation fetcher with caching
+  const translateAsync = useCallback(async (text: string): Promise<string> => {
+    if (!text || language === 'ar') return text;
+    const trimmed = text.trim();
+    if (!trimmed) return text;
+
+    // Check memory cache
+    const cached = translationCache.current[trimmed];
+    if (cached) return cached;
+
+    // Check direct dictionary
+    if (DYNAMIC_TERMS_MAP[trimmed]) return DYNAMIC_TERMS_MAP[trimmed];
+    for (const entry of Object.values(DICTIONARY)) {
+      if (entry.ar === trimmed) return entry.en;
+    }
+
+    try {
+      const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=ar&tl=en&dt=t&q=${encodeURIComponent(trimmed)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && Array.isArray(data[0])) {
+          const translated = data[0].map((chunk: any) => chunk[0] || '').join('');
+          if (translated) {
+            translationCache.current[trimmed] = translated;
+            try {
+              localStorage.setItem('prestige_translations_cache', JSON.stringify(translationCache.current));
+            } catch {}
+            setCacheVersion((v) => v + 1);
+            return translated;
+          }
+        }
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    return trimmed;
+  }, [language]);
+
+  // Synchronous translation with smart NLP tokenizer and background async hydration
+  const translateDynamic = useCallback((text: string): string => {
+    if (language === 'ar' || !text) return text;
+    const trimmed = text.trim();
+    if (!trimmed) return text;
+
+    // 1. Memory Cache hit
+    if (translationCache.current[trimmed]) {
+      return translationCache.current[trimmed];
+    }
+
+    // 2. Direct hit in terms map
+    if (DYNAMIC_TERMS_MAP[trimmed]) {
+      return DYNAMIC_TERMS_MAP[trimmed];
+    }
+
+    // 3. Direct hit in dictionary
+    for (const entry of Object.values(DICTIONARY)) {
+      if (entry.ar === trimmed) {
+        return entry.en;
+      }
+    }
+
+    // 4. Pattern match for districts: "حي {name}" -> "{name} District"
+    if (trimmed.startsWith('حي ')) {
+      const distName = trimmed.replace('حي ', '').trim();
+      const translatedDist = DYNAMIC_TERMS_MAP[distName] || distName;
+      return `${translatedDist} District`;
+    }
+
+    // 5. Pattern match for walking minutes: "{X} دقائق سيراً للحرم"
+    const walkMatch = trimmed.match(/^(\d+)\s*دقائق\s*سيراً/);
+    if (walkMatch) {
+      return `${walkMatch[1]} min walk to Haram`;
+    }
+
+    // 6. Pattern match for distance: "{X} متراً عن ساحة..." or "{X}م من..."
+    const distMatch = trimmed.match(/^([\d\u0660-\u0669]+)\s*(?:متراً|متر|م)\s*(?:عن|من)\s*(.*)/);
+    if (distMatch) {
+      const rawNum = distMatch[1].replace(/[٠-٩]/g, (d) => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)]);
+      const target = distMatch[2].includes('نبوي') ? 'Prophet Mosque' : 'Haram courtyards';
+      return `${rawNum}m from ${target}`;
+    }
+
+    // 7. Pattern match for hotel count: "فندق {X} من {Y}"
+    const countMatch = trimmed.match(/فندق\s*(\d+)\s*من\s*(\d+)/);
+    if (countMatch) {
+      return `Hotel ${countMatch[1]} of ${countMatch[2]}`;
+    }
+
+    // 8. Pattern match for reviews: "({X} تقييم)"
+    const revMatch = trimmed.match(/\((\d+)\s*تقييم\)/);
+    if (revMatch) {
+      return `(${revMatch[1]} reviews)`;
+    }
+
+    // 9. If text contains Arabic characters and is longer, queue background async translation
+    if (/[\u0600-\u06FF]/.test(trimmed) && trimmed.length > 3) {
+      translateAsync(trimmed);
+    }
+
+    return text;
+  }, [language, translateAsync]);
+
+  // Dictionary key translator
+  const t = useCallback((key: string, fallback?: string): string => {
+    if (DICTIONARY[key]) {
+      return DICTIONARY[key][language];
+    }
+    if (language === 'en' && fallback) {
+      return translateDynamic(fallback);
+    }
+    return fallback || key;
+  }, [language, translateDynamic]);
+
+  // Sync HTML & Body tags
   useEffect(() => {
     document.documentElement.lang = language;
     document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
@@ -599,70 +643,91 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
     }
   }, [language, isRtl]);
 
-  // Dynamic helper for translating raw strings like city names, amenities, distances, etc.
-  const translateDynamic = useCallback((text: string): string => {
-    if (language === 'ar' || !text) return text;
-    const trimmed = text.trim();
+  // Automated DOM Auto-Translator for dynamic arbitrary text when in English mode
+  useEffect(() => {
+    if (language !== 'en') return;
 
-    // 1. Direct hit in terms map
-    if (DYNAMIC_TERMS_MAP[trimmed]) {
-      return DYNAMIC_TERMS_MAP[trimmed];
-    }
+    let isCancelled = false;
+    const arabicRegex = /[\u0600-\u06FF]/;
+    const ignoredTags = new Set(['SCRIPT', 'STYLE', 'INPUT', 'TEXTAREA', 'CODE', 'PRE']);
 
-    // 2. Direct hit in dictionary
-    for (const entry of Object.values(DICTIONARY)) {
-      if (entry.ar === trimmed) {
-        return entry.en;
+    const translateElementNodes = (node: Node) => {
+      if (isCancelled) return;
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.nodeValue?.trim();
+        if (text && arabicRegex.test(text)) {
+          // Check synchronous dictionary / cache first
+          if (translationCache.current[text]) {
+            node.nodeValue = translationCache.current[text];
+            return;
+          }
+          if (DYNAMIC_TERMS_MAP[text]) {
+            node.nodeValue = DYNAMIC_TERMS_MAP[text];
+            return;
+          }
+          // Fetch dynamic translation
+          translateAsync(text).then((translated) => {
+            if (!isCancelled && translated && translated !== text && node.parentNode) {
+              node.nodeValue = translated;
+            }
+          }).catch(() => {});
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        if (ignoredTags.has(el.tagName) || el.getAttribute('contenteditable') === 'true') {
+          return;
+        }
+        // Also translate placeholders and titles
+        const placeholder = el.getAttribute('placeholder');
+        if (placeholder && arabicRegex.test(placeholder)) {
+          translateAsync(placeholder).then((trans) => {
+            if (!isCancelled && trans) el.setAttribute('placeholder', trans);
+          }).catch(() => {});
+        }
+        const title = el.getAttribute('title');
+        if (title && arabicRegex.test(title)) {
+          translateAsync(title).then((trans) => {
+            if (!isCancelled && trans) el.setAttribute('title', trans);
+          }).catch(() => {});
+        }
+
+        for (let i = 0; i < node.childNodes.length; i++) {
+          translateElementNodes(node.childNodes[i]);
+        }
       }
-    }
+    };
 
-    // 3. Pattern match for districts: "حي {name}" -> "{name} District"
-    if (trimmed.startsWith('حي ')) {
-      const distName = trimmed.replace('حي ', '').trim();
-      const translatedDist = DYNAMIC_TERMS_MAP[distName] || distName;
-      return `${translatedDist} District`;
-    }
+    // Initial pass on root
+    const rootEl = document.getElementById('root') || document.body;
+    translateElementNodes(rootEl);
 
-    // 4. Pattern match for walking minutes: "{X} دقائق سيراً للحرم"
-    const walkMatch = trimmed.match(/^(\d+)\s*دقائق\s*سيراً/);
-    if (walkMatch) {
-      return `${walkMatch[1]} min walk to Haram`;
-    }
+    // Dynamic mutation observer for newly mounted elements
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((addedNode) => {
+            translateElementNodes(addedNode);
+          });
+        } else if (mutation.type === 'characterData' && mutation.target) {
+          const text = mutation.target.nodeValue?.trim();
+          if (text && arabicRegex.test(text) && !translationCache.current[text]) {
+            translateElementNodes(mutation.target);
+          }
+        }
+      }
+    });
 
-    // 5. Pattern match for distance: "{X} متراً عن ساحة..." or "{X}م من..."
-    const distMatch = trimmed.match(/^([\d\u0660-\u0669]+)\s*(?:متراً|متر|م)\s*(?:عن|من)\s*(.*)/);
-    if (distMatch) {
-      const rawNum = distMatch[1].replace(/[٠-٩]/g, (d) => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)]);
-      const target = distMatch[2].includes('نبوي') ? 'Prophet Mosque' : 'Haram courtyards';
-      return `${rawNum}m from ${target}`;
-    }
+    observer.observe(rootEl, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
 
-    // 6. Pattern match for count: "فندق {X} من {Y}"
-    const countMatch = trimmed.match(/فندق\s*(\d+)\s*من\s*(\d+)/);
-    if (countMatch) {
-      return `Hotel ${countMatch[1]} of ${countMatch[2]}`;
-    }
-
-    // 7. Pattern match for reviews: "({X} تقييم)"
-    const revMatch = trimmed.match(/\((\d+)\s*تقييم\)/);
-    if (revMatch) {
-      return `(${revMatch[1]} reviews)`;
-    }
-
-    return text;
-  }, [language]);
-
-  // Translator function for dictionary keys with fallback
-  const t = useCallback((key: string, fallback?: string): string => {
-    if (DICTIONARY[key]) {
-      return DICTIONARY[key][language];
-    }
-    // If in English and a fallback exists, dynamically translate it
-    if (language === 'en' && fallback) {
-      return translateDynamic(fallback);
-    }
-    return fallback || key;
-  }, [language, translateDynamic]);
+    return () => {
+      isCancelled = true;
+      observer.disconnect();
+    };
+  }, [language, translateAsync]);
 
   return (
     <LanguageContext.Provider
@@ -672,7 +737,8 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
         toggleLanguage,
         isRtl,
         t,
-        translateDynamic
+        translateDynamic,
+        translateAsync
       }}
     >
       {children}
@@ -689,7 +755,8 @@ export const useLanguage = (): LanguageContextType => {
       toggleLanguage: () => {},
       isRtl: true,
       t: (_key: string, fallback?: string) => fallback || _key,
-      translateDynamic: (text: string) => text
+      translateDynamic: (text: string) => text,
+      translateAsync: async (text: string) => text
     };
   }
   return context;

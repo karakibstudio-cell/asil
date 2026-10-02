@@ -269,7 +269,7 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
         muted={isMuted}
         poster={poster}
         autoPlay={autoPlay}
-        preload="auto"
+        preload={autoPlay ? 'auto' : 'metadata'}
         onPlay={() => {
           setIsPlaying(true);
           setIsLoading(false);

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Hotel, FilterState, HotelCategory, ALL_HOTEL_CATEGORIES } from '../types';
+import { Hotel, FilterState, HotelCategory, ALL_HOTEL_CATEGORIES, SiteSettings } from '../types';
 import { HotelCard, HotelCardSkeleton } from '../components/HotelCard';
 import { EditableText } from '../components/EditableText';
 import { useLanguage } from '../context/LanguageContext';
@@ -24,6 +24,7 @@ interface HotelsPageProps {
   onSelectHotel: (hotelId: string) => void;
   initialCity?: string;
   initialDistrict?: string;
+  siteSettings?: SiteSettings;
 }
 
 export const HotelsPage: React.FC<HotelsPageProps> = ({
@@ -31,7 +32,8 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
   isLoading = false,
   onSelectHotel,
   initialCity,
-  initialDistrict
+  initialDistrict,
+  siteSettings
 }) => {
   const { language, t, translateDynamic, isRtl } = useLanguage();
   const [filters, setFilters] = useState<FilterState>({
@@ -631,6 +633,7 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
                 hotel={hotel}
                 onClick={() => onSelectHotel(hotel.slug || hotel.id)}
                 onSelect={() => onSelectHotel(hotel.slug || hotel.id)}
+                siteSettings={siteSettings}
               />
             ))}
           </div>

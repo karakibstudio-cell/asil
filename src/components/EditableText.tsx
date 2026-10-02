@@ -94,25 +94,23 @@ export const EditableText: React.FC<EditableTextProps> = ({
     setIsEditing(true);
   };
 
-  const handleSave = async (e?: React.MouseEvent | React.FormEvent) => {
+  const handleSave = (e?: React.MouseEvent | React.FormEvent) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
-    setIsSaving(true);
-    try {
-      await updateContent(contentKey, {
-        text: draftText,
-        color: draftColor,
-        fontSize: draftFontSize,
-        fontWeight: draftFontWeight,
-      });
-      setIsEditing(false);
-    } catch (err) {
-      console.error('Failed to save editable text:', err);
-    } finally {
-      setIsSaving(false);
-    }
+    const payload = {
+      text: draftText,
+      color: draftColor,
+      fontSize: draftFontSize,
+      fontWeight: draftFontWeight,
+    };
+    // Close modal instantly (0ms instant response)
+    setIsEditing(false);
+    // Background save
+    updateContent(contentKey, payload).catch((err) => {
+      console.error('Failed to save editable text in background:', err);
+    });
   };
 
   const handleCancel = (e?: React.MouseEvent) => {

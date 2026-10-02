@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Hotel, SiteSettings } from '../types';
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from './BookingIcons';
-import { getFirstActiveWhatsApp, getChannelHref } from '../utils/channels';
+import { getFirstActiveWhatsApp, getChannelHref, buildWhatsAppLink } from '../utils/channels';
 import { sendContactMessage } from '../services/firebase';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -63,12 +63,11 @@ export const HotelBookingModal: React.FC<HotelBookingModalProps> = ({
 
   // WhatsApp Calculation
   const siteWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
-  const targetPhone = hotel.hotelWhatsApp || siteWhatsApp?.value || '+966501234567';
+  const targetPhone = hotel.hotelWhatsApp || siteWhatsApp?.value || siteSettings?.officeWhatsApp || siteSettings?.primaryPhone || '';
   const customMessage = language === 'en'
     ? `Hello, I would like to book an accommodation at *${hotel.nameEn || hotel.name}* (${translateDynamic(hotel.city)} - ${translateDynamic(hotel.district)} District) through Prestige Hotels Management.\nPlease provide available rates and confirmation.`
     : `السلام عليكم ورحمة الله، أود حجز إقامة في *${hotel.name}* (${hotel.city} - حي ${hotel.district}) عبر شركة برستيج لإدارة وتشغيل الفنادق.\nيرجى تزويدي بالأسعار المتاحة وتأكيد الحجز.`;
-  const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
-  const whatsAppHref = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(customMessage)}`;
+  const whatsAppHref = buildWhatsAppLink(targetPhone, customMessage);
 
   // Default fallback URLs if not explicitly customized
   const bookingUrl = hotel.bookingUrl || `https://www.booking.com/searchresults.ar.html?ss=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`;

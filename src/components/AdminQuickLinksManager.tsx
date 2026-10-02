@@ -16,7 +16,8 @@ import {
   ArrowDown,
   RotateCcw,
   Layers,
-  Compass
+  Compass,
+  Building2
 } from 'lucide-react';
 
 interface AdminQuickLinksManagerProps {
@@ -37,7 +38,7 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
   const [form, setForm] = useState<QuickLinkItem>({
     id: '',
     title: '',
-    targetPage: 'home',
+    targetPage: 'hotels',
     url: '',
     isActive: true,
     order: 0,
@@ -52,14 +53,16 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
     link: null
   });
 
-  const standardPages: { key: string; label: string }[] = [
-    { key: 'home', label: 'الرئيسية (الصفحة الأولى)' },
-    { key: 'hotels', label: 'فنادق مكة والمدينة' },
-    { key: 'packages', label: 'باقات الحج والعمرة' },
-    { key: 'offers', label: 'العروض والمناسبات' },
-    { key: 'about', label: 'من نحن' },
-    { key: 'contact', label: 'تواصل معنا' },
-    { key: 'custom_url', label: 'رابط خارجي أو مخصص (URL)' },
+  const standardPages: { key: string; label: string; defaultTitle: string }[] = [
+    { key: 'home', label: 'الرئيسية (الصفحة الأولى)', defaultTitle: 'الرئيسية' },
+    { key: 'hotels', label: 'فنادق مكة والمدينة (الكل)', defaultTitle: 'فنادق مكة والمدينة' },
+    { key: 'hotels-makkah', label: '🕋 فنادق مكة المكرمة فقط', defaultTitle: 'فنادق مكة المكرمة' },
+    { key: 'hotels-madinah', label: '🕌 فنادق المدينة المنورة فقط', defaultTitle: 'فنادق المدينة المنورة' },
+    { key: 'offers', label: '📢 صفحة الإعلانات والعروض', defaultTitle: 'الإعلانات والعروض' },
+    { key: 'packages', label: 'باقات الحج والعمرة', defaultTitle: 'باقات الحج والعمرة' },
+    { key: 'about', label: 'من نحن', defaultTitle: 'من نحن' },
+    { key: 'contact', label: 'تواصل معنا', defaultTitle: 'تواصل معنا' },
+    { key: 'custom_url', label: '🔗 رابط خارجي أو مخصص (URL)', defaultTitle: 'رابط خارجي' },
   ];
 
   const handleToggleActive = (id: string, e?: React.MouseEvent) => {
@@ -85,7 +88,7 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
     setForm({
       id: 'quick_' + Date.now(),
       title: '',
-      targetPage: 'hotels',
+      targetPage: 'hotels-makkah',
       url: '',
       isActive: true,
       order: currentLinks.length + 1,
@@ -98,6 +101,17 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
     setEditingLinkId(link.id);
     setForm({ ...link });
     setIsModalOpen(true);
+  };
+
+  const handleTargetPageChange = (newTarget: string) => {
+    const match = standardPages.find(p => p.key === newTarget);
+    // If title was empty or was a default title from another option, auto-fill standard title
+    const isPreviousDefault = standardPages.some(p => p.defaultTitle === form.title);
+    setForm(prev => ({
+      ...prev,
+      targetPage: newTarget,
+      title: (!prev.title || isPreviousDefault) && match ? match.defaultTitle : prev.title
+    }));
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -190,7 +204,7 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
             </h3>
           </div>
           <p className="text-xs text-stone-500 mt-1">
-            تحكم كامل في إظهار أو إخفاء أي رابط، تعديل المسميات، وإضافة روابط جديدة تظهر لزوار الموقع في الفوتر
+            تحكم كامل في روابط الفوتر، مع إمكانية إضافة رابط مخصص لفنادق مكة المكرمة لوحدها أو فنادق المدينة المنورة لوحدها، وصفحة الإعلانات
           </p>
         </div>
 
@@ -198,7 +212,7 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
           <button
             type="button"
             onClick={handleResetToDefaults}
-            className="px-3 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            className="px-3 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             title="استعادة الروابط الافتراضية"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -208,7 +222,7 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
           <button
             type="button"
             onClick={handleOpenAdd}
-            className="px-4 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0"
+            className="px-4 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>+ إضافة رابط جديد</span>
@@ -314,7 +328,7 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
                 <button
                   type="button"
                   onClick={(e) => handleToggleActive(link.id, e)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer ${
                     isVisible
                       ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300'
                       : 'bg-stone-200 text-stone-600 hover:bg-stone-300 border border-stone-300'
@@ -338,17 +352,17 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => handleOpenEdit(link)}
-                  className="p-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors"
+                  className="p-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors cursor-pointer"
                   title="تعديل الرابط"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                 </button>
 
-                {/* Delete Button (Allowed for all or custom) */}
+                {/* Delete Button */}
                 <button
                   type="button"
                   onClick={() => confirmDelete(link)}
-                  className="p-2 rounded-xl bg-stone-100 hover:bg-red-500 hover:text-white text-stone-600 transition-colors"
+                  className="p-2 rounded-xl bg-stone-100 hover:bg-red-500 hover:text-white text-stone-600 transition-colors cursor-pointer"
                   title="حذف الرابط"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -373,44 +387,29 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
                     {editingLinkId ? 'تعديل الرابط السريع' : 'إضافة رابط سريع جديد'}
                   </h3>
                   <p className="text-xs text-stone-500">
-                    حدد عنوان الرابط والوجهة وحالة الظهور للزوار
+                    حدد الوجهة (فنادق مكة، فنادق المدينة، الإعلانات...) وعنوان الرابط
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-500 transition-colors"
+                className="p-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-500 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleSave} className="space-y-4">
-              {/* Link Title */}
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">
-                  عنوان الرابط (الاسم الظاهر): <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="مثال: فنادق رمضان، باقات العمرة، سياسة الخصوصية"
-                  className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none"
-                />
-              </div>
-
               {/* Target Destination Dropdown */}
               <div>
                 <label className="text-xs font-bold text-stone-700 block mb-1">
-                  وجهة الرابط (الصفحة المستهدفة): <span className="text-red-500">*</span>
+                  وجهة الرابط (الصفحة أو القسم المستهدف): <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={form.targetPage || 'home'}
-                  onChange={(e) => setForm({ ...form, targetPage: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                  value={form.targetPage || 'hotels-makkah'}
+                  onChange={(e) => handleTargetPageChange(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm font-semibold focus:border-[#C9A24B] focus:bg-white focus:outline-none cursor-pointer"
                 >
                   {standardPages.map(page => (
                     <option key={page.key} value={page.key}>
@@ -418,6 +417,21 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Link Title */}
+              <div>
+                <label className="text-xs font-bold text-stone-700 block mb-1">
+                  عنوان الرابط (الاسم الظاهر في الفوتر): <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="مثال: فنادق مكة المكرمة، فنادق المدينة المنورة، الإعلانات"
+                  className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm font-semibold focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                />
               </div>
 
               {/* Custom URL Field if selected */}
@@ -450,7 +464,7 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setForm({ ...form, isActive: form.isActive === false })}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     form.isActive !== false
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                       : 'bg-stone-200 text-stone-600 border border-stone-300'
@@ -489,13 +503,13 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition-colors"
+                  className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition-colors cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5"
+                  className="px-5 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
                   <span>{editingLinkId ? 'حفظ التعديلات' : 'إضافة الرابط'}</span>
@@ -524,14 +538,14 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
               <button
                 type="button"
                 onClick={() => setDeleteModal({ isOpen: false, link: null })}
-                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition-colors"
+                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition-colors cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="button"
                 onClick={executeDelete}
-                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors"
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
               >
                 تأكيد الحذف
               </button>

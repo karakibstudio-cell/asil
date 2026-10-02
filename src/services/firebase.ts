@@ -23,7 +23,7 @@ import {
   User 
 } from 'firebase/auth';
 import firebaseConfigJson from '../../firebase-applet-config.json';
-import { Hotel, Offer, ContactMessage, SiteSettings, ContactChannel, ContentItem, HotelReview, HeroSlide, District, AdminUser, BranchLocation, DepartmentContact, QuickLinkItem, AboutPageSettings } from '../types';
+import { Hotel, Offer, ContactMessage, SiteSettings, ContactChannel, ContentItem, HotelReview, HeroSlide, District, AdminUser, BranchLocation, DepartmentContact, QuickLinkItem, AboutPageSettings, StoryTeaserSettings, IntegratedServicesSettings, HomeSectionsSettings } from '../types';
 import { DEFAULT_VALUE_PILLARS } from '../components/AdminAboutManager';
 import { INITIAL_HOTELS, INITIAL_OFFERS, INITIAL_REVIEWS, INITIAL_SITE_SETTINGS } from '../data/mockHotels';
 import {
@@ -192,19 +192,18 @@ export function safeSetLocalStorage(key: string, value: any): boolean {
     const serialized = typeof value === 'string' ? value : safeStringify(value);
     localStorage.setItem(key, serialized);
     return true;
-  } catch (err) {
-    console.warn(`[Storage] Quota exceeded or error saving "${key}" to localStorage:`, err);
+  } catch (_err) {
     try {
       // Clear non-critical caches first to free up space
       try {
         localStorage.removeItem('diy_messages_cache');
         localStorage.removeItem('diy_reviews_cache');
+        localStorage.removeItem('diy_offers_cache');
       } catch {}
 
       if (typeof value === 'object' && value !== null) {
-        // Strip out huge data URLs / base64 images from the local cache copy only if they exceed safe thresholds
-        // Keep site settings media intact up to 2MB so hero slides and logo are never lost!
-        const maxLen = key === 'diy_site_settings' ? 2000000 : 400000;
+        // Strip out huge data URLs / base64 images from the local cache copy
+        const maxLen = key === 'diy_site_settings' ? 500000 : 50000;
         const strippedStr = safeStringify(value, (_k, v) => {
           if (typeof v === 'string' && (v.startsWith('data:image/') || v.startsWith('data:video/') || v.startsWith('blob:')) && v.length > maxLen) {
             return '';
@@ -214,8 +213,8 @@ export function safeSetLocalStorage(key: string, value: any): boolean {
         localStorage.setItem(key, strippedStr);
         return true;
       }
-    } catch (innerErr) {
-      console.warn(`[Storage] Secondary save failed for "${key}":`, innerErr);
+    } catch (_innerErr) {
+      // Gracefully handle storage quota limit - data is safe in Supabase/Firebase
     }
     return false;
   }
@@ -230,6 +229,39 @@ const REVIEWS_COLLECTION = 'reviews';
 const DISTRICTS_COLLECTION = 'districts';
 const USERS_COLLECTION = 'admin_users';
 export const CONTENT_COLLECTION = 'content';
+
+// ==========================================
+// In-Memory Fetch Cache (prevents redundant Supabase calls within short windows)
+// ==========================================
+const CACHE_TTL_MS = 2_000; // 2 seconds — keep low for fast freshness after admin edits
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const fetchCache: Record<string, CacheEntry<any>> = {};
+
+function getCached<T>(key: string, skipCache = false): T | null {
+  if (skipCache) return null;
+  const entry = fetchCache[key];
+  if (entry && (Date.now() - entry.timestamp) < CACHE_TTL_MS) {
+    return entry.data as T;
+  }
+  return null;
+}
+
+function setCache<T>(key: string, data: T): void {
+  fetchCache[key] = { data, timestamp: Date.now() };
+}
+
+export function invalidateCache(key?: string): void {
+  if (key) {
+    delete fetchCache[key];
+  } else {
+    Object.keys(fetchCache).forEach(k => delete fetchCache[k]);
+  }
+}
 
 export const DEFAULT_HERO_SLIDES: HeroSlide[] = [];
 
@@ -358,49 +390,63 @@ export const DEFAULT_QUICK_LINKS: QuickLinkItem[] = [
     order: 1,
   },
   {
-    id: 'link_hotels',
-    title: 'فنادقنا المُدارة',
-    targetPage: 'hotels',
+    id: 'link_hotels_makkah',
+    title: 'فنادق مكة المكرمة',
+    targetPage: 'hotels-makkah',
     isActive: true,
     order: 2,
+  },
+  {
+    id: 'link_hotels_madinah',
+    title: 'فنادق المدينة المنورة',
+    targetPage: 'hotels-madinah',
+    isActive: true,
+    order: 3,
+  },
+  {
+    id: 'link_hotels',
+    title: 'جميع الفنادق',
+    targetPage: 'hotels',
+    isActive: false,
+    order: 4,
+  },
+  {
+    id: 'link_offers',
+    title: 'الإعلانات والعروض',
+    targetPage: 'offers',
+    isActive: true,
+    order: 5,
   },
   {
     id: 'link_packages',
     title: 'باقات الحج والعمرة',
     targetPage: 'packages',
-    isActive: true,
-    order: 3,
-  },
-  {
-    id: 'link_offers',
-    title: 'العروض والمناسبات',
-    targetPage: 'offers',
-    isActive: true,
-    order: 4,
+    isActive: false,
+    order: 6,
   },
   {
     id: 'link_about',
     title: 'من نحن',
     targetPage: 'about',
     isActive: true,
-    order: 5,
+    order: 7,
   },
   {
     id: 'link_contact',
     title: 'تواصل معنا',
     targetPage: 'contact',
     isActive: true,
-    order: 6,
+    order: 8,
   }
 ];
 
 export const DEFAULT_ABOUT_US: AboutPageSettings = {
-  title: 'عن شركة برستيج لإدارة وتشغيل الفنادق',
-  subtitle: 'مسيرة ريادة واحترافية في إدارة وتشغيل الفنادق والضيافة الفاخرة لضيوف الرحمن وزوار مكة المكرمة والمدينة المنورة.',
+  title: 'برستيج.. حيث تلتقي فخامة الضيافة بروحانية المكان',
+  subtitle: 'منذ عام 2010، انطلقت "برستيج لإدارة وتشغيل الفنادق" من قلب العاصمة المقدسة لتُعيد صياغة مفهوم الضيافة وخدمة ضيوف الرحمن.',
   badge: 'شرف خدمة ضيوف الرحمن',
-  missionTitle: 'رسالتنا: التميز في إدارة وتشغيل الفنادق وخدمة الضيوف',
-  missionText1: 'تأسست شركة برستيج لإدارة وتشغيل الفنادق انطلاقاً من رؤية متكاملة لرفع كفاءة تشغيل الأصول الفندقية وتقديم أرقى حلول الضيافة والتسكين لضيوف الرحمن وشركات السياحة في المدينتين المقدستين.',
-  missionText2: 'بفضل خبراتنا الإدارية وكوادرنا التشغيلية المتخصصة في كبرى فنادق مكة المكرمة والمدينة المنورة، نضمن للمستثمرين والنزلاء أعلى معايير الجودة الفندقية وسرعة إجراءات التسكين.',
+  missionTitle: 'مسيرتنا: صناعة تجارب إقامة استثنائية وشراكات استراتيجية',
+  missionText1: 'منذ عام 2010، انطلقت "برستيج لإدارة وتشغيل الفنادق" من قلب العاصمة المقدسة لتُعيد صياغة مفهوم الضيافة وخدمة ضيوف الرحمن. لم نكتفِ يوماً بتقديم مجرد غرف فندقية، بل أخذنا على عاتقنا صناعة تجارب إقامة استثنائية تمزج بين الرفاهية والراحة التامة.',
+  missionText2: 'بفضل الله ثم بثقة عملائنا من الشركات والمجموعات، امتدت مسيرة نجاحنا من مكة المكرمة إلى رحاب المدينة المنورة، لنعقد أضخم الشراكات السنوية في أهم المواقع الاستراتيجية (محبس الجن، أجياد، والمسفلة). واليوم، نتوج هذه المسيرة بفندقنا الخاص "برستيج أجياد"، إلى جانب إدارتنا وتشغيلنا لأكثر من 7 فنادق راقية ومجهزة بالكامل لاستقبال الحجاج والمعتمرين. مع "برستيج"، أنت لا تحجز إقامة فقط، بل تضمن منظومة خدمات متكاملة تليق بك وبضيوفك.',
   visionTitle: 'رؤيتنا: الريادة في إدارة وتشغيل الفنادق والضيافة الروحانية',
   visionText: 'أن نكون الخيار الأول والأكثر ثقة للمستثمرين وضيوف الرحمن ووكالات العمرة عالمياً من خلال تقديم أرقى معايير الإدارة والتشغيل الفندقي.',
   yearsExperience: '١٥+ عاماً',
@@ -422,6 +468,117 @@ export const DEFAULT_ABOUT_US: AboutPageSettings = {
   valuePillars: DEFAULT_VALUE_PILLARS
 };
 
+export const DEFAULT_STORY_TEASER: StoryTeaserSettings = {
+  isEnabled: true,
+  badge: 'نبذة عن شركة برستيج',
+  title: 'برستيج.. حيث تلتقي فخامة الضيافة بروحانية المكان',
+  paragraph1: "منذ عام 2010، انطلقت 'برستيج لإدارة وتشغيل الفنادق' من قلب العاصمة المقدسة لتُعيد صياغة مفهوم الضيافة وخدمة ضيوف الرحمن. لم نكتفِ يوماً بتقديم مجرد غرف فندقية، بل أخذنا على عاتقنا صناعة تجارب إقامة استثنائية تمزج بين الرفاهية والراحة التامة.",
+  paragraph2: "بفضل الله ثم بثقة عملائنا من الشركات والمجموعات، امتدت مسيرة نجاحنا من مكة المكرمة إلى رحاب المدينة المنورة، لنعقد أضخم الشراكات السنوية في أهم المواقع الاستراتيجية (محبس الجن، أجياد، والمسفلة).",
+  paragraph3: "واليوم، نتوج هذه المسيرة بفندقنا الخاص 'برستيج أجياد'، إلى جانب إدارتنا وتشغيلنا لأكثر من 7 فنادق راقية ومجهزة بالكامل لاستقبال الحجاج والمعتمرين. مع 'برستيج'، أنت لا تحجز إقامة فقط، بل تضمن منظومة خدمات متكاملة تليق بك وبضيوفك.",
+  showExploreButton: true,
+  exploreButtonText: 'اقرأ المزيد عنا',
+  showContactButton: true,
+  contactButtonText: 'عروض الشركات والمجموعات',
+  showcaseEstablishedYear: 'منذ 2010 م',
+  showcaseBadge: 'شراكات استراتيجية موثوقة',
+  showcaseTitle: 'إدارة وتشغيل أكثر من 7 فنادق راقية بمكة والمدينة',
+  showcaseLicenseNote: 'شركة مرخصة ومعتمدة من وزارة الحج والعمرة والهيئة السعودية للسياحة',
+  locationTags: [
+    { id: 'tag_1', text: 'فندق برستيج أجياد (فندقنا الخاص)', iconName: 'MapPin', isActive: true },
+    { id: 'tag_2', text: 'فنادق محبس الجن للعمرة', iconName: 'Building2', isActive: true },
+    { id: 'tag_3', text: 'فنادق المسفلة وأجياد', iconName: 'Building2', isActive: true },
+    { id: 'tag_4', text: 'فنادق المدينة المنورة المركزية', iconName: 'Award', isActive: true }
+  ],
+  showcasePoints: [
+    { id: 'pt_1', title: 'فندق برستيج أجياد', description: 'الفندق الخاص للشركة بأرقى معايير الضيافة الفندقية في مكة.', isActive: true },
+    { id: 'pt_2', title: 'تغطية المواقع الحيوية', description: 'محبس الجن، أجياد، والمسفلة بمكة المكرمة والمنطقة المركزية بالمدينة.', isActive: true },
+    { id: 'pt_3', title: 'عقود سنوية وموسمية للشركات', description: 'تسكين فوري وأسعار خاصة لشركات السياحة وحملات الحج والعمرة.', isActive: true }
+  ]
+};
+
+export const DEFAULT_INTEGRATED_SERVICES: IntegratedServicesSettings = {
+  isEnabled: true,
+  badge: 'خدماتنا المتكاملة',
+  title: 'منظومة ضيافة متكاملة تحت سقف واحد',
+  subtitle: 'نقدم لعملائنا من الشركات والمجموعات وضيوف الرحمن باقة خدمات شاملة تضمن أعلى مستويات الراحة والتميز من الاستقبال وحتى المغادرة.',
+  services: [
+    {
+      id: 'service_hotel_management',
+      iconName: 'Building2',
+      badge: 'الخدمة الأساسية',
+      badgeEn: 'Core Service',
+      title: 'إدارة وتشغيل الفنادق',
+      titleEn: 'Hotel Management & Operations',
+      description: 'ريادة واحترافية في إدارة المرافق الفندقية وتشغيل الفنادق في مكة المكرمة والمدينة المنورة لضمان أعلى معايير الجودة والراحة للنزلاء وضيوف الرحمن.',
+      descriptionEn: 'Leadership and professionalism in hotel facilities management and hospitality operations in Makkah and Madinah.',
+      highlights: ['إدارة شاملة للأصول الفندقية', 'فندق برستيج أجياد وأكثر من 7 فنادق راقية', 'تسكين فوري ومباشر'],
+      buttonText: 'استكشف الفنادق',
+      buttonAction: 'hotels',
+      isActive: true,
+      order: 1
+    },
+    {
+      id: 'service_luxury_transport',
+      iconName: 'Bus',
+      badge: 'تنقلات آمنة ومريحة',
+      badgeEn: 'Safe & Luxury Fleet',
+      title: 'خدمات النقل الفاخر',
+      titleEn: 'Luxury Transport Services',
+      description: 'أسطول حديث ومتنوع لتأمين تنقلات مريحة، آمنة، وسلسة للحجاج والمعتمرين والمجموعات والشركات بين المطارات، الفنادق، والمشاعر المقدسة.',
+      descriptionEn: 'A modern and diverse fleet securing smooth, safe, and comfortable transfers for groups and corporate partners.',
+      highlights: ['حافلات وسيارات حديثة ومكيفة', 'سائقون محترفون وخبراء بطرق الحرمين', 'خدمة استقبال وتوديع بالمطارات'],
+      buttonText: 'طلب عرض خدمة',
+      buttonAction: 'contact',
+      isActive: true,
+      order: 2
+    },
+    {
+      id: 'service_catering',
+      iconName: 'Utensils',
+      badge: 'أعلى معايير الجودة',
+      badgeEn: 'Premium Quality',
+      title: 'خدمات الإعاشة (Catering)',
+      titleEn: 'Catering & Hospitality Food Services',
+      description: 'قوائم طعام متنوعة ومعدة بأعلى معايير الجودة والسلامة الغذائية لتناسب كافة الأذواق وتلبي احتياجات ضيوف الرحمن والمجموعات والشركات.',
+      descriptionEn: 'Diverse meal menus prepared with the highest quality and safety standards to suit all tastes for pilgrim groups.',
+      highlights: ['بوفيهات فندقية مفتوحة ووجبات مغلفة', 'مطابخ مركزية مرخصة ومجهزة', 'خيارات مخصصة للشركات والبعثات'],
+      buttonText: 'طلب عرض خدمة',
+      buttonAction: 'contact',
+      isActive: true,
+      order: 3
+    },
+    {
+      id: 'service_visas',
+      iconName: 'FileCheck',
+      badge: 'إجراءات سريعة ومضمونة',
+      badgeEn: 'Fast & Certified',
+      title: 'استخراج التأشيرات',
+      titleEn: 'Visa Issuance & Processing',
+      description: 'فريق متخصص لتسهيل وتسريع إجراءات تأشيرات الحج والعمرة وإصدار التصاريح النظامية لضمان رحلة سلسة وبلا عقبات لضيوف الرحمن.',
+      descriptionEn: 'A dedicated team facilitating and expediting Umrah & Hajj visa procedures ensuring a hassle-free journey.',
+      highlights: ['إصدار سريع لتأشيرات العمرة', 'تنسيق متكامل مع المنصات الرسمية', 'دعم فني واستشارات متواصلة'],
+      buttonText: 'طلب عرض خدمة',
+      buttonAction: 'contact',
+      isActive: true,
+      order: 4
+    }
+  ]
+};
+
+export const DEFAULT_HOME_SECTIONS: HomeSectionsSettings = {
+  showStats: true,
+  showFeaturedHotels: true,
+  featuredHotelsBadge: 'فخامة وروحانية',
+  featuredHotelsTitle: 'فنادقنا المميزة في مكة والمدينة',
+  featuredHotelsSubtitle: 'مجموعة مختارة بعناية من أفخم الفنادق المطلة على الكعبة المشرفة وساحات المسجد النبوي، تضمن لكم راحة لا تضاهى.',
+  showStoryTeaser: true,
+  showIntegratedServices: true,
+  showHotelsAccordion: true,
+  showOffersBanner: true,
+  showTestimonials: true,
+  showWhyChooseUs: true
+};
+
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   siteTitle: 'برستيج لإدارة وتشغيل الفنادق',
   siteSubtitle: 'إدارة وتشغيل الفنادق والضيافة الفاخرة',
@@ -433,10 +590,17 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   departmentContacts: DEFAULT_DEPARTMENT_CONTACTS,
   quickLinks: DEFAULT_QUICK_LINKS,
   aboutUs: DEFAULT_ABOUT_US,
+  storyTeaser: DEFAULT_STORY_TEASER,
+  integratedServices: DEFAULT_INTEGRATED_SERVICES,
+  homeSections: DEFAULT_HOME_SECTIONS,
   ...(INITIAL_SITE_SETTINGS || {})
 };
 
-export async function getSiteSettingsFromDb(): Promise<SiteSettings> {
+export async function getSiteSettingsFromDb(skipCache = false): Promise<SiteSettings> {
+  // Check in-memory cache first (skipped when triggered by realtime events)
+  const cached = getCached<SiteSettings>('site_settings', skipCache);
+  if (cached) return cached;
+
   // 1. Try Supabase first (authoritative primary database — always trust it over local cache)
   try {
     const supabaseSettings = await fetchSiteSettingsFromSupabase();
@@ -487,6 +651,7 @@ export async function getSiteSettingsFromDb(): Promise<SiteSettings> {
       };
       // Write Supabase authoritative data to localStorage (overrides any stale cache)
       safeSetLocalStorage('diy_site_settings', normalized);
+      setCache('site_settings', normalized);
       return normalized;
     }
   } catch (err) {
@@ -508,6 +673,7 @@ export async function getSiteSettingsFromDb(): Promise<SiteSettings> {
 }
 
 export async function saveSiteSettingsToDb(settings: SiteSettings): Promise<void> {
+  invalidateCache('site_settings');
   const toSave: SiteSettings = {
     ...settings,
     updatedAt: Date.now()
@@ -547,7 +713,11 @@ export async function saveSiteSettingsToDb(settings: SiteSettings): Promise<void
 // ==========================================
 // Hotels CRUD (Zero Initial Data -> Manual Admin Entry / Supabase)
 // ==========================================
-export async function getHotelsFromDb(): Promise<Hotel[]> {
+export async function getHotelsFromDb(skipCache = false): Promise<Hotel[]> {
+  // Check in-memory cache first (skipped when triggered by realtime events)
+  const cached = getCached<Hotel[]>('hotels', skipCache);
+  if (cached) return cached;
+
   const HOTELS_VERSION_KEY = 'prestige_zero_hotels_v1';
   const normalizeHotel = (h: any): Hotel => ({
     ...h,
@@ -579,7 +749,9 @@ export async function getHotelsFromDb(): Promise<Hotel[]> {
   if (supabaseHotels !== null) {
     if (supabaseHotels.length > 0) {
       safeSetLocalStorage('diy_hotels', supabaseHotels);
-      return supabaseHotels.map(normalizeHotel);
+      const result = supabaseHotels.map(normalizeHotel);
+      setCache('hotels', result);
+      return result;
     }
 
     // If Supabase returned empty array (0 hotels), check if we have local hotels or INITIAL_HOTELS to restore and sync up
@@ -644,6 +816,7 @@ export async function getHotelsFromDb(): Promise<Hotel[]> {
 }
 
 export async function saveHotelToDb(hotel: Hotel): Promise<void> {
+  invalidateCache('hotels');
   const saved = localStorage.getItem('diy_hotels');
   let localList: Hotel[] = [];
   try {
@@ -677,6 +850,7 @@ export async function saveHotelToDb(hotel: Hotel): Promise<void> {
 }
 
 export async function deleteHotelFromDb(hotelId: string): Promise<void> {
+  invalidateCache('hotels');
   const saved = localStorage.getItem('diy_hotels');
   let localList: Hotel[] = [];
   try {
@@ -698,10 +872,15 @@ export async function deleteHotelFromDb(hotelId: string): Promise<void> {
 // ==========================================
 // Offers CRUD (Supabase + Local)
 // ==========================================
-export async function getOffersFromDb(): Promise<Offer[]> {
+export async function getOffersFromDb(skipCache = false): Promise<Offer[]> {
+  // Check in-memory cache first (skipped when triggered by realtime events)
+  const cached = getCached<Offer[]>('offers', skipCache);
+  if (cached) return cached;
+
   const supabaseOffers = await fetchOffersFromSupabase();
   if (supabaseOffers) {
     safeSetLocalStorage('diy_offers', supabaseOffers);
+    setCache('offers', supabaseOffers);
     return supabaseOffers;
   }
 
@@ -716,6 +895,7 @@ export async function getOffersFromDb(): Promise<Offer[]> {
 }
 
 export async function saveOfferToDb(offer: Offer): Promise<void> {
+  invalidateCache('offers');
   const saved = localStorage.getItem('diy_offers');
   let localList: Offer[] = [];
   try {
@@ -747,6 +927,7 @@ export async function saveOfferToDb(offer: Offer): Promise<void> {
 }
 
 export async function deleteOfferFromDb(offerId: string): Promise<void> {
+  invalidateCache('offers');
   const saved = localStorage.getItem('diy_offers');
   let localList: Offer[] = [];
   try {

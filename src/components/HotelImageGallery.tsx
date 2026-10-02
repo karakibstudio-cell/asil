@@ -339,8 +339,15 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
             {/* Main Stage Image */}
             <img
               key={currentItem.id}
-              src={currentItem.url}
+              src={currentItem.url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80'}
               alt={currentItem.title}
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.dataset.fallbackApplied) {
+                  target.dataset.fallbackApplied = 'true';
+                  target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80';
+                }
+              }}
               className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
             />
 
@@ -462,8 +469,15 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
                       }`}
                     >
                       <img
-                        src={item.url}
+                        src={item.url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80'}
                         alt={item.title}
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.fallbackApplied) {
+                            target.dataset.fallbackApplied = 'true';
+                            target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80';
+                          }
+                        }}
                         className="w-full h-full object-cover"
                       />
                       {item.isVideo && (
@@ -495,10 +509,18 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
               {/* Image Container */}
               <div className="relative aspect-[4/3] bg-stone-100 overflow-hidden">
                 <img
-                  src={item.url}
+                  src={item.url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80'}
                   alt={item.title}
                   className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500 ease-out"
                   loading="lazy"
+                  decoding="async"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.dataset.fallbackApplied) {
+                      target.dataset.fallbackApplied = 'true';
+                      target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
+                    }
+                  }}
                 />
                 <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
 

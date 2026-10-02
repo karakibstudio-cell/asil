@@ -4,7 +4,9 @@ import {
   Menu, 
   X, 
   Building2,
-  Globe
+  Globe,
+  BedDouble,
+  ShieldCheck
 } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { useLanguage } from '../context/LanguageContext';
@@ -15,6 +17,8 @@ interface HeaderProps {
   activeOffers: Offer[];
   isAdminLoggedIn?: boolean;
   siteSettings: SiteSettings;
+  onOpenBookingModal?: () => void;
+  onOpenTrackModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,6 +27,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeOffers,
   isAdminLoggedIn,
   siteSettings,
+  onOpenBookingModal,
+  onOpenTrackModal,
 }) => {
   const { language, toggleLanguage, t, isRtl } = useLanguage();
   const [isScrolled, setIsScrolled] = useState(false);
@@ -87,9 +93,14 @@ export const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, [isHovered, mobileMenuOpen]);
 
+  const isBookingEnabled = siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.showInHeader !== false;
+
   const navItems = [
     { id: 'home' as ActivePage, label: t('nav.home', 'الرئيسية') },
     { id: 'hotels' as ActivePage, label: t('nav.hotels', 'الفنادق') },
+    ...(isBookingEnabled
+      ? [{ id: 'room-booking' as ActivePage, label: language === 'en' ? 'Bookings' : 'الحجوزات' }]
+      : []),
     { id: 'offers' as ActivePage, label: t('nav.offers', 'الإعلانات') },
     { id: 'about' as ActivePage, label: t('nav.about', 'من نحن') },
     { id: 'contact' as ActivePage, label: t('nav.contact', 'تواصل معنا') },
@@ -159,6 +170,8 @@ export const Header: React.FC<HeaderProps> = ({
                 <img
                   src={siteSettings.logoUrl}
                   alt={siteSettings.siteTitle || 'شعار الموقع'}
+                  fetchPriority="high"
+                  decoding="async"
                   onError={() => setLogoLoadError(true)}
                   className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-contain bg-white/80 border border-[#C9A24B]/40 shadow-xs"
                 />

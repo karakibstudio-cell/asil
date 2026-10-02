@@ -142,3 +142,24 @@ html[dir="ltr"] body,
 .animate-wa-pulse {
   animation: wa-pulse 3s infinite ease-in-out;
 }
+
+/* Hardware-accelerated progress animation for Hero Slider */
+@keyframes heroProgressAnim {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+/* Ultra-Fast Rendering & GPU Acceleration Rules */
+.gpu-accel {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Optimize image rendering pipeline */
+img {
+  content-visibility: auto;
+}

@@ -339,7 +339,9 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
   ],
   "introVideo": {
     "enabled": true,
-    "videoUrl": "https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotel-media/1790703188446_ze8r9p.mp4"
+    "muted": false,
+    "showTitle": true,
+    "videoUrl": "https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/videos/1790863653287_7c96er.mp4"
   },
   "quickLinks": [
     {
@@ -350,36 +352,50 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
       "targetPage": "home"
     },
     {
-      "id": "link_hotels",
+      "id": "link_hotels_makkah",
       "order": 2,
-      "title": "فنادقنا المُدارة",
+      "title": "فنادق مكة المكرمة",
       "isActive": true,
+      "targetPage": "hotels-makkah"
+    },
+    {
+      "id": "link_hotels_madinah",
+      "order": 3,
+      "title": "فنادق المدينة المنورة",
+      "isActive": true,
+      "targetPage": "hotels-madinah"
+    },
+    {
+      "id": "link_hotels",
+      "order": 4,
+      "title": "جميع الفنادق",
+      "isActive": false,
       "targetPage": "hotels"
     },
     {
+      "id": "link_offers",
+      "order": 5,
+      "title": "الإعلانات والعروض",
+      "isActive": true,
+      "targetPage": "offers"
+    },
+    {
       "id": "link_packages",
-      "order": 3,
+      "order": 6,
       "title": "باقات الحج والعمرة",
       "isActive": false,
       "targetPage": "packages"
     },
     {
-      "id": "link_offers",
-      "order": 4,
-      "title": "العروض والمناسبات",
-      "isActive": true,
-      "targetPage": "offers"
-    },
-    {
       "id": "link_about",
-      "order": 5,
+      "order": 7,
       "title": "من نحن",
       "isActive": true,
       "targetPage": "about"
     },
     {
       "id": "link_contact",
-      "order": 6,
+      "order": 8,
       "title": "تواصل معنا",
       "isActive": true,
       "targetPage": "contact"

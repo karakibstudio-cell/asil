@@ -15,9 +15,22 @@ import {
   Award,
   Users,
   Check,
-  Eye
+  Eye,
+  EyeOff,
+  Sparkles,
+  Edit3,
+  Tag,
+  Save,
+  RotateCcw,
+  Layers,
+  FileText,
+  Compass,
+  CheckCircle2,
+  ArrowLeft
 } from 'lucide-react';
-import { AboutPageSettings, SiteSettings, ValuePillar } from '../types';
+import { AboutPageSettings, SiteSettings, ValuePillar, StoryTeaserSettings, StoryLocationTag, StoryShowcasePoint, IntegratedServicesSettings } from '../types';
+import { DEFAULT_STORY_TEASER, DEFAULT_INTEGRATED_SERVICES } from '../services/firebase';
+import { AdminServicesManager } from './AdminServicesManager';
 import { Lightbox } from './Lightbox';
 import { optimizeImageFile } from '../utils/imageOptimizer';
 import { PillarIcon, ICON_OPTIONS } from './PillarIcon';
@@ -55,6 +68,10 @@ export const DEFAULT_VALUE_PILLARS: ValuePillar[] = [
 interface AdminAboutManagerProps {
   aboutUs?: AboutPageSettings;
   siteLogoUrl?: string;
+  storyTeaser?: StoryTeaserSettings;
+  integratedServices?: IntegratedServicesSettings;
+  onUpdateStoryTeaser?: (data: StoryTeaserSettings) => void;
+  onUpdateIntegratedServices?: (data: IntegratedServicesSettings) => void;
   onUpdateAboutUs: (data: AboutPageSettings, updatedLogoUrl?: string) => void;
   onShowToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
@@ -62,16 +79,31 @@ interface AdminAboutManagerProps {
 export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
   aboutUs = {} as AboutPageSettings,
   siteLogoUrl = '',
+  storyTeaser = DEFAULT_STORY_TEASER,
+  integratedServices = DEFAULT_INTEGRATED_SERVICES,
+  onUpdateStoryTeaser,
+  onUpdateIntegratedServices,
   onUpdateAboutUs,
   onShowToast
 }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'story' | 'services' | 'mission' | 'pillars' | 'office' | 'photos' | 'cta'>('story');
+
+  // Story Teaser state
+  const [storyForm, setStoryForm] = useState<StoryTeaserSettings>({
+    ...DEFAULT_STORY_TEASER,
+    ...(storyTeaser || {})
+  });
+
+  const [newTagText, setNewTagText] = useState('');
+
+  // About Page state
   const [form, setForm] = useState<AboutPageSettings>({
-    title: aboutUs.title || 'عن شركة برستيج لإدارة وتشغيل الفنادق',
-    subtitle: aboutUs.subtitle || 'مسيرة ريادة واحترافية في إدارة وتشغيل الفنادق والضيافة الفاخرة لضيوف الرحمن وزوار مكة المكرمة والمدينة المنورة.',
+    title: aboutUs.title || 'برستيج.. حيث تلتقي فخامة الضيافة بروحانية المكان',
+    subtitle: aboutUs.subtitle || 'منذ عام 2010، انطلقت "برستيج لإدارة وتشغيل الفنادق" من قلب العاصمة المقدسة لتُعيد صياغة مفهوم الضيافة وخدمة ضيوف الرحمن.',
     badge: aboutUs.badge || 'شرف خدمة ضيوف الرحمن',
-    missionTitle: aboutUs.missionTitle || 'رسالتنا: التميز في إدارة وتشغيل الفنادق وخدمة الضيوف',
-    missionText1: aboutUs.missionText1 || 'تأسست شركة برستيج لإدارة وتشغيل الفنادق انطلاقاً من رؤية متكاملة لرفع كفاءة تشغيل الأصول الفندقية وتقديم أرقى حلول الضيافة والتسكين لضيوف الرحمن وشركات السياحة في المدينتين المقدستين.',
-    missionText2: aboutUs.missionText2 || 'بفضل خبراتنا الإدارية وكوادرنا التشغيلية المتخصصة في كبرى فنادق مكة المكرمة والمدينة المنورة، نضمن للمستثمرين والنزلاء أعلى معايير الجودة الفندقية وسرعة إجراءات التسكين.',
+    missionTitle: aboutUs.missionTitle || 'مسيرتنا: صناعة تجارب إقامة استثنائية وشراكات استراتيجية',
+    missionText1: aboutUs.missionText1 || 'منذ عام 2010، انطلقت "برستيج لإدارة وتشغيل الفنادق" من قلب العاصمة المقدسة لتُعيد صياغة مفهوم الضيافة وخدمة ضيوف الرحمن. لم نكتفِ يوماً بتقديم مجرد غرف فندقية، بل أخذنا على عاتقنا صناعة تجارب إقامة استثنائية تمزج بين الرفاهية والراحة التامة.',
+    missionText2: aboutUs.missionText2 || 'بفضل الله ثم بثقة عملائنا من الشركات والمجموعات، امتدت مسيرة نجاحنا من مكة المكرمة إلى رحاب المدينة المنورة، لنعقد أضخم الشراكات السنوية في أهم المواقع الاستراتيجية (محبس الجن، أجياد، والمسفلة). واليوم، نتوج هذه المسيرة بفندقنا الخاص "برستيج أجياد"، إلى جانب إدارتنا وتشغيلنا لأكثر من 7 فنادق راقية ومجهزة بالكامل لاستقبال الحجاج والمعتمرين. مع "برستيج"، أنت لا تحجز إقامة فقط، بل تضمن منظومة خدمات متكاملة تليق بك وبضيوفك.',
     visionTitle: aboutUs.visionTitle || 'رؤيتنا: الريادة في إدارة وتشغيل الفنادق والضيافة الروحانية',
     visionText: aboutUs.visionText || 'أن نكون الخيار الأول والأكثر ثقة للمستثمرين وضيوف الرحمن ووكالات العمرة عالمياً من خلال تقديم أرقى معايير الإدارة والتشغيل الفندقي.',
     yearsExperience: aboutUs.yearsExperience || '١٥+ عاماً',
@@ -87,11 +119,49 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
     licenseNumber: aboutUs.licenseNumber || '73104928',
     licenseAuthority: aboutUs.licenseAuthority || 'مرخصون من وزارة الحج والعمرة والهيئة السعودية للسياحة',
     showLicense: aboutUs.showLicense !== false,
+    showLogoCard: aboutUs.showLogoCard !== false,
+    showBadge: aboutUs.showBadge !== false,
+    showTitle: aboutUs.showTitle !== false,
+    showSubtitle: aboutUs.showSubtitle !== false,
+    showStorySection: aboutUs.showStorySection !== false,
+    showMissionTitle: aboutUs.showMissionTitle !== false,
+    showStoryParagraphs: aboutUs.showStoryParagraphs !== false,
+    showMissionText1: aboutUs.showMissionText1 !== false,
+    showMissionText2: aboutUs.showMissionText2 !== false,
+    showStats: aboutUs.showStats !== false,
+    showYearsExperience: aboutUs.showYearsExperience !== false,
+    showServedGuests: aboutUs.showServedGuests !== false,
+    showMainPhoto: aboutUs.showMainPhoto !== false,
+    showVisionSection: aboutUs.showVisionSection !== false,
+    showVisionTitle: aboutUs.showVisionTitle !== false,
+    showVisionText: aboutUs.showVisionText !== false,
+    showOfficeSection: aboutUs.showOfficeSection !== false,
+    showOfficeBadge: aboutUs.showOfficeBadge !== false,
+    showOfficeTitle: aboutUs.showOfficeTitle !== false,
+    showBranchSwitcher: aboutUs.showBranchSwitcher !== false,
+    showOfficeMapButton: aboutUs.showOfficeMapButton !== false,
+    showOfficeAddress: aboutUs.showOfficeAddress !== false,
+    showOfficeHours: aboutUs.showOfficeHours !== false,
+    showOfficePhone: aboutUs.showOfficePhone !== false,
+    showOfficeWhatsApp: aboutUs.showOfficeWhatsApp !== false,
+    showOfficeEmail: aboutUs.showOfficeEmail !== false,
+    showPhotoAlbum: aboutUs.showPhotoAlbum !== false,
+    showPhotoAlbumTitle: aboutUs.showPhotoAlbumTitle !== false,
+    showPhotoAlbumUploadButton: aboutUs.showPhotoAlbumUploadButton !== false,
+    showValuePillars: aboutUs.showValuePillars !== false,
+    showCtaSection: aboutUs.showCtaSection !== false,
+    showCtaBanner: aboutUs.showCtaBanner !== false,
+    showCtaTitle: aboutUs.showCtaTitle !== false,
+    showCtaSubtitle: aboutUs.showCtaSubtitle !== false,
+    showCtaHotelsButton: aboutUs.showCtaHotelsButton !== false,
+    showCtaConsultantButton: aboutUs.showCtaConsultantButton !== false,
     photos: Array.isArray(aboutUs.photos) ? aboutUs.photos : [],
     mainPhoto: aboutUs.mainPhoto || '',
     logoUrl: aboutUs.logoUrl || siteLogoUrl || '',
     valuePillars: aboutUs.valuePillars && aboutUs.valuePillars.length > 0 ? aboutUs.valuePillars : DEFAULT_VALUE_PILLARS
   });
+
+  const allPhotos = form.photos || [];
 
   const [currentLogo, setCurrentLogo] = useState<string>(aboutUs.logoUrl || siteLogoUrl || '');
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
@@ -115,7 +185,7 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const photosFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Logo Upload Handlers (supports PNG transparency, JPG, WebP, SVG)
+  // Logo Upload Handlers
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -142,13 +212,12 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
     if (logoFileInputRef.current) logoFileInputRef.current.value = '';
   };
 
-  // Photos Multi-upload Handlers (supports PNG, JPG, WebP)
+  // Photos Multi-upload Handlers
   const handlePhotosUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const newUploaded: string[] = [];
-
     const fileList = Array.from(files) as File[];
 
     for (const file of fileList) {
@@ -198,32 +267,32 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
     onShowToast('تمت إضافة رابط الصورة بنجاح', 'success');
   };
 
-  const handleSetMainPhoto = (url: string) => {
-    setForm((prev) => ({ ...prev, mainPhoto: url }));
-    onShowToast('تم تعيين الصورة كصورة رئيسية لصفحة من نحن ⭐', 'success');
+  const handleDeletePhoto = (photoUrl: string) => {
+    const current = form.photos || [];
+    const updated = current.filter((p) => p !== photoUrl);
+    const newMain = form.mainPhoto === photoUrl ? (updated[0] || '') : form.mainPhoto;
+    setForm((prev) => ({ ...prev, photos: updated, mainPhoto: newMain }));
+    onShowToast('تم حذف الصورة من الألبوم', 'info');
   };
 
-  const handleDeletePhoto = (url: string) => {
-    const updated = (form.photos || []).filter((p) => p !== url);
-    const mainPic = form.mainPhoto === url ? (updated[0] || '') : form.mainPhoto;
-    setForm((prev) => ({ ...prev, photos: updated, mainPhoto: mainPic }));
-    onShowToast('تم حذف الصورة بنجاح', 'info');
+  const handleSetMainPhoto = (photoUrl: string) => {
+    setForm((prev) => ({ ...prev, mainPhoto: photoUrl }));
+    onShowToast('تم تعيين الصورة كغلاف رئيسي لصفحة "من نحن"', 'success');
   };
 
-  // Pillar Management Handlers
-  const handleUpdatePillar = (id: string, updatedFields: Partial<ValuePillar>) => {
+  // Pillars Management
+  const handleUpdatePillar = (id: string, updates: Partial<ValuePillar>) => {
     setForm((prev) => ({
       ...prev,
       valuePillars: (prev.valuePillars || DEFAULT_VALUE_PILLARS).map((p) =>
-        p.id === id ? { ...p, ...updatedFields } : p
+        p.id === id ? { ...p, ...updates } : p
       )
     }));
   };
 
   const handleAddPillar = () => {
-    const newId = 'pillar_' + Date.now();
     const newPillar: ValuePillar = {
-      id: newId,
+      id: `pillar_${Date.now()}`,
       title: 'ميزة جديدة',
       titleEn: 'New Feature',
       description: 'اكتب وصف الميزة أو الخدمة هنا...',
@@ -274,17 +343,95 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
     }
   };
 
-  const handleSaveAll = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Story Teaser Handlers
+  const handleAddTag = () => {
+    if (!newTagText.trim()) return;
+    const newTag: StoryLocationTag = {
+      id: `tag_${Date.now()}`,
+      text: newTagText.trim(),
+      iconName: 'Building2',
+      isActive: true
+    };
+    const updatedTags = [...(storyForm.locationTags || []), newTag];
+    const updated = { ...storyForm, locationTags: updatedTags };
+    setStoryForm(updated);
+    setNewTagText('');
+    if (onUpdateStoryTeaser) onUpdateStoryTeaser(updated);
+    onShowToast(`تمت إضافة الوسم "${newTag.text}"`, 'success');
+  };
+
+  const handleToggleTag = (tagId: string) => {
+    const updatedTags = (storyForm.locationTags || []).map(t => 
+      t.id === tagId ? { ...t, isActive: t.isActive === false ? true : false } : t
+    );
+    const updated = { ...storyForm, locationTags: updatedTags };
+    setStoryForm(updated);
+    if (onUpdateStoryTeaser) onUpdateStoryTeaser(updated);
+  };
+
+  const handleDeleteTag = (tagId: string) => {
+    const updatedTags = (storyForm.locationTags || []).filter(t => t.id !== tagId);
+    const updated = { ...storyForm, locationTags: updatedTags };
+    setStoryForm(updated);
+    if (onUpdateStoryTeaser) onUpdateStoryTeaser(updated);
+    onShowToast('تم حذف الوسم', 'info');
+  };
+
+  const handleUpdateStoryPoint = (pointId: string, title: string, description: string) => {
+    const updatedPoints = (storyForm.showcasePoints || []).map(p =>
+      p.id === pointId ? { ...p, title, description } : p
+    );
+    const updated = { ...storyForm, showcasePoints: updatedPoints };
+    setStoryForm(updated);
+    if (onUpdateStoryTeaser) onUpdateStoryTeaser(updated);
+  };
+
+  const handleResetStoryToDefault = () => {
+    if (window.confirm('هل تريد استعادة النصوص الافتراضية لقسم نبذة وقصة الشركة؟')) {
+      setStoryForm(DEFAULT_STORY_TEASER);
+      if (onUpdateStoryTeaser) onUpdateStoryTeaser(DEFAULT_STORY_TEASER);
+      onShowToast('تمت استعادة النصوص الافتراضية للنبذة بنجاح', 'info');
+    }
+  };
+
+  // Master Save
+  const handleSaveAll = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const dataToSave: AboutPageSettings = {
       ...form,
       logoUrl: currentLogo
     };
     onUpdateAboutUs(dataToSave, currentLogo);
-    onShowToast('تم حفظ وتحديث بيانات صفحة "من نحن" والمكتب بنجاح 🎉', 'success');
+    if (onUpdateStoryTeaser) {
+      onUpdateStoryTeaser(storyForm);
+    }
+    onShowToast('تم حفظ وتحديث بيانات "من نحن والنبذة التعريفية" بنجاح 🎉', 'success');
   };
 
-  const allPhotos = form.photos || [];
+  // Helper toggle component
+  const VisibilityToggle = ({ 
+    active, 
+    onToggle, 
+    label 
+  }: { 
+    active: boolean; 
+    onToggle: () => void; 
+    label?: string;
+  }) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+        active 
+          ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100' 
+          : 'bg-stone-100 text-stone-500 border border-stone-300 hover:bg-stone-200'
+      }`}
+      title={active ? 'ظاهر بالموقع (انقر للإخفاء)' : 'مخفي (انقر للإظهار)'}
+    >
+      {active ? <Eye className="w-3.5 h-3.5 text-emerald-600" /> : <EyeOff className="w-3.5 h-3.5 text-stone-400" />}
+      <span>{label || (active ? 'ظاهر' : 'مخفي')}</span>
+    </button>
+  );
 
   return (
     <div id="admin-about-manager" className="space-y-8 animate-fadeIn">
@@ -293,19 +440,19 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold mb-1">
             <Building2 className="w-3.5 h-3.5" />
-            <span>إدارة صفحة من نحن والمكتب</span>
+            <span>إدارة النبذة وقصة الشركة وصفحة من نحن</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-cairo font-bold text-stone-900">
-            تخصيص الشعار، صور ومقر المكتب، ولوكيشن الخريطة والتفاصيل
+            التحكم الكامل في إظهار وإخفاء النصوص والبطاقات والأزرار
           </h2>
           <p className="text-xs text-stone-500 mt-1">
-            يتم تطبيق التعديلات مباشرة على صفحة "من نحن" وبيانات الفوتر وتفاصيل الموقع.
+            تحكم دقيق في كل عنوان، فقرة، زر، بطاقة، وصورة في صفحة "من نحن" وقسم "نبذة وقصة الشركة" بالصفحة الرئيسية.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={handleSaveAll}
+          onClick={() => handleSaveAll()}
           className="px-6 py-3 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-sm shadow-md shadow-[#C9A24B]/20 transition-all flex items-center gap-2 cursor-pointer shrink-0"
         >
           <Check className="w-4 h-4" />
@@ -313,431 +460,746 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
         </button>
       </div>
 
-      <form onSubmit={handleSaveAll} className="space-y-8">
-        {/* ========================================================= */}
-        {/* SECTION 1: LOGO & BRAND EMBLEM */}
-        {/* ========================================================= */}
-        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
-              ١
-            </div>
-            <div>
-              <h3 className="font-cairo font-bold text-lg text-stone-900">شعار وهوية الشركة (Logo)</h3>
-              <p className="text-xs text-stone-500">
-                الشعار الرسمي الذي يظهر في أعلى الهيدر، الفوتر، وصفحة من نحن.
-              </p>
-            </div>
-          </div>
+      {/* Modern Apple-style Sub-navigation Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-stone-200 no-scrollbar">
+        {[
+          { id: 'story' as const, label: '١. نبذة وقصة الشركة (Story Teaser)', icon: Sparkles },
+          { id: 'services' as const, label: '٢. منظومة الخدمات المتكاملة (Services)', icon: Layers },
+          { id: 'mission' as const, label: '٣. الرسالة، الرؤية ومسيرة النجاح', icon: Compass },
+          { id: 'pillars' as const, label: '٤. ركائز ومميزات الضيافة', icon: Award },
+          { id: 'office' as const, label: '٥. المقر الرئيسي والتراخيص', icon: MapPin },
+          { id: 'photos' as const, label: '٦. الشعار وألبوم صور المقر', icon: ImageIcon },
+          { id: 'cta' as const, label: '٧. شريط الدعوة للحجز (CTA)', icon: ArrowLeft }
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isCurrent = activeSubTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveSubTab(tab.id)}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shrink-0 transition-all cursor-pointer ${
+                isCurrent
+                  ? 'bg-[#C9A24B] text-white shadow-sm'
+                  : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-            {/* Logo Preview */}
-            <div className="md:col-span-4 flex flex-col items-center justify-center p-6 rounded-2xl bg-stone-50 border border-stone-200 text-center">
-              <div 
-                onClick={() => currentLogo && openAdminLightbox(currentLogo)}
-                className={`group relative w-24 h-24 rounded-2xl bg-white border-2 border-[#C9A24B]/30 shadow-md p-2 flex items-center justify-center overflow-hidden mb-3 ${
-                  currentLogo ? 'cursor-pointer hover:border-[#C9A24B] hover:shadow-lg' : ''
-                }`}
-                title={currentLogo ? 'انقر لتكبير ومعاينة الشعار' : undefined}
-              >
-                {currentLogo ? (
-                  <>
-                    <img
-                      src={currentLogo}
-                      alt="شعار الشركة"
-                      className="w-full h-full object-contain group-hover:scale-105 transition-transform"
-                    />
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Eye className="w-5 h-5 text-white" />
-                    </div>
-                  </>
-                ) : (
-                  <Building2 className="w-10 h-10 text-[#B38A34]" />
-                )}
-              </div>
-              <span className="text-xs font-bold text-stone-800">
-                {currentLogo ? 'الشعار المعتمد الحالي' : 'الشعار الافتراضي للنظام'}
-              </span>
-              {currentLogo && (
-                <div className="flex items-center gap-2 mt-2 flex-wrap justify-center">
-                  <button
-                    type="button"
-                    onClick={() => openAdminLightbox(currentLogo)}
-                    className="text-[11px] text-[#B38A34] hover:underline font-bold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Eye className="w-3 h-3" />
-                    <span>تكبير الشعار</span>
-                  </button>
-                  <span className="text-stone-300">•</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCurrentLogo('');
-                      setForm((prev) => ({ ...prev, logoUrl: '' }));
-                    }}
-                    className="text-[11px] text-red-600 hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    <span>إزالة الشعار</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Logo Actions */}
-            <div className="md:col-span-8 space-y-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="cursor-pointer px-5 py-3 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs flex items-center gap-2 transition-all">
-                  <Upload className="w-4 h-4" />
-                  <span>رفع لوجو من جهازك (PNG شفاف، JPG، SVG)</span>
-                  <input
-                    ref={logoFileInputRef}
-                    type="file"
-                    accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, .png, .jpg, .jpeg, .webp, .svg, image/*"
-                    onChange={handleLogoUpload}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">
-                  أو كتابة رابط صورة اللوجو (URL مباشر):
-                </label>
-                <input
-                  type="text"
-                  value={currentLogo}
-                  onChange={(e) => {
-                    setCurrentLogo(e.target.value);
-                    setForm((prev) => ({ ...prev, logoUrl: e.target.value }));
-                  }}
-                  placeholder="https://... رابط صورة الشعار"
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B] dir-ltr text-left"
-                />
-              </div>
-            </div>
-          </div>
+      {/* ========================================================= */}
+      {/* SUB-TAB: INTEGRATED SERVICES (منظومة الخدمات المتكاملة) */}
+      {/* ========================================================= */}
+      {activeSubTab === 'services' && (
+        <div className="animate-fadeIn">
+          <AdminServicesManager
+            integratedServices={integratedServices}
+            onUpdateIntegratedServices={(updated) => {
+              if (onUpdateIntegratedServices) onUpdateIntegratedServices(updated);
+            }}
+            onShowToast={onShowToast}
+          />
         </div>
+      )}
 
-        {/* ========================================================= */}
-        {/* SECTION 2: OFFICE & COMPANY PHOTOS ALBUM */}
-        {/* ========================================================= */}
-        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      {/* ========================================================= */}
+      {/* SUB-TAB 1: STORY TEASER & NARRATIVE (النبذة وقصة الشركة) */}
+      {/* ========================================================= */}
+      {activeSubTab === 'story' && (
+        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-8 animate-fadeIn">
+          {/* Header & Main Toggle */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
-                ٢
+                <Sparkles className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="font-cairo font-bold text-lg text-stone-900">
-                  ألبوم صور المقر والمكتب وفريق العمل ({allPhotos.length})
+                  نصوص نبذة وقصة الشركة في الصفحة الرئيسية
                 </h3>
                 <p className="text-xs text-stone-500">
-                  ارفع صور مكاتب الاستقبال، قاعات الاجتماعات، وفريق خدمة ضيوف الرحمن.
+                  تظهر هذه النبذة في الصفحة الرئيسية لتعريف الزوار بمسيرة برستيج وتاريخ الضيافة.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <label className="cursor-pointer px-4 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs flex items-center gap-2 transition-all">
-                <Upload className="w-4 h-4" />
-                <span>رفع صور من الجهاز (PNG, JPG, WebP)</span>
-                <input
-                  ref={photosFileInputRef}
-                  type="file"
-                  accept="image/png, image/jpeg, image/jpg, image/webp, .png, .jpg, .jpeg, .webp, image/*"
-                  multiple
-                  onChange={handlePhotosUpload}
-                  className="hidden"
-                />
-              </label>
+              {/* Master Enable/Disable Switch */}
+              <button
+                type="button"
+                onClick={() => {
+                  const updated = { ...storyForm, isEnabled: !storyForm.isEnabled };
+                  setStoryForm(updated);
+                  if (onUpdateStoryTeaser) onUpdateStoryTeaser(updated);
+                  onShowToast(
+                    updated.isEnabled ? 'تم تفعيل ظهور قسم نبذة الشركة' : 'تم إخفاء قسم نبذة الشركة من الموقع',
+                    'success'
+                  );
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                  storyForm.isEnabled !== false
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-stone-200 hover:bg-stone-300 text-stone-700'
+                }`}
+              >
+                {storyForm.isEnabled !== false ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{storyForm.isEnabled !== false ? 'القسم مفعّل وظاهر' : 'القسم مخفي بالكامل'}</span>
+              </button>
 
               <button
                 type="button"
-                onClick={() => setShowAddUrlInput(!showAddUrlInput)}
-                className="px-3.5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                onClick={handleResetStoryToDefault}
+                className="px-3 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                title="استعادة النصوص الأصلية"
               >
-                <Plus className="w-4 h-4 text-[#B38A34]" />
-                <span>إضافة برابط URL</span>
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>استعادة الافتراضي</span>
               </button>
             </div>
           </div>
 
-          {/* Add URL Form Input */}
-          {showAddUrlInput && (
-            <div className="p-4 rounded-2xl bg-stone-50 border border-[#C9A24B]/40 flex gap-2 animate-scaleUp">
+          {/* Story Titles & Badges */}
+          <div className="space-y-5">
+            <h4 className="font-cairo font-bold text-stone-900 text-sm flex items-center gap-2">
+              <Edit3 className="w-4 h-4 text-[#B38A34]" />
+              <span>العناوين والفقرات التعريفية وإظهارها/إخفاؤها</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">
+                    الشارة العلوية (Badge):
+                  </label>
+                  <VisibilityToggle
+                    active={storyForm.showBadge !== false}
+                    onToggle={() => setStoryForm({ ...storyForm, showBadge: storyForm.showBadge === false })}
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={storyForm.badge || ''}
+                  onChange={(e) => setStoryForm({ ...storyForm, badge: e.target.value })}
+                  placeholder="نبذة عن شركة برستيج"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
+
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">
+                    العنوان الرئيسي للنبذة:
+                  </label>
+                  <VisibilityToggle
+                    active={storyForm.showTitle !== false}
+                    onToggle={() => setStoryForm({ ...storyForm, showTitle: storyForm.showTitle === false })}
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={storyForm.title || ''}
+                  onChange={(e) => setStoryForm({ ...storyForm, title: e.target.value })}
+                  placeholder="برستيج.. حيث تلتقي فخامة الضيافة بروحانية المكان"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-bold focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
+            </div>
+
+            {/* Paragraph 1 */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">
+                  الفقرة الأولى (الانطلاقة والرسالة منذ 2010):
+                </label>
+                <VisibilityToggle
+                  active={storyForm.showStory1 !== false}
+                  onToggle={() => setStoryForm({ ...storyForm, showStory1: storyForm.showStory1 === false })}
+                />
+              </div>
+              <textarea
+                rows={3}
+                value={storyForm.paragraph1 || ''}
+                onChange={(e) => setStoryForm({ ...storyForm, paragraph1: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B] leading-relaxed"
+              />
+            </div>
+
+            {/* Paragraph 2 */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">
+                  الفقرة الثانية (التوسع من مكة إلى المدينة والشراكات السنوية):
+                </label>
+                <VisibilityToggle
+                  active={storyForm.showStory2 !== false}
+                  onToggle={() => setStoryForm({ ...storyForm, showStory2: storyForm.showStory2 === false })}
+                />
+              </div>
+              <textarea
+                rows={2}
+                value={storyForm.paragraph2 || ''}
+                onChange={(e) => setStoryForm({ ...storyForm, paragraph2: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B] leading-relaxed"
+              />
+            </div>
+
+            {/* Paragraph 3 */}
+            <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8E2D8] space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">
+                  الفقرة الثالثة (صندوق التتويج بفندق برستيج أجياد والـ 7 فنادق):
+                </label>
+                <VisibilityToggle
+                  active={storyForm.showStory3 !== false}
+                  onToggle={() => setStoryForm({ ...storyForm, showStory3: storyForm.showStory3 === false })}
+                />
+              </div>
+              <textarea
+                rows={3}
+                value={storyForm.paragraph3 || ''}
+                onChange={(e) => setStoryForm({ ...storyForm, paragraph3: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-semibold focus:outline-none focus:border-[#C9A24B] leading-relaxed"
+              />
+            </div>
+
+            {/* Action Buttons Toggles */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">زر "استكشف فنادقنا المعتمدة"</span>
+                  <span className="text-[11px] text-stone-500">ينقل الزائر لقائمة الفنادق</span>
+                </div>
+                <VisibilityToggle
+                  active={storyForm.showExploreButton !== false}
+                  onToggle={() => setStoryForm({ ...storyForm, showExploreButton: storyForm.showExploreButton === false })}
+                />
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">زر "تواصل مع مستشار التسكين"</span>
+                  <span className="text-[11px] text-stone-500">ينقل الزائر لصفحة التواصل</span>
+                </div>
+                <VisibilityToggle
+                  active={storyForm.showContactButton !== false}
+                  onToggle={() => setStoryForm({ ...storyForm, showContactButton: storyForm.showContactButton === false })}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Location Tags Management */}
+          <div className="pt-6 border-t border-stone-200 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-cairo font-bold text-stone-900 text-sm flex items-center gap-2">
+                <Tag className="w-4 h-4 text-[#B38A34]" />
+                <span>وسوم المواقع والشراكات (Location Badges)</span>
+              </h4>
+              <VisibilityToggle
+                active={storyForm.showLocationTags !== false}
+                onToggle={() => setStoryForm({ ...storyForm, showLocationTags: storyForm.showLocationTags === false })}
+                label={storyForm.showLocationTags !== false ? 'الوسوم ظاهرة' : 'الوسوم مخفية'}
+              />
+            </div>
+
+            <div className="flex gap-2">
               <input
-                type="url"
-                value={newPhotoUrl}
-                onChange={(e) => setNewPhotoUrl(e.target.value)}
-                placeholder="https://images.unsplash.com/... أو رابط مباشر للصورة"
-                className="flex-1 px-3.5 py-2 rounded-xl border border-stone-300 bg-white text-xs font-mono text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                type="text"
+                value={newTagText}
+                onChange={(e) => setNewTagText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddTag()}
+                placeholder="أدخل نص وسم جديد (مثال: فنادق محبس الجن للعمرة)"
+                className="flex-1 px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
               />
               <button
                 type="button"
-                onClick={handleAddPhotoUrl}
-                className="px-4 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold cursor-pointer"
+                onClick={handleAddTag}
+                className="px-5 py-2.5 rounded-xl bg-stone-900 hover:bg-black text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
               >
-                إضافة للألبوم
+                <Plus className="w-4 h-4" />
+                <span>إضافة وسم</span>
               </button>
             </div>
-          )}
 
-          {/* Photos Grid */}
-          {allPhotos.length === 0 ? (
-            <div className="py-12 text-center rounded-2xl border-2 border-dashed border-stone-300 p-6">
-              <ImageIcon className="w-10 h-10 text-stone-300 mx-auto mb-2" />
-              <p className="text-xs text-stone-500 font-semibold">
-                لا توجد صور مضافة للمقر بعد. اضغط على زر الرفع لإضافة صور مكاتب الشركة.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {allPhotos.map((img, idx) => {
-                const isMain = img === form.mainPhoto;
-                return (
-                  <div
-                    key={idx}
-                    className={`group relative rounded-2xl overflow-hidden border-2 transition-all bg-stone-100 shadow-sm flex flex-col ${
-                      isMain ? 'border-[#C9A24B] ring-2 ring-[#C9A24B]/30' : 'border-stone-200'
-                    }`}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {(storyForm.locationTags || []).map((tag) => (
+                <div
+                  key={tag.id}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                    tag.isActive !== false
+                      ? 'bg-stone-100 border-stone-300 text-stone-800'
+                      : 'bg-stone-50 border-dashed border-stone-200 text-stone-400 opacity-60'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleToggleTag(tag.id)}
+                    className="cursor-pointer hover:text-[#B38A34]"
+                    title={tag.isActive !== false ? 'إخفاء الوسم' : 'إظهار الوسم'}
                   >
-                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-200">
-                      <img
-                        src={img}
-                        alt={`صورة ${idx + 1}`}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        referrerPolicy="no-referrer"
-                      />
-
-                      {isMain && (
-                        <div className="absolute top-2 right-2 px-2.5 py-1 rounded-lg bg-[#C9A24B] text-white text-[10px] font-bold shadow-md flex items-center gap-1">
-                          <Star className="w-3 h-3 fill-current" />
-                          <span>الصورة الرئيسية</span>
-                        </div>
-                      )}
-
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 p-2">
-                        <button
-                          type="button"
-                          onClick={() => openAdminLightbox(img)}
-                          className="p-2 rounded-xl bg-white/90 hover:bg-white text-stone-900 shadow-md cursor-pointer"
-                          title="تكبير ومعاينة الصورة"
-                        >
-                          <Eye className="w-4 h-4 text-[#B38A34]" />
-                        </button>
-                        {!isMain && (
-                          <button
-                            type="button"
-                            onClick={() => handleSetMainPhoto(img)}
-                            className="p-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white shadow-md cursor-pointer"
-                            title="تعيين كصورة رئيسية لصفحة من نحن"
-                          >
-                            <Star className="w-4 h-4 fill-current" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePhoto(img)}
-                          className="p-2 rounded-xl bg-red-600 hover:bg-red-700 text-white shadow-md cursor-pointer"
-                          title="حذف الصورة"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="p-2.5 bg-white flex items-center justify-between border-t border-stone-100 text-[11px]">
-                      {isMain ? (
-                        <span className="text-[#B38A34] font-bold flex items-center gap-1">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>الغلاف الرئيسي</span>
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleSetMainPhoto(img)}
-                          className="text-stone-600 hover:text-[#B38A34] font-bold flex items-center gap-1 cursor-pointer"
-                        >
-                          <Star className="w-3 h-3 text-[#C9A24B]" />
-                          <span>اجعلها رئيسية</span>
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePhoto(img)}
-                        className="text-stone-400 hover:text-red-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                    {tag.isActive !== false ? <Eye className="w-3.5 h-3.5 text-emerald-600" /> : <EyeOff className="w-3.5 h-3.5 text-stone-400" />}
+                  </button>
+                  <span>{tag.text}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTag(tag.id)}
+                    className="cursor-pointer text-stone-400 hover:text-red-600 p-0.5"
+                    title="حذف الوسم"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* ========================================================= */}
-        {/* SECTION 3: OFFICE LOCATION & GOOGLE MAPS */}
-        {/* ========================================================= */}
-        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
-          <div className="flex items-center gap-3">
+          {/* Dark Showcase Box Settings (Left Card) */}
+          <div className="pt-6 border-t border-stone-200 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-cairo font-bold text-stone-900 text-sm flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#B38A34]" />
+                <span>البطاقة الجانبية الفاخرة (Dark Showcase Card)</span>
+              </h4>
+              <VisibilityToggle
+                active={storyForm.showShowcaseCard !== false}
+                onToggle={() => setStoryForm({ ...storyForm, showShowcaseCard: storyForm.showShowcaseCard === false })}
+                label={storyForm.showShowcaseCard !== false ? 'البطاقة ظاهرة' : 'البطاقة مخفية'}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">سنة التأسيس / الشارة:</label>
+                  <VisibilityToggle
+                    active={storyForm.showEstablishedYear !== false}
+                    onToggle={() => setStoryForm({ ...storyForm, showEstablishedYear: storyForm.showEstablishedYear === false })}
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={storyForm.showcaseEstablishedYear || ''}
+                  onChange={(e) => setStoryForm({ ...storyForm, showcaseEstablishedYear: e.target.value })}
+                  placeholder="منذ 2010 م"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">عنوان شارة البطاقة:</label>
+                </div>
+                <input
+                  type="text"
+                  value={storyForm.showcaseBadge || ''}
+                  onChange={(e) => setStoryForm({ ...storyForm, showcaseBadge: e.target.value })}
+                  placeholder="شراكات استراتيجية موثوقة"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
+
+              <div className="sm:col-span-2 p-3.5 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">العنوان الرئيسي للبطاقة:</label>
+                  <VisibilityToggle
+                    active={storyForm.showShowcaseTitle !== false}
+                    onToggle={() => setStoryForm({ ...storyForm, showShowcaseTitle: storyForm.showShowcaseTitle === false })}
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={storyForm.showcaseTitle || ''}
+                  onChange={(e) => setStoryForm({ ...storyForm, showcaseTitle: e.target.value })}
+                  placeholder="إدارة وتشغيل أكثر من 7 فنادق راقية بمكة والمدينة"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-bold focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
+            </div>
+
+            {/* Showcase Points */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">
+                  النقاط المميزة داخل البطاقة:
+                </label>
+                <VisibilityToggle
+                  active={storyForm.showShowcasePoints !== false}
+                  onToggle={() => setStoryForm({ ...storyForm, showShowcasePoints: storyForm.showShowcasePoints === false })}
+                />
+              </div>
+
+              {(storyForm.showcasePoints || []).map((point, pIdx) => (
+                <div key={point.id} className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#B38A34]">النقطة رقم {pIdx + 1}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      value={point.title}
+                      onChange={(e) => handleUpdateStoryPoint(point.id, e.target.value, point.description)}
+                      placeholder="عنوان النقطة"
+                      className="px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                    />
+                    <input
+                      type="text"
+                      value={point.description}
+                      onChange={(e) => handleUpdateStoryPoint(point.id, point.title, e.target.value)}
+                      placeholder="وصف النقطة"
+                      className="sm:col-span-2 px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs text-stone-800 focus:outline-none focus:border-[#C9A24B]"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* License Note Toggle */}
+            <div className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-stone-800 block">شارة الترخيص أسفل البطاقة</span>
+                <span className="text-[11px] text-stone-500">"مرخصون من وزارة الحج والعمرة والهيئة العامة للسياحة"</span>
+              </div>
+              <VisibilityToggle
+                active={storyForm.showLicenseNote !== false && storyForm.showShowcaseLicense !== false}
+                onToggle={() => {
+                  const val = !(storyForm.showLicenseNote !== false && storyForm.showShowcaseLicense !== false);
+                  setStoryForm({ ...storyForm, showLicenseNote: val, showShowcaseLicense: val });
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* SUB-TAB 2: MISSION & VISION (الرسالة والرؤية ومسيرة النجاح) */}
+      {/* ========================================================= */}
+      {activeSubTab === 'mission' && (
+        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6 animate-fadeIn">
+          <div className="flex items-center gap-3 pb-4 border-b border-stone-200">
             <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
-              ٣
+              <Compass className="w-5 h-5" />
             </div>
             <div>
               <h3 className="font-cairo font-bold text-lg text-stone-900">
-                لوكيشن وبيانات التواصل الخاصة بالمكتب (Office Location & Maps)
+                الرسالة، الرؤية، وإحصائيات الخبرة (صفحة من نحن)
               </h3>
               <p className="text-xs text-stone-500">
-                موقع المقر على خرائط جوجل، العنوان الدقيق، وأرقام التواصل المباشرة.
+                تحكم في إظهار وإخفاء كل عنوان، فقرة، وإحصائية في صفحة "من نحن".
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-bold text-stone-700 block mb-1">اسم المقر / الفرع: *</label>
-              <input
-                type="text"
-                required
-                value={form.officeTitle || ''}
-                onChange={(e) => setForm({ ...form, officeTitle: e.target.value })}
-                placeholder="المقر الرئيسي - مكة المكرمة"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-stone-700 block mb-1">المدينة:</label>
-              <select
-                value={form.officeCity || 'مكة المكرمة'}
-                onChange={(e) => setForm({ ...form, officeCity: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
-              >
-                <option value="مكة المكرمة">مكة المكرمة</option>
-                <option value="المدينة المنورة">المدينة المنورة</option>
-                <option value="جدة">جدة</option>
-                <option value="الرياض">الرياض</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="text-xs font-bold text-stone-700 block mb-1">
-                العنوان التفصيلي (البرج، الشارع، الحي، رقم المكتب): *
-              </label>
-              <input
-                type="text"
-                required
-                value={form.officeAddress || ''}
-                onChange={(e) => setForm({ ...form, officeAddress: e.target.value })}
-                placeholder="أبراج وقف الملك عبدالعزيز - مجمع أبراج البيت، طريق أجياد، مكة المكرمة"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold text-stone-700 block">
-                  رابط لوكيشن خرائط جوجل (Google Maps URL): *
-                </label>
-                {form.officeMapUrl && (
-                  <a
-                    href={form.officeMapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] text-[#B38A34] hover:underline font-bold flex items-center gap-1"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    <span>فتح اللوكيشن وتجربته</span>
-                  </a>
-                )}
+          <div className="space-y-4">
+            {/* Main Header / Badges */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">العنوان الرئيسي لصفحة من نحن:</label>
+                  <VisibilityToggle
+                    active={form.showTitle !== false}
+                    onToggle={() => setForm({ ...form, showTitle: form.showTitle === false })}
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={form.title || ''}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                />
               </div>
-              <input
-                type="url"
-                required
-                value={form.officeMapUrl || ''}
-                onChange={(e) => setForm({ ...form, officeMapUrl: e.target.value })}
-                placeholder="https://maps.google.com/?q=... أو رابط الموقع الجغرافي"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B] dir-ltr text-left"
+
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">الشارة الترحيبية (Badge):</label>
+                  <VisibilityToggle
+                    active={form.showBadge !== false}
+                    onToggle={() => setForm({ ...form, showBadge: form.showBadge === false })}
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={form.badge || ''}
+                  onChange={(e) => setForm({ ...form, badge: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
+            </div>
+
+            {/* Subtitle */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">المقدمة والنبذة العامة لصفحة من نحن:</label>
+                <VisibilityToggle
+                  active={form.showSubtitle !== false}
+                  onToggle={() => setForm({ ...form, showSubtitle: form.showSubtitle === false })}
+                />
+              </div>
+              <textarea
+                rows={2}
+                value={form.subtitle || ''}
+                onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
               />
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-stone-700 block mb-1">هاتف المكتب:</label>
-              <input
-                type="text"
-                value={form.officePhone || ''}
-                onChange={(e) => setForm({ ...form, officePhone: e.target.value })}
-                placeholder="+966501234567"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B] dir-ltr text-left"
-              />
+            {/* Stats section */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                <span className="text-xs font-bold text-stone-800">إحصائيات الخبرة والأرقام</span>
+                <VisibilityToggle
+                  active={form.showStats !== false}
+                  onToggle={() => setForm({ ...form, showStats: form.showStats === false })}
+                  label={form.showStats !== false ? 'قسم الأرقام ظاهر' : 'قسم الأرقام مخفي'}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-stone-700">سنوات الخبرة:</label>
+                    <VisibilityToggle
+                      active={form.showYearsExperience !== false}
+                      onToggle={() => setForm({ ...form, showYearsExperience: form.showYearsExperience === false })}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={form.yearsExperience || ''}
+                    onChange={(e) => setForm({ ...form, yearsExperience: e.target.value })}
+                    placeholder="مثال: ١٥+ عاماً"
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-stone-700">عدد الضيوف المخدومين:</label>
+                    <VisibilityToggle
+                      active={form.showServedGuests !== false}
+                      onToggle={() => setForm({ ...form, showServedGuests: form.showServedGuests === false })}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={form.servedGuests || ''}
+                    onChange={(e) => setForm({ ...form, servedGuests: e.target.value })}
+                    placeholder="مثال: ١٢٠,٠٠٠+ معتمر"
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-stone-700 block mb-1">واتساب المكتب:</label>
-              <input
-                type="text"
-                value={form.officeWhatsApp || ''}
-                onChange={(e) => setForm({ ...form, officeWhatsApp: e.target.value })}
-                placeholder="+966501234567"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B] dir-ltr text-left"
-              />
+            {/* Story Section in About */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                <span className="text-xs font-bold text-stone-800">قسم مسيرة النجاح وتاريخ التأسيس</span>
+                <VisibilityToggle
+                  active={form.showStorySection !== false}
+                  onToggle={() => setForm({ ...form, showStorySection: form.showStorySection === false })}
+                  label={form.showStorySection !== false ? 'القسم ظاهر' : 'القسم مخفي'}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-stone-700">عنوان مسيرة النجاح:</label>
+                    <VisibilityToggle
+                      active={form.showMissionTitle !== false}
+                      onToggle={() => setForm({ ...form, showMissionTitle: form.showMissionTitle === false })}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={form.missionTitle || ''}
+                    onChange={(e) => setForm({ ...form, missionTitle: e.target.value })}
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 font-bold focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-stone-700">الفقرة 1 (الانطلاقة والرسالة):</label>
+                    <VisibilityToggle
+                      active={form.showMissionText1 !== false}
+                      onToggle={() => setForm({ ...form, showMissionText1: form.showMissionText1 === false })}
+                    />
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={form.missionText1 || ''}
+                    onChange={(e) => setForm({ ...form, missionText1: e.target.value })}
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B] leading-relaxed"
+                  />
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-stone-700">الفقرة 2 (الشراكات والتوسع):</label>
+                    <VisibilityToggle
+                      active={form.showMissionText2 !== false}
+                      onToggle={() => setForm({ ...form, showMissionText2: form.showMissionText2 === false })}
+                    />
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={form.missionText2 || ''}
+                    onChange={(e) => setForm({ ...form, missionText2: e.target.value })}
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B] leading-relaxed"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-stone-700 block mb-1">البريد الإلكتروني الرسمي:</label>
-              <input
-                type="email"
-                value={form.officeEmail || ''}
-                onChange={(e) => setForm({ ...form, officeEmail: e.target.value })}
-                placeholder="info@diyafat.sa"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B] dir-ltr text-left"
-              />
+            {/* Vision Section */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                <span className="text-xs font-bold text-stone-800">قسم الرؤية المستقبلية (Vision)</span>
+                <VisibilityToggle
+                  active={form.showVisionSection !== false}
+                  onToggle={() => setForm({ ...form, showVisionSection: form.showVisionSection === false })}
+                  label={form.showVisionSection !== false ? 'الرؤية ظاهرة' : 'الرؤية مخفية'}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-stone-700">عنوان الرؤية المستقبلية:</label>
+                    <VisibilityToggle
+                      active={form.showVisionTitle !== false}
+                      onToggle={() => setForm({ ...form, showVisionTitle: form.showVisionTitle === false })}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={form.visionTitle || ''}
+                    onChange={(e) => setForm({ ...form, visionTitle: e.target.value })}
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 font-bold focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-stone-700">نص الرؤية المستقبلية:</label>
+                    <VisibilityToggle
+                      active={form.showVisionText !== false}
+                      onToggle={() => setForm({ ...form, showVisionText: form.showVisionText === false })}
+                    />
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={form.visionText || ''}
+                    onChange={(e) => setForm({ ...form, visionText: e.target.value })}
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B] leading-relaxed"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-stone-700 block mb-1">ساعات وأوقات العمل:</label>
-              <input
-                type="text"
-                value={form.officeWorkingHours || ''}
-                onChange={(e) => setForm({ ...form, officeWorkingHours: e.target.value })}
-                placeholder="مفتوح 24/7 لخدمة ضيوف الرحمن"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
-              />
+            {/* Action CTA Banner Controls */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">شريط الحجز السريع أسفل الصفحة (CTA Banner)</span>
+                  <span className="text-[11px] text-stone-500">"هل تخطط لرحلة عمرة أو حج قادمة؟ تصفح فنادقنا أو تواصل مباشرة"</span>
+                </div>
+                <VisibilityToggle
+                  active={form.showCtaSection !== false && form.showCtaBanner !== false}
+                  onToggle={() => {
+                    const nextVal = form.showCtaSection === false ? true : false;
+                    setForm({ ...form, showCtaSection: nextVal, showCtaBanner: nextVal });
+                  }}
+                  label={form.showCtaSection !== false ? 'الشريط ظاهر' : 'الشريط مخفي'}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between">
+                  <span className="text-xs font-bold text-stone-700">عنوان شريط الحجز (Title)</span>
+                  <VisibilityToggle
+                    active={form.showCtaTitle !== false}
+                    onToggle={() => setForm({ ...form, showCtaTitle: form.showCtaTitle === false })}
+                  />
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between">
+                  <span className="text-xs font-bold text-stone-700">الوصف الفرعي لشريط الحجز</span>
+                  <VisibilityToggle
+                    active={form.showCtaSubtitle !== false}
+                    onToggle={() => setForm({ ...form, showCtaSubtitle: form.showCtaSubtitle === false })}
+                  />
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-stone-700 block">زر "استعرض فنادق مكة والمدينة"</span>
+                    <span className="text-[10px] text-stone-400">ينقل المستخدم لقائمة الفنادق</span>
+                  </div>
+                  <VisibilityToggle
+                    active={form.showCtaHotelsButton !== false}
+                    onToggle={() => setForm({ ...form, showCtaHotelsButton: form.showCtaHotelsButton === false })}
+                  />
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-stone-700 block">زر "تحدث مع مستشار التسكين"</span>
+                    <span className="text-[10px] text-stone-400">يفتح محادثة واتساب المباشرة</span>
+                  </div>
+                  <VisibilityToggle
+                    active={form.showCtaConsultantButton !== false}
+                    onToggle={() => setForm({ ...form, showCtaConsultantButton: form.showCtaConsultantButton === false })}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        {/* ========================================================= */}
-        {/* SECTION 3.5: VALUE PILLARS & FEATURE CARDS */}
-        {/* ========================================================= */}
-        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* ========================================================= */}
+      {/* SUB-TAB 3: VALUE PILLARS (ركائز ومميزات الضيافة) */}
+      {/* ========================================================= */}
+      {activeSubTab === 'pillars' && (
+        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
-                ٤
+                <Award className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="font-cairo font-bold text-lg text-stone-900">
-                  مميزات وركائز الخدمة / بطاقات القيمة الرئيسية (Feature Cards & Icons)
+                  مميزات وركائز الخدمة / بطاقات القيمة الرئيسية
                 </h3>
                 <p className="text-xs text-stone-500">
-                  تحكّم في بطاقات المميزات والركائز المودعة بالموقع، مع إمكانية تغيير الأيقونات أو رفع أيقونات PNG مخصصة لكل بطاقة.
+                  تحكّم في بطاقات المميزات والركائز المودعة بالموقع مع إمكانية رفع أيقونات PNG مخصصة.
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleAddPillar}
-              className="px-4 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة بطاقة ميزة جديدة</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <VisibilityToggle
+                active={form.showValuePillars !== false}
+                onToggle={() => setForm({ ...form, showValuePillars: form.showValuePillars === false })}
+                label={form.showValuePillars !== false ? 'قسم الركائز ظاهر' : 'قسم الركائز مخفي'}
+              />
+
+              <button
+                type="button"
+                onClick={handleAddPillar}
+                className="px-4 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة بطاقة ميزة</span>
+              </button>
+            </div>
           </div>
 
           {/* Cards List Grid */}
@@ -747,7 +1209,7 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
                 key={pillar.id}
                 className="p-5 rounded-2xl bg-[#FAF8F5] border border-[#E8E2D8] space-y-4 relative group"
               >
-                {/* Header: Number & Remove */}
+                {/* Header: Number, Visibility & Remove */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-6 h-6 rounded-lg bg-[#C9A24B] text-white text-xs font-bold flex items-center justify-center">
@@ -756,14 +1218,21 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
                     <span className="text-xs font-bold text-stone-800">بطاقة الميزة</span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeletePillar(pillar.id)}
-                    className="p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    title="حذف البطاقة"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <VisibilityToggle
+                      active={pillar.isActive !== false}
+                      onToggle={() => handleUpdatePillar(pillar.id, { isActive: pillar.isActive === false ? true : false })}
+                      label={pillar.isActive !== false ? 'ظاهرة' : 'مخفية'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePillar(pillar.id)}
+                      className="p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      title="حذف البطاقة"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Icon Selector / Preview */}
@@ -807,9 +1276,9 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
                           <button
                             type="button"
                             onClick={() => handleUpdatePillar(pillar.id, { customIconUrl: undefined })}
-                            className="text-[10px] text-red-600 hover:underline"
+                            className="text-[10px] text-red-500 hover:underline"
                           >
-                            إلغاء PNG والرجوع للأيقونة
+                            حذف PNG
                           </button>
                         )}
                       </div>
@@ -817,221 +1286,600 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
                   </div>
                 </div>
 
-                {/* Card Title (Arabic) */}
-                <div>
-                  <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                    العنوان بالعربية: *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={pillar.title}
-                    onChange={(e) => handleUpdatePillar(pillar.id, { title: e.target.value })}
-                    placeholder="مثال: المصداقية المطلقة"
-                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:border-[#C9A24B]"
-                  />
-                </div>
+                {/* Title & Description */}
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-stone-700">
+                        عنوان الميزة (عربي):
+                      </label>
+                      <VisibilityToggle
+                        active={pillar.showTitle !== false}
+                        onToggle={() => handleUpdatePillar(pillar.id, { showTitle: pillar.showTitle === false })}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={pillar.title || ''}
+                      onChange={(e) => handleUpdatePillar(pillar.id, { title: e.target.value })}
+                      placeholder="مثال: المصداقية المطلقة"
+                      className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none focus:border-[#C9A24B]"
+                    />
+                  </div>
 
-                {/* Card Title (English) */}
-                <div>
-                  <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                    العنوان بالإنجليزية (English Title):
-                  </label>
-                  <input
-                    type="text"
-                    value={pillar.titleEn || ''}
-                    onChange={(e) => handleUpdatePillar(pillar.id, { titleEn: e.target.value })}
-                    placeholder="e.g. Absolute Integrity"
-                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#C9A24B] dir-ltr text-left"
-                  />
-                </div>
-
-                {/* Card Description (Arabic) */}
-                <div>
-                  <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                    الوصف بالعربية: *
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={pillar.description}
-                    onChange={(e) => handleUpdatePillar(pillar.id, { description: e.target.value })}
-                    placeholder="شرح وتفاصيل الميزة..."
-                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B] resize-none"
-                  />
-                </div>
-
-                {/* Card Description (English) */}
-                <div>
-                  <label className="text-[11px] font-bold text-stone-700 block mb-1">
-                    الوصف بالإنجليزية (English Description):
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={pillar.descriptionEn || ''}
-                    onChange={(e) => handleUpdatePillar(pillar.id, { descriptionEn: e.target.value })}
-                    placeholder="e.g. What you see is what you get..."
-                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#C9A24B] resize-none dir-ltr text-left"
-                  />
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-stone-700">
+                        وصف الميزة (عربي):
+                      </label>
+                      <VisibilityToggle
+                        active={pillar.showDescription !== false}
+                        onToggle={() => handleUpdatePillar(pillar.id, { showDescription: pillar.showDescription === false })}
+                      />
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={pillar.description || ''}
+                      onChange={(e) => handleUpdatePillar(pillar.id, { description: e.target.value })}
+                      placeholder="اكتب شرحاً للميزة..."
+                      className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs text-stone-800 outline-none focus:border-[#C9A24B] leading-relaxed"
+                    />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
+      )}
 
-        {/* ========================================================= */}
-        {/* SECTION 5: DETAILED INFORMATION & CREDENTIALS */}
-        {/* ========================================================= */}
-        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
-              ٥
+      {/* ========================================================= */}
+      {/* SUB-TAB 4: OFFICE & LICENSES (المقر الرئيسي والتراخيص) */}
+      {/* ========================================================= */}
+      {activeSubTab === 'office' && (
+        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-cairo font-bold text-lg text-stone-900">
+                  المقر الرئيسي، بيانات الاتصال، والتراخيص المعتمدة
+                </h3>
+                <p className="text-xs text-stone-500">
+                  تحكم في إظهار أو إخفاء بطاقة المقر ورابط خرائط Google والتراخيص الرسمية.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-cairo font-bold text-lg text-stone-900">
-                تفاصيل وقصة الشركة والاعتماد (Company Details & Story)
-              </h3>
-              <p className="text-xs text-stone-500">
-                الرسالة، الرؤية، عدد سنوات الخبرة، وشهادات وتراخيص الاعتماد الرسمية.
-              </p>
-            </div>
+
+            <VisibilityToggle
+              active={form.showOfficeSection !== false}
+              onToggle={() => setForm({ ...form, showOfficeSection: form.showOfficeSection === false })}
+              label={form.showOfficeSection !== false ? 'قسم المقر ظاهر' : 'قسم المقر مخفي'}
+            />
           </div>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">العنوان الرئيسي للصفحة:</label>
-                <input
-                  type="text"
-                  value={form.title || ''}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
+            {/* Header elements: Title, Badge, Branch Switcher */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">عنوان قسم المقر</span>
+                  <span className="text-[11px] text-stone-500">اسم الفرع / المقر المعتمد</span>
+                </div>
+                <VisibilityToggle
+                  active={form.showOfficeTitle !== false}
+                  onToggle={() => setForm({ ...form, showOfficeTitle: form.showOfficeTitle === false })}
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">الشارة الترحيبية (Badge):</label>
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">الشارة العلوية للمقر</span>
+                  <span className="text-[11px] text-stone-500">الموقع الجغرافي والفرع المعتمد</span>
+                </div>
+                <VisibilityToggle
+                  active={form.showOfficeBadge !== false}
+                  onToggle={() => setForm({ ...form, showOfficeBadge: form.showOfficeBadge === false })}
+                />
+              </div>
+
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">شريط التبديل بين الفروع</span>
+                  <span className="text-[11px] text-stone-500">أزرار اختيار الفروع (مكة / المدينة)</span>
+                </div>
+                <VisibilityToggle
+                  active={form.showBranchSwitcher !== false}
+                  onToggle={() => setForm({ ...form, showBranchSwitcher: form.showBranchSwitcher === false })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+                <label className="text-xs font-bold text-stone-700 block">عنوان البطاقة (Title):</label>
                 <input
                   type="text"
-                  value={form.badge || ''}
-                  onChange={(e) => setForm({ ...form, badge: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
+                  value={form.officeTitle || ''}
+                  onChange={(e) => setForm({ ...form, officeTitle: e.target.value })}
+                  placeholder="المقر الرئيسي لشركة برستيج لإدارة وتشغيل الفنادق"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
+
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+                <label className="text-xs font-bold text-stone-700 block">المدينة (City):</label>
+                <input
+                  type="text"
+                  value={form.officeCity || ''}
+                  onChange={(e) => setForm({ ...form, officeCity: e.target.value })}
+                  placeholder="مكة المكرمة"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-stone-700 block mb-1">المقدمة والنبذة العامة:</label>
-              <textarea
-                rows={2}
-                value={form.subtitle || ''}
-                onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
+            {/* Address */}
+            <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">العنوان التفصيلي للمقر:</label>
+                <VisibilityToggle
+                  active={form.showOfficeAddress !== false}
+                  onToggle={() => setForm({ ...form, showOfficeAddress: form.showOfficeAddress === false })}
+                />
+              </div>
+              <input
+                type="text"
+                value={form.officeAddress || ''}
+                onChange={(e) => setForm({ ...form, officeAddress: e.target.value })}
+                placeholder="أبراج وقف الملك عبدالعزيز - مجمع أبراج البيت، طريق أجياد، مكة المكرمة"
+                className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">سنوات الخبرة (إحصائية):</label>
-                <input
-                  type="text"
-                  value={form.yearsExperience || ''}
-                  onChange={(e) => setForm({ ...form, yearsExperience: e.target.value })}
-                  placeholder="مثال: ١٥+ عاماً"
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
+            {/* Google Maps Link */}
+            <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">رابط الموقع على خرائط Google (Maps URL):</label>
+                <VisibilityToggle
+                  active={form.showOfficeMapButton !== false}
+                  onToggle={() => setForm({ ...form, showOfficeMapButton: form.showOfficeMapButton === false })}
+                  label={form.showOfficeMapButton !== false ? 'زر الخريطة ظاهر' : 'زر الخريطة مخفي'}
                 />
               </div>
-
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">عدد الضيوف المخدومين:</label>
-                <input
-                  type="text"
-                  value={form.servedGuests || ''}
-                  onChange={(e) => setForm({ ...form, servedGuests: e.target.value })}
-                  placeholder="مثال: ١٢٠,٠٠٠+ معتمر"
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-stone-700 block mb-1">نص رسالة الشركة وقصة التأسيس:</label>
-              <textarea
-                rows={3}
-                value={form.missionText1 || ''}
-                onChange={(e) => setForm({ ...form, missionText1: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
+              <input
+                type="url"
+                value={form.officeMapUrl || ''}
+                onChange={(e) => setForm({ ...form, officeMapUrl: e.target.value })}
+                placeholder="https://maps.google.com/..."
+                className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-mono focus:outline-none focus:border-[#C9A24B]"
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">رقم الترخيص الرسمي:</label>
+            {/* Contact Channels for Office */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">رقم الهاتف:</label>
+                  <VisibilityToggle
+                    active={form.showOfficePhone !== false}
+                    onToggle={() => setForm({ ...form, showOfficePhone: form.showOfficePhone === false })}
+                  />
+                </div>
                 <input
                   type="text"
-                  value={form.licenseNumber || ''}
-                  onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })}
-                  placeholder="73104928"
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
+                  value={form.officePhone || ''}
+                  onChange={(e) => setForm({ ...form, officePhone: e.target.value })}
+                  placeholder="+966501234567"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-mono focus:outline-none focus:border-[#C9A24B]"
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">جهة الاعتماد والتصريح:</label>
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">رقم الواتساب:</label>
+                  <VisibilityToggle
+                    active={form.showOfficeWhatsApp !== false}
+                    onToggle={() => setForm({ ...form, showOfficeWhatsApp: form.showOfficeWhatsApp === false })}
+                  />
+                </div>
                 <input
                   type="text"
-                  value={form.licenseAuthority || ''}
-                  onChange={(e) => setForm({ ...form, licenseAuthority: e.target.value })}
-                  placeholder="وزارة الحج والعمرة والهيئة السعودية للسياحة"
-                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
+                  value={form.officeWhatsApp || ''}
+                  onChange={(e) => setForm({ ...form, officeWhatsApp: e.target.value })}
+                  placeholder="+966501234567"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-mono focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
+
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-700">البريد الإلكتروني:</label>
+                  <VisibilityToggle
+                    active={form.showOfficeEmail !== false}
+                    onToggle={() => setForm({ ...form, showOfficeEmail: form.showOfficeEmail === false })}
+                  />
+                </div>
+                <input
+                  type="email"
+                  value={form.officeEmail || ''}
+                  onChange={(e) => setForm({ ...form, officeEmail: e.target.value })}
+                  placeholder="info@prestigehotels.sa"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-mono focus:outline-none focus:border-[#C9A24B]"
                 />
               </div>
             </div>
 
-            {/* License Enable / Disable Toggle */}
-            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between gap-4">
-              <div>
-                <span className="text-xs font-bold text-stone-900 block">
-                  إظهار شارة الترخيص والاعتماد في الموقع
-                </span>
-                <p className="text-[11px] text-stone-500 mt-0.5">
-                  تفعيل أو إخفاء بطاقة الاعتماد ورقم الترخيص في صفحة "من نحن" والفوتر
-                </p>
+            {/* Working Hours */}
+            <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">أوقات العمل واستقبال النزلاء:</label>
+                <VisibilityToggle
+                  active={form.showOfficeHours !== false}
+                  onToggle={() => setForm({ ...form, showOfficeHours: form.showOfficeHours === false })}
+                />
+              </div>
+              <input
+                type="text"
+                value={form.officeWorkingHours || ''}
+                onChange={(e) => setForm({ ...form, officeWorkingHours: e.target.value })}
+                placeholder="على مدار الساعة 24/7 لخدمة ضيوف الرحمن"
+                className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+              />
+            </div>
+
+            {/* Official Licenses Box */}
+            <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8E2D8] space-y-4">
+              <div className="flex items-center justify-between border-b border-[#E8E2D8] pb-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-[#B38A34]" />
+                  <span className="text-xs font-bold text-stone-800">بيانات وشارة التراخيص الرسمية</span>
+                </div>
+                <VisibilityToggle
+                  active={form.showLicense !== false}
+                  onToggle={() => setForm({ ...form, showLicense: form.showLicense === false })}
+                  label={form.showLicense !== false ? 'شارة الترخيص ظاهرة' : 'شارة الترخيص مخفية'}
+                />
               </div>
 
-              <button
-                type="button"
-                onClick={() => setForm((prev) => ({ ...prev, showLicense: !prev.showLicense }))}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                  form.showLicense !== false
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                    : 'bg-stone-200 text-stone-600 hover:bg-stone-300'
-                }`}
-              >
-                {form.showLicense !== false ? 'مفعل (ظاهر للزوار)' : 'مخفي (معطل)'}
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">الجهة المرخصة:</label>
+                  <input
+                    type="text"
+                    value={form.licenseAuthority || ''}
+                    onChange={(e) => setForm({ ...form, licenseAuthority: e.target.value })}
+                    placeholder="مرخصون من وزارة الحج والعمرة والهيئة السعودية للسياحة"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">رقم الترخيص / السجل التجاري:</label>
+                  <input
+                    type="text"
+                    value={form.licenseNumber || ''}
+                    onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })}
+                    placeholder="73104928"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-mono focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Bottom Save Button */}
-        <div className="flex items-center justify-end gap-3 pt-4">
-          <button
-            type="submit"
-            className="px-8 py-3.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Check className="w-4 h-4" />
-            <span>حفظ وتحديث بيانات صفحة من نحن</span>
-          </button>
+      {/* ========================================================= */}
+      {/* SUB-TAB 5: PHOTOS & LOGO (الشعار وألبوم صور المقر) */}
+      {/* ========================================================= */}
+      {activeSubTab === 'photos' && (
+        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-8 animate-fadeIn">
+          {/* Logo Management */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+              <div>
+                <h3 className="font-cairo font-bold text-lg text-stone-900">
+                  شعار الشركة (Company Logo)
+                </h3>
+                <p className="text-xs text-stone-500">
+                  يظهر في رأس صفحة "من نحن" وفي بطاقة المقر الرئيسي
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <VisibilityToggle
+                  active={form.showLogoCardButton !== false}
+                  onToggle={() => setForm({ ...form, showLogoCardButton: form.showLogoCardButton === false })}
+                  label={form.showLogoCardButton !== false ? 'زر فتح وتكبير الشعار ظاهر' : 'زر فتح الشعار مخفي'}
+                />
+                <VisibilityToggle
+                  active={form.showLogoCard !== false}
+                  onToggle={() => setForm({ ...form, showLogoCard: form.showLogoCard === false })}
+                  label={form.showLogoCard !== false ? 'بطاقة الشعار كاملة ظاهرة' : 'بطاقة الشعار مخفية'}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-6 p-4 rounded-2xl bg-stone-50 border border-stone-200">
+              <div className="w-28 h-28 rounded-2xl bg-stone-900 border border-stone-700 p-3 flex items-center justify-center shrink-0">
+                {currentLogo ? (
+                  <img
+                    src={currentLogo}
+                    alt="Company Logo"
+                    className="max-h-full max-w-full object-contain filter drop-shadow-[0_0_10px_rgba(201,162,75,0.3)]"
+                  />
+                ) : (
+                  <Building2 className="w-10 h-10 text-[#DFBE72]" />
+                )}
+              </div>
+
+              <div className="space-y-3 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-bold transition-colors">
+                    <Upload className="w-4 h-4 text-[#DFBE72]" />
+                    <span>رفع شعار جديد (PNG شفاف / SVG)</span>
+                    <input
+                      ref={logoFileInputRef}
+                      type="file"
+                      accept="image/png, image/jpeg, image/webp, image/svg+xml, .png, .svg"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {currentLogo && (
+                    <button
+                      type="button"
+                      onClick={() => openAdminLightbox(currentLogo)}
+                      className="px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-700 text-xs font-semibold hover:bg-stone-100 flex items-center gap-1.5"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>معاينة مكبرة</span>
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-stone-500">
+                  يُفضل رفع شعار بخلفية شفافة PNG بجودة عالية وأبعاد متناسقة.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Photo Album Gallery */}
+          <div className="pt-6 border-t border-stone-200 space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-stone-200">
+              <div>
+                <h3 className="font-cairo font-bold text-lg text-stone-900">
+                  ألبوم صور المقر الرئيسي والضيافة (Photo Album)
+                </h3>
+                <p className="text-xs text-stone-500">
+                  الصور التي تظهر في معرض صور صفحة من نحن ({allPhotos.length} صورة حالياً)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <VisibilityToggle
+                  active={form.showPhotoAlbumTitle !== false}
+                  onToggle={() => setForm({ ...form, showPhotoAlbumTitle: form.showPhotoAlbumTitle === false })}
+                  label={form.showPhotoAlbumTitle !== false ? 'عنوان المعرض ظاهر' : 'عنوان المعرض مخفي'}
+                />
+                <VisibilityToggle
+                  active={form.showPhotoAlbumUploadButton !== false}
+                  onToggle={() => setForm({ ...form, showPhotoAlbumUploadButton: form.showPhotoAlbumUploadButton === false })}
+                  label={form.showPhotoAlbumUploadButton !== false ? 'زر رفع الصور ظاهر' : 'زر الرفع مخفي'}
+                />
+                <VisibilityToggle
+                  active={form.showPhotoAlbum !== false}
+                  onToggle={() => setForm({ ...form, showPhotoAlbum: form.showPhotoAlbum === false })}
+                  label={form.showPhotoAlbum !== false ? 'المعرض كامل ظاهر' : 'المعرض مخفي'}
+                />
+
+                <label className="cursor-pointer inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs font-bold shadow-xs transition-colors">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>رفع صور من الجهاز</span>
+                  <input
+                    ref={photosFileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handlePhotosUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAddUrlInput(!showAddUrlInput)}
+                  className="px-3 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>رابط صورة</span>
+                </button>
+              </div>
+            </div>
+
+            {/* URL Input Form */}
+            {showAddUrlInput && (
+              <form onSubmit={handleAddPhotoUrl} className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex gap-2">
+                <input
+                  type="url"
+                  value={newPhotoUrl}
+                  onChange={(e) => setNewPhotoUrl(e.target.value)}
+                  placeholder="https://example.com/photo.jpg"
+                  className="flex-1 px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm font-mono outline-none focus:border-[#C9A24B]"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-stone-900 hover:bg-black text-white text-xs font-bold rounded-xl"
+                >
+                  إضافة
+                </button>
+              </form>
+            )}
+
+            {/* Photos Grid */}
+            {allPhotos.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {allPhotos.map((photo, pIdx) => {
+                  const isMain = form.mainPhoto === photo;
+                  return (
+                    <div
+                      key={pIdx}
+                      className={`group relative rounded-2xl overflow-hidden border aspect-video bg-stone-100 shadow-2xs ${
+                        isMain ? 'border-[#C9A24B] ring-2 ring-[#C9A24B]/30' : 'border-stone-200'
+                      }`}
+                    >
+                      <img
+                        src={photo}
+                        alt={`Photo ${pIdx + 1}`}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 cursor-pointer"
+                        onClick={() => openAdminLightbox(photo)}
+                      />
+
+                      {/* Main Badge */}
+                      {isMain && (
+                        <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-[#C9A24B] text-white text-[10px] font-bold shadow-xs">
+                          الغلاف الرئيسي
+                        </span>
+                      )}
+
+                      {/* Hover Actions */}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 p-2">
+                        {!isMain && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetMainPhoto(photo)}
+                            className="px-2.5 py-1.5 rounded-lg bg-[#C9A24B] text-white text-[10px] font-bold hover:bg-[#B38A34] transition-colors"
+                            title="تعيين كغلاف رئيسي"
+                          >
+                            تعيين رئيسية
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => openAdminLightbox(photo)}
+                          className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/40 transition-colors"
+                          title="معاينة مكبرة"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePhoto(photo)}
+                          className="p-1.5 rounded-lg bg-red-600/80 text-white hover:bg-red-600 transition-colors"
+                          title="حذف الصورة"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-10 border-2 border-dashed border-stone-200 rounded-2xl">
+                <ImageIcon className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                <p className="text-xs text-stone-500 font-medium">لا توجد صور في ألبوم المقر حالياً</p>
+                <p className="text-[11px] text-stone-400 mt-0.5">انقر على "رفع صور من الجهاز" لإضافة صور جديدة</p>
+              </div>
+            )}
+          </div>
         </div>
-      </form>
+      )}
+      {/* ========================================================= */}
+      {/* SUB-TAB 7: CALL TO ACTION BANNER (شريط الدعوة للحجز في الفوتر) */}
+      {/* ========================================================= */}
+      {activeSubTab === 'cta' && (
+        <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
+                <ArrowLeft className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-cairo font-bold text-lg text-stone-900">
+                  شريط الدعوة للحجز والتواصل في أسفل صفحة من نحن (CTA Banner)
+                </h3>
+                <p className="text-xs text-stone-500">
+                  التحكم في إظهار أو إخفاء البانر الذهبي السفلي، عنوانه، نصوصه، وأزرار استعراض الفنادق وواتساب.
+                </p>
+              </div>
+            </div>
 
-      {/* Fullscreen Lightbox Preview for Admin */}
+            <VisibilityToggle
+              active={form.showCtaSection !== false && form.showCtaBanner !== false}
+              onToggle={() => {
+                const val = !(form.showCtaSection !== false && form.showCtaBanner !== false);
+                setForm({ ...form, showCtaSection: val, showCtaBanner: val });
+              }}
+              label={(form.showCtaSection !== false && form.showCtaBanner !== false) ? 'البانر ظاهر بالكامل' : 'البانر مخفي'}
+            />
+          </div>
+
+          <div className="space-y-4">
+            {/* CTA Title */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">العنوان الرئيسي للشريط:</label>
+                <VisibilityToggle
+                  active={form.showCtaTitle !== false}
+                  onToggle={() => setForm({ ...form, showCtaTitle: form.showCtaTitle === false })}
+                />
+              </div>
+              <p className="text-xs text-stone-500">
+                النص الافتراضي: "هل تخطط لرحلة عمرة أو حج قادمة؟" (يمكن تعديله بالنقر المباشر عليه داخل الصفحة عند تفعيل وضع التعديل)
+              </p>
+            </div>
+
+            {/* CTA Subtitle */}
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700">النص التوضيحي للشريط (الوصف):</label>
+                <VisibilityToggle
+                  active={form.showCtaSubtitle !== false}
+                  onToggle={() => setForm({ ...form, showCtaSubtitle: form.showCtaSubtitle === false })}
+                />
+              </div>
+              <p className="text-xs text-stone-500">
+                النص الافتراضي: "تصفح قائمة فنادقنا المعتمدة في مكة والمدينة أو تواصل مباشرة مع فريقنا لمساعدتك في اختيار الفندق الأنسب."
+              </p>
+            </div>
+
+            {/* CTA Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">زر "استعرض فنادق مكة والمدينة"</span>
+                  <span className="text-[11px] text-stone-500">زر أبيض ينقل الزائر لصفحة الفنادق</span>
+                </div>
+                <VisibilityToggle
+                  active={form.showCtaHotelsButton !== false}
+                  onToggle={() => setForm({ ...form, showCtaHotelsButton: form.showCtaHotelsButton === false })}
+                />
+              </div>
+
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-800 block">زر "تحدث مع مستشار التسكين"</span>
+                  <span className="text-[11px] text-stone-500">زر داكن يفتح محادثة واتساب مباشرة</span>
+                </div>
+                <VisibilityToggle
+                  active={form.showCtaConsultantButton !== false}
+                  onToggle={() => setForm({ ...form, showCtaConsultantButton: form.showCtaConsultantButton === false })}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
       {lightboxOpen && (
         <Lightbox
           images={allAdminImages}
-          initialIndex={lightboxIndex}
-          isOpen={lightboxOpen}
+          currentIndex={lightboxIndex}
           onClose={() => setLightboxOpen(false)}
         />
       )}

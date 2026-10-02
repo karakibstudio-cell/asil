@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '../context/LanguageContext';
+import { getFirstActiveWhatsApp, buildWhatsAppLink } from '../utils/channels';
 
 interface IntroVideoSectionProps {
   siteSettings?: SiteSettings;
@@ -89,9 +90,14 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
   };
 
   const handleAction = () => {
-    if (intro.actionButtonPage === 'whatsapp') {
-      window.open('https://wa.me/966501234567', '_blank', 'noopener,noreferrer');
-    } else if (intro.actionButtonPage) {
+    if (intro?.actionButtonPage === 'whatsapp') {
+      const siteWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
+      const targetWhatsApp = siteWhatsApp?.value || siteSettings?.officeWhatsApp || siteSettings?.primaryPhone || '';
+      const url = buildWhatsAppLink(targetWhatsApp, 'السلام عليكم ورحمة الله، أود الاستفسار عن خدمات وحجوزات برستيج لإدارة وتشغيل الفنادق.');
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } else if (intro?.actionButtonPage) {
       onNavigate(intro.actionButtonPage);
     } else {
       handleScrollDown();
@@ -118,28 +124,46 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
         />
-        {/* Cinematic Vignette & Ambient Gradient Overlays */}
-        <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-black/40 to-stone-950/70" />
-        <div className="absolute inset-0 bg-radial from-transparent via-black/30 to-black/80 pointer-events-none" />
+        {/* Light Overlays — keep video vivid, only gentle gradient for text contrast */}
+        {intro.overlayStyle !== 'none' && (
+          <>
+            <div 
+              className={`absolute inset-0 transition-opacity duration-500 ${
+                intro.overlayStyle === 'cinematic'
+                  ? 'bg-gradient-to-t from-black/35 via-transparent to-black/10'
+                  : intro.overlayStyle === 'subtle'
+                  ? 'bg-gradient-to-t from-black/20 via-transparent to-transparent'
+                  : 'bg-gradient-to-t from-black/25 via-transparent to-black/5'
+              }`} 
+            />
+            {intro.overlayStyle === 'cinematic' && (
+              <div className="absolute inset-0 bg-radial from-transparent via-transparent to-black/10 pointer-events-none" />
+            )}
+            {/* Ambient Warm Golden Glow Halo */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#C9A24B]/8 rounded-full blur-[140px] pointer-events-none" />
+          </>
+        )}
       </div>
 
       {/* Floating Audio & Playback Controls (Top Left / Right) */}
-      <div className={`absolute top-24 ${isRtl ? 'left-6' : 'right-6'} z-30 flex items-center gap-2`}>
-        <motion.button
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.94 }}
-          onClick={handleToggleSound}
-          className="px-3.5 py-2 rounded-full bg-black/60 hover:bg-[#C9A24B] text-white hover:text-black border border-white/20 hover:border-[#C9A24B] backdrop-blur-md transition-all flex items-center gap-2 shadow-xl cursor-pointer text-xs font-bold font-cairo"
-          title={isMuted ? 'تشغيل الصوت' : 'كتم الصوت'}
-        >
-          {isMuted ? <VolumeX className="w-4 h-4 text-amber-300" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
-          <span>{isMuted ? (language === 'en' ? 'Unmute' : 'تشغيل الصوت') : (language === 'en' ? 'Mute' : 'كتم الصوت')}</span>
-        </motion.button>
-      </div>
+      {intro.showSoundButton !== false && (
+        <div className={`absolute top-24 ${isRtl ? 'left-6' : 'right-6'} z-30 flex items-center gap-2`}>
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.94 }}
+            onClick={handleToggleSound}
+            className="px-3.5 py-2 rounded-full bg-black/40 hover:bg-[#C9A24B] text-white hover:text-black border border-white/20 hover:border-[#C9A24B] backdrop-blur-md transition-all flex items-center gap-2 shadow-xl cursor-pointer text-xs font-bold font-cairo"
+            title={isMuted ? 'تشغيل الصوت' : 'كتم الصوت'}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4 text-amber-300" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+            <span>{isMuted ? (language === 'en' ? 'Unmute' : 'تشغيل الصوت') : (language === 'en' ? 'Mute' : 'كتم الصوت')}</span>
+          </motion.button>
+        </div>
+      )}
 
       {/* Hero Content Overlay (If Admin added text) */}
       <div className="relative z-20 max-w-4xl mx-auto px-4 sm:px-8 text-center flex flex-col items-center justify-center space-y-6 pt-16">
-        {(intro.badgeText || (intro as any).badge) && (
+        {intro.showBadge !== false && (intro.badgeText || (intro as any).badge) && (
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -151,29 +175,29 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
           </motion.div>
         )}
 
-        {intro.title && (
+        {intro.showTitle !== false && intro.title && (
           <motion.h1 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.7, delay: 0.1 }}
-            className="text-3xl sm:text-5xl md:text-6xl font-cairo font-black text-white tracking-tight leading-tight filter drop-shadow-lg"
+            className="text-3xl sm:text-5xl md:text-6xl font-cairo font-black text-white tracking-tight leading-tight filter drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)]"
           >
             {intro.title}
           </motion.h1>
         )}
 
-        {intro.subtitle && (
+        {intro.showSubtitle !== false && intro.subtitle && (
           <motion.p 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.2 }}
-            className="text-sm sm:text-lg text-stone-200 max-w-2xl font-cairo font-medium leading-relaxed filter drop-shadow-md"
+            className="text-sm sm:text-lg text-stone-100 max-w-2xl font-cairo font-medium leading-relaxed filter drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]"
           >
             {intro.subtitle}
           </motion.p>
         )}
 
-        {intro.actionButtonText && (
+        {intro.showActionButton !== false && intro.actionButtonText && (
           <motion.button
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

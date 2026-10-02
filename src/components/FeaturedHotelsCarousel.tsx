@@ -167,10 +167,18 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
                   }`}
                 >
                   <img
-                    src={hotel.mainImage}
+                    src={hotel.mainImage || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80'}
                     alt={hotel.name}
                     loading="lazy"
+                    decoding="async"
                     referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.dataset.fallbackApplied) {
+                        target.dataset.fallbackApplied = 'true';
+                        target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80';
+                      }
+                    }}
                     className="w-full h-full object-cover object-center transform group-hover:scale-105 transition-transform duration-1000 ease-out"
                   />
                   {/* Subtle Dark Gradient Overlay for optimal text readability */}

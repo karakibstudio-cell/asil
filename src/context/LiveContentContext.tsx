@@ -25,7 +25,14 @@ export const LiveContentProvider: React.FC<LiveContentProviderProps> = ({
   isAdminLoggedIn,
   onShowToast
 }) => {
-  const [contentMap, setContentMap] = useState<Record<string, ContentItem>>({});
+  const [contentMap, setContentMap] = useState<Record<string, ContentItem>>(() => {
+    try {
+      const cached = localStorage.getItem('diy_live_content');
+      return cached ? JSON.parse(cached) : {};
+    } catch {
+      return {};
+    }
+  });
   const [isEditMode, setIsEditModeState] = useState<boolean>(() => {
     try {
       return localStorage.getItem('diy_edit_mode') === 'true';

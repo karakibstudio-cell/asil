@@ -208,10 +208,18 @@ export const OurHotelsAccordion: React.FC<OurHotelsAccordionProps> = ({
                           className="flex items-center gap-3.5 p-3 rounded-xl bg-white border border-stone-200 hover:border-[#C9A24B] transition-all cursor-pointer group shadow-2xs hover:shadow-sm"
                         >
                           <img
-                            src={hotel.mainImage}
+                            src={hotel.mainImage || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80'}
                             alt={hotel.name}
                             className="w-18 h-18 sm:w-20 sm:h-20 rounded-lg object-cover shrink-0 group-hover:scale-105 transition-transform duration-300"
                             loading="lazy"
+                            decoding="async"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              if (!target.dataset.fallbackApplied) {
+                                target.dataset.fallbackApplied = 'true';
+                                target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80';
+                              }
+                            }}
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1 mb-1">

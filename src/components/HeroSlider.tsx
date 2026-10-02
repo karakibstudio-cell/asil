@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { HeroSlide, ActivePage, SiteSettings } from '../types';
 import { 
   Building2, 
@@ -12,11 +12,12 @@ import {
   Play,
   Eye,
   Volume2,
-  VolumeX
+  VolumeX,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WhatsAppIcon } from './BookingIcons';
-import { getFirstActiveWhatsApp, getChannelHref } from '../utils/channels';
+import { getFirstActiveWhatsApp, getChannelHref, buildWhatsAppLink } from '../utils/channels';
 import { Lightbox, LightboxMediaItem } from './Lightbox';
 import { SafeVideoPlayer } from './SafeVideoPlayer';
 import { EditableText } from './EditableText';
@@ -24,10 +25,12 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface HeroSliderProps {
   slides?: HeroSlide[];
-  onNavigate: (page: ActivePage) => void;
+  onNavigate: (page: ActivePage, hotelIdOrSlug?: string) => void;
   siteSettings: SiteSettings;
   onScrollToNext?: () => void;
 }
+
+const SLIDE_DURATION_MS = 8000;
 
 export const HeroSlider: React.FC<HeroSliderProps> = ({
   slides = [],
@@ -35,7 +38,6 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
   siteSettings,
   onScrollToNext
 }) => {
-  // Only use active slides directly from the database
   const activeSlides = slides.filter((s) => s.isActive);
   const effectiveSlides = activeSlides;
 
@@ -45,26 +47,36 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
   const [isHeroMuted, setIsHeroMuted] = useState(true);
   const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  
   const touchStartX = useRef<number | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   const totalSlides = effectiveSlides.length;
 
   // WhatsApp Link calculation
   const primaryWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
+  const targetWhatsApp = primaryWhatsApp?.value || siteSettings?.officeWhatsApp || siteSettings?.primaryPhone || '';
   const defaultWhatsAppMsg = `السلام عليكم ورحمة الله، أود الاستفسار عن عروض وتسكين الفنادق في مكة والمدينة عبر ${siteSettings?.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'}.`;
-  const whatsAppBookingUrl = primaryWhatsApp
-    ? getChannelHref(primaryWhatsApp, defaultWhatsAppMsg)
-    : `https://wa.me/966501234567?text=${encodeURIComponent(defaultWhatsAppMsg)}`;
+  const whatsAppBookingUrl = buildWhatsAppLink(targetWhatsApp, defaultWhatsAppMsg);
 
-  const handleAction = (action?: ActivePage | 'whatsapp') => {
+  const handleAction = (action?: ActivePage | 'whatsapp' | 'hotels-makkah' | 'hotels-madinah' | string) => {
     if (!action) return;
     if (action === 'whatsapp') {
       window.open(whatsAppBookingUrl, '_blank', 'noopener,noreferrer');
     } else {
-      onNavigate(action);
+      onNavigate(action as ActivePage);
     }
   };
+
+  const handleNext = useCallback(() => {
+    setSlideDirection('next');
+    setCurrentIndex((prev) => (prev + 1) % totalSlides);
+  }, [totalSlides]);
+
+  const handlePrev = useCallback(() => {
+    setSlideDirection('prev');
+    setCurrentIndex((prev) => (prev - 1 + totalSlides) % totalSlides);
+  }, [totalSlides]);
 
   // Convert slides into Lightbox media items (handling both video and image)
   const lightboxMediaItems: LightboxMediaItem[] = effectiveSlides.map((s) => {
@@ -77,45 +89,43 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
     };
   });
 
-  // Auto-play interval
+  // Auto-Play timer loop - Zero main-thread overhead, hardware-accelerated
   useEffect(() => {
     if (totalSlides <= 1 || isPaused) return;
 
-    timerRef.current = setInterval(() => {
-      setSlideDirection('next');
-      setCurrentIndex((prev) => (prev + 1) % totalSlides);
-    }, 7500);
+    const timer = setTimeout(() => {
+      handleNext();
+    }, SLIDE_DURATION_MS);
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      clearTimeout(timer);
     };
-  }, [totalSlides, isPaused, currentIndex]);
-
-  const handleNext = () => {
-    setSlideDirection('next');
-    setCurrentIndex((prev) => (prev + 1) % totalSlides);
-  };
-
-  const handlePrev = () => {
-    setSlideDirection('prev');
-    setCurrentIndex((prev) => (prev - 1 + totalSlides) % totalSlides);
-  };
+  }, [totalSlides, isPaused, handleNext, currentIndex]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
+    if (touchStartX.current === null || touchStartY.current === null) return;
     const touchEndX = e.changedTouches[0].clientX;
-    const diff = touchStartX.current - touchEndX;
+    const touchEndY = e.changedTouches[0].clientY;
+    const diffX = touchStartX.current - touchEndX;
+    const diffY = touchStartY.current - touchEndY;
 
-    if (diff > 45) {
-      handleNext();
-    } else if (diff < -45) {
-      handlePrev();
+    // Only trigger horizontal swipe if movement is primarily horizontal
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 40) {
+      if (diffX > 0) {
+        // Swipe left
+        isRtl ? handlePrev() : handleNext();
+      } else {
+        // Swipe right
+        isRtl ? handleNext() : handlePrev();
+      }
     }
     touchStartX.current = null;
+    touchStartY.current = null;
   };
 
   // If no slides exist in the database, render an ultra-luxury branded hero section
@@ -123,41 +133,66 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
     return (
       <section 
         id="hero-slider-section" 
-        className="relative min-h-[80vh] sm:min-h-[90vh] w-full flex items-center justify-center p-6 sm:p-12 overflow-hidden bg-gradient-to-b from-[#1C1917] via-[#0C0A09] to-[#1C1917] text-white select-none"
+        className="relative min-h-[85vh] sm:min-h-[92vh] w-full flex items-center justify-center p-6 sm:p-12 overflow-hidden bg-gradient-to-b from-[#1C1917] via-[#0C0A09] to-[#1C1917] text-white select-none"
       >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#C9A24B]/15 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-[#C9A24B]/20 rounded-full blur-[140px] pointer-events-none" />
         
         <div className="relative z-10 max-w-4xl mx-auto text-center space-y-6 pt-20">
           {siteSettings?.logoUrl && (
-            <div className="flex justify-center mb-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.6 }}
+              className="flex justify-center mb-4"
+            >
               <img
                 src={siteSettings.logoUrl}
                 alt={siteSettings.siteTitle || 'Logo'}
-                className="h-16 sm:h-20 w-auto object-contain filter drop-shadow-[0_0_15px_rgba(201,162,75,0.4)]"
+                className="h-16 sm:h-24 w-auto object-contain filter drop-shadow-[0_0_20px_rgba(201,162,75,0.45)]"
               />
-            </div>
+            </motion.div>
           )}
 
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#C9A24B]/20 border border-[#C9A24B]/40 text-[#DFBE72] text-xs sm:text-sm font-bold backdrop-blur-md">
-            <Building2 className="w-4 h-4 text-[#C9A24B]" />
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white/10 border border-[#C9A24B]/40 text-[#DFBE72] text-xs sm:text-sm font-bold backdrop-blur-md shadow-lg"
+          >
+            <Sparkles className="w-4 h-4 text-[#C9A24B]" />
             <span>{siteSettings?.siteSubtitle || t('hero.welcomeBadge', 'الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين')}</span>
-          </div>
+          </motion.div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-cairo font-bold text-white tracking-tight leading-tight">
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.2 }}
+            className="text-3xl sm:text-5xl lg:text-6xl font-cairo font-black text-white tracking-tight leading-tight"
+          >
             {siteSettings?.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'}
-          </h1>
+          </motion.h1>
 
-          <p className="text-sm sm:text-lg text-stone-300 max-w-2xl mx-auto font-medium leading-relaxed">
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.3 }}
+            className="text-sm sm:text-lg text-stone-300 max-w-2xl mx-auto font-medium leading-relaxed"
+          >
             {language === 'en' 
-              ? 'Luxury hotel management, hospitality, and elite accommodation for Umrah and Hajj guests in Makkah & Madinah.'
+              ? 'Luxury hotel management, operations, and premier hospitality for Umrah and Hajj guests in Makkah & Madinah.'
               : 'نوفر لضيوف الرحمن وشركات السياحة أفضل خيارات الإقامة في فنادق مكة المكرمة والمدينة المنورة مع تسهيلات حجز معتمدة ومباشرة.'}
-          </p>
+          </motion.p>
 
-          <div className="flex items-center justify-center gap-3 pt-4 flex-wrap">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+            className="flex items-center justify-center gap-3.5 pt-4 flex-wrap"
+          >
             <button
               type="button"
               onClick={() => onNavigate('hotels')}
-              className="px-6 py-3.5 rounded-2xl bg-[#C9A24B] hover:bg-[#b08b38] text-stone-950 font-bold text-xs sm:text-sm shadow-lg shadow-[#C9A24B]/30 hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+              className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#DFBE72] via-[#C9A24B] to-[#B38A34] text-white font-bold text-xs sm:text-sm shadow-xl shadow-[#C9A24B]/30 hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
             >
               <span>{t('hero.exploreHotels', 'استعرض الفنادق المتاحة')}</span>
               {isRtl ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
@@ -166,12 +201,12 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
             <button
               type="button"
               onClick={() => handleAction('whatsapp')}
-              className="px-6 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/20 hover:border-white/40 backdrop-blur-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+              className="px-7 py-3.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/25 hover:border-white/50 backdrop-blur-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
             >
               <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
               <span>{t('hero.contactWhatsApp', 'تواصل عبر الواتساب')}</span>
             </button>
-          </div>
+          </motion.div>
         </div>
 
         {onScrollToNext && (
@@ -201,13 +236,13 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
   return (
     <section 
       id="hero-slider-section" 
-      className="relative h-screen h-[100dvh] min-h-[100dvh] w-full flex items-center justify-center p-0 m-0 overflow-hidden select-none"
+      className="relative h-screen h-[100dvh] min-h-[100dvh] w-full flex items-center justify-center p-0 m-0 overflow-hidden select-none bg-stone-950"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Background Media Layer (Images & Videos) */}
+      {/* Background Media Layers with Smooth Crossfade & Ken-Burns Zoom Effect */}
       {effectiveSlides.map((slide, idx) => {
         const isCurrent = idx === currentIndex;
         const isSlideVideo = slide.mediaType === 'video' && Boolean(slide.videoUrl?.trim());
@@ -233,31 +268,51 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
                 />
               </div>
             ) : (
-              <img
-                src={slide.imageUrl}
-                alt={slide.title || 'صورة الهيرو'}
-                className={`w-full h-full object-cover object-center transform transition-transform duration-10000 ease-out ${
-                  isCurrent ? 'scale-110' : 'scale-100'
-                }`}
-              />
+              <div className="w-full h-full relative overflow-hidden">
+                <img
+                  src={slide.imageUrl}
+                  alt={slide.title || 'صورة الهيرو'}
+                  className={`w-full h-full object-cover object-center transform transition-transform duration-[10000ms] ease-out will-change-transform ${
+                    isCurrent ? 'scale-110 translate-y-[-1%]' : 'scale-100 translate-y-0'
+                  }`}
+                  loading={idx === 0 ? 'eager' : 'lazy'}
+                  fetchPriority={idx === 0 ? 'high' : 'auto'}
+                  decoding="async"
+                />
+              </div>
             )}
           </div>
         );
       })}
 
-      {/* Atmospheric Gradient Layer (Adjusted if no text overlay is shown) */}
+      {/* Atmospheric Radiant Luxury Gradient Layers (Crystal-clear & showcases imagery vibrantly) */}
       <div className={`absolute inset-0 transition-opacity duration-700 z-1 ${
         hasAnyTextOrButtons
-          ? 'bg-gradient-to-t from-[#F8F7F4] via-black/55 to-black/75'
-          : 'bg-gradient-to-t from-[#F8F7F4]/40 via-black/20 to-black/40'
+          ? 'bg-gradient-to-t from-stone-950/70 via-black/20 to-black/35'
+          : 'bg-gradient-to-t from-stone-950/40 via-transparent to-black/20'
       }`} />
       
+      {/* Ambient Warm Golden Glow Halo */}
       {hasAnyTextOrButtons && (
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#C9A24B]/20 rounded-full blur-[130px] pointer-events-none z-1" />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-[#C9A24B]/18 rounded-full blur-[150px] pointer-events-none z-1" />
       )}
 
-      {/* Top Floating Controls Bar: Fullscreen Zoom & Video Sound Toggle */}
+      {/* Floating Controls Bar: Fullscreen Zoom, Video Sound Toggle & Play/Pause */}
       <div className={`absolute top-24 sm:top-28 ${isRtl ? 'right-4 sm:right-8' : 'left-4 sm:left-8'} z-20 flex items-center gap-2`}>
+        {/* Play / Pause Toggle */}
+        {totalSlides > 1 && (
+          <button
+            type="button"
+            onClick={() => setIsPaused(!isPaused)}
+            className="p-2.5 rounded-full bg-black/50 hover:bg-[#C9A24B] text-white hover:text-black border border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-lg hover:scale-105 active:scale-95"
+            title={isPaused ? (language === 'en' ? 'Resume auto-play' : 'استئناف التبديل التلقائي') : (language === 'en' ? 'Pause auto-play' : 'إيقاف مؤقت')}
+            aria-label="Play/Pause"
+          >
+            {isPaused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4" />}
+          </button>
+        )}
+
+        {/* Video Audio Mute/Unmute */}
         {Boolean(currentSlide?.mediaType === 'video' && currentSlide?.videoUrl?.trim()) && (
           <button
             type="button"
@@ -277,44 +332,47 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
                 }
               } catch {}
             }}
-            className="p-2.5 rounded-full bg-black/45 hover:bg-[#C9A24B] text-white hover:text-black border border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-lg hover:scale-105 active:scale-95"
+            className="p-2.5 rounded-full bg-black/50 hover:bg-[#C9A24B] text-white hover:text-black border border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-lg hover:scale-105 active:scale-95"
             title={isHeroMuted ? (language === 'en' ? 'Unmute video' : 'تشغيل صوت الفيديو') : (language === 'en' ? 'Mute video' : 'كتم صوت الفيديو')}
+            aria-label="Sound"
           >
             {isHeroMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
         )}
 
+        {/* Zoom Lightbox Trigger */}
         <button
           type="button"
           onClick={() => setLightboxOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black/45 hover:bg-[#C9A24B] text-white hover:text-black border border-white/20 hover:border-[#C9A24B] text-xs font-semibold backdrop-blur-md transition-all cursor-pointer shadow-lg hover:scale-105 active:scale-95"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-black/50 hover:bg-[#C9A24B] text-white hover:text-black border border-white/20 hover:border-[#C9A24B] text-xs font-semibold backdrop-blur-md transition-all cursor-pointer shadow-lg hover:scale-105 active:scale-95"
           title={language === 'en' ? 'View slide fullscreen' : 'معاينة الشريحة بملء الشاشة'}
+          aria-label="Zoom"
         >
           <Eye className="w-4 h-4" />
           <span className="hidden sm:inline">{isCurrentVideo ? t('hero.zoomVideo', 'تكبير الفيديو') : t('hero.zoomMedia', 'تكبير الصورة')}</span>
         </button>
       </div>
 
-      {/* Slide Content Container (Only if text or buttons are enabled) */}
+      {/* Slide Content Container (Dynamic Animated Typography) */}
       <AnimatePresence mode="wait">
         {hasAnyTextOrButtons ? (
           <motion.div 
             key={`slide-content-${currentSlide.id}-${currentIndex}`}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 25 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
             className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center flex flex-col items-center pt-10 sm:pt-0"
           >
-            {/* Animated Badge */}
+            {/* Animated Frosted Gold Badge */}
             {hasBadge && (
               <motion.div 
-                initial={{ opacity: 0, scale: 0.9, y: -10 }}
+                initial={{ opacity: 0, scale: 0.88, y: -12 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/45 border border-[#C9A24B]/60 text-[#DFBE72] text-xs sm:text-sm font-semibold mb-6 backdrop-blur-md shadow-xl"
+                transition={{ duration: 0.55, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                className="inline-flex items-center gap-2 px-4.5 py-1.5 rounded-full bg-black/50 border border-[#C9A24B]/70 text-[#DFBE72] text-xs sm:text-sm font-bold mb-6 backdrop-blur-md shadow-2xl ring-1 ring-[#C9A24B]/30"
               >
-                <Building2 className="w-4 h-4 text-[#DFBE72]" />
+                <Sparkles className="w-4 h-4 text-[#DFBE72] animate-pulse" />
                 <span>
                   <EditableText
                     contentKey={`hero.slide.${currentSlide.id}.badge`}
@@ -325,14 +383,14 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
               </motion.div>
             )}
 
-            {/* Main Animated Headline */}
+            {/* Main Headline */}
             {hasTitle && (
               <motion.h1 
                 id="hero-slider-title"
-                initial={{ opacity: 0, y: 25 }}
+                initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.75, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                className="font-cairo font-black text-3xl sm:text-5xl md:text-6xl lg:text-7xl text-white tracking-tight leading-[1.2] sm:leading-[1.15] mb-5 max-w-4xl drop-shadow-lg"
+                transition={{ duration: 0.75, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                className="font-cairo font-black text-3xl sm:text-5xl md:text-6xl lg:text-7xl text-white tracking-tight leading-[1.2] sm:leading-[1.15] mb-5 max-w-4xl drop-shadow-[0_4px_24px_rgba(0,0,0,0.6)]"
               >
                 <EditableText
                   contentKey={`hero.slide.${currentSlide.id}.title`}
@@ -342,13 +400,13 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
               </motion.h1>
             )}
 
-            {/* Short Animated Narrative */}
+            {/* Short Narrative Subtitle */}
             {hasSubtitle && (
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.75, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                className="text-base sm:text-lg md:text-xl text-stone-200 font-normal leading-relaxed max-w-2xl mb-8 drop-shadow"
+                transition={{ duration: 0.75, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                className="text-base sm:text-lg md:text-xl text-stone-200 font-normal leading-relaxed max-w-2xl mb-8 drop-shadow-md"
               >
                 <EditableText
                   contentKey={`hero.slide.${currentSlide.id}.subtitle`}
@@ -359,18 +417,18 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
               </motion.div>
             )}
 
-            {/* Action Buttons (Rendered only if enabled) */}
+            {/* Action Buttons */}
             {(hasPrimaryButton || hasSecondaryButton) && (
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.6, delay: 0.38, ease: [0.22, 1, 0.36, 1] }}
                 className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto z-20"
               >
                 {hasPrimaryButton && (
                   <motion.button
                     id="hero-slider-primary-cta"
-                    whileHover={{ scale: 1.04, boxShadow: "0 20px 30px -10px rgba(201, 162, 75, 0.45)" }}
+                    whileHover={{ scale: 1.05, boxShadow: "0 20px 35px -10px rgba(201, 162, 75, 0.55)" }}
                     whileTap={{ scale: 0.96 }}
                     onClick={() => handleAction(currentSlide.primaryButtonAction || 'hotels')}
                     className="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-[#DFBE72] via-[#C9A24B] to-[#B38A34] text-white font-bold text-base shadow-xl shadow-[#C9A24B]/35 transition-all duration-300 flex items-center justify-center gap-3 group cursor-pointer"
@@ -389,7 +447,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
                 {hasSecondaryButton && (
                   <motion.button
                     id="hero-slider-secondary-cta"
-                    whileHover={{ scale: 1.04 }}
+                    whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.96 }}
                     onClick={() => handleAction(currentSlide.secondaryButtonAction || 'contact')}
                     className="w-full sm:w-auto px-8 py-4 rounded-full bg-white/95 hover:bg-white text-stone-900 border border-stone-300 hover:border-[#C9A24B] font-bold text-base backdrop-blur-md shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2.5 cursor-pointer"
@@ -415,7 +473,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.6, duration: 0.6 }}
+              transition={{ delay: 0.55, duration: 0.6 }}
               onClick={onScrollToNext}
               className="mt-8 sm:mt-12 cursor-pointer flex flex-col items-center gap-1.5 text-stone-300 hover:text-[#DFBE72] transition-colors group select-none"
             >
@@ -450,7 +508,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
           <button
             id="hero-slider-prev-btn"
             onClick={handlePrev}
-            className={`absolute ${isRtl ? 'right-3 sm:right-6' : 'left-3 sm:left-6'} top-1/2 -translate-y-1/2 z-20 p-3 sm:p-3.5 rounded-full bg-black/40 hover:bg-[#C9A24B] text-white backdrop-blur-md border border-white/20 hover:border-[#C9A24B] shadow-xl transition-all duration-300 transform hover:scale-110 active:scale-95 hidden sm:flex items-center justify-center cursor-pointer`}
+            className={`absolute ${isRtl ? 'right-3 sm:right-6' : 'left-3 sm:left-6'} top-1/2 -translate-y-1/2 z-20 p-3 sm:p-4 rounded-full bg-black/45 hover:bg-[#C9A24B] text-white hover:text-black backdrop-blur-md border border-white/25 hover:border-[#C9A24B] shadow-2xl transition-all duration-300 transform hover:scale-110 active:scale-95 hidden sm:flex items-center justify-center cursor-pointer`}
             aria-label={t('hero.prev', 'السابق')}
           >
             {isRtl ? <ChevronRight className="w-6 h-6" /> : <ChevronLeft className="w-6 h-6" />}
@@ -460,13 +518,13 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
           <button
             id="hero-slider-next-btn"
             onClick={handleNext}
-            className={`absolute ${isRtl ? 'left-3 sm:left-6' : 'right-3 sm:right-6'} top-1/2 -translate-y-1/2 z-20 p-3 sm:p-3.5 rounded-full bg-black/40 hover:bg-[#C9A24B] text-white backdrop-blur-md border border-white/20 hover:border-[#C9A24B] shadow-xl transition-all duration-300 transform hover:scale-110 active:scale-95 hidden sm:flex items-center justify-center cursor-pointer`}
+            className={`absolute ${isRtl ? 'left-3 sm:left-6' : 'right-3 sm:right-6'} top-1/2 -translate-y-1/2 z-20 p-3 sm:p-4 rounded-full bg-black/45 hover:bg-[#C9A24B] text-white hover:text-black backdrop-blur-md border border-white/25 hover:border-[#C9A24B] shadow-2xl transition-all duration-300 transform hover:scale-110 active:scale-95 hidden sm:flex items-center justify-center cursor-pointer`}
             aria-label={t('hero.next', 'التالي')}
           >
             {isRtl ? <ChevronLeft className="w-6 h-6" /> : <ChevronRight className="w-6 h-6" />}
           </button>
 
-          {/* Bottom Pagination Indicators Strip */}
+          {/* Bottom Pagination Indicators Strip with Countdown Progress Bar */}
           <div className="absolute bottom-6 sm:bottom-8 inset-x-0 z-20 flex items-center justify-center gap-2.5">
             {effectiveSlides.map((s, idx) => {
               const isActive = idx === currentIndex;
@@ -478,20 +536,31 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
                     setSlideDirection(idx > currentIndex ? 'next' : 'prev');
                     setCurrentIndex(idx);
                   }}
-                  className={`h-2.5 rounded-full transition-all duration-500 relative overflow-hidden cursor-pointer ${
+                  className={`h-2.5 rounded-full transition-all duration-300 relative overflow-hidden cursor-pointer ${
                     isActive
-                      ? 'w-10 bg-[#C9A24B] shadow-lg shadow-[#C9A24B]/50'
+                      ? 'w-12 bg-white/30 shadow-lg'
                       : 'w-2.5 bg-white/40 hover:bg-white/70'
                   }`}
                   aria-label={`شريحة ${idx + 1}`}
-                />
+                >
+                  {isActive && (
+                    <div 
+                      key={`progress-${currentIndex}`}
+                      className="absolute inset-y-0 left-0 bg-[#C9A24B] rounded-full shadow-xs"
+                      style={{
+                        animation: `heroProgressAnim ${SLIDE_DURATION_MS}ms linear forwards`,
+                        animationPlayState: isPaused ? 'paused' : 'running'
+                      }}
+                    />
+                  )}
+                </button>
               );
             })}
           </div>
         </>
       )}
 
-      {/* Fullscreen Lightbox for Welcoming Background Slides (Handles both video & image) */}
+      {/* Fullscreen Lightbox for Welcoming Background Slides */}
       {lightboxOpen && (
         <Lightbox
           mediaItems={lightboxMediaItems}

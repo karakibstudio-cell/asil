@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Hotel, ActivePage, SiteSettings } from '../types';
 import { HotelCard } from '../components/HotelCard';
 import { Lightbox, LightboxMediaItem } from '../components/Lightbox';
@@ -6,10 +6,13 @@ import { SafeVideoPlayer } from '../components/SafeVideoPlayer';
 import { AddReviewModal } from '../components/AddReviewModal';
 import { HotelImageGallery } from '../components/HotelImageGallery';
 import { HotelBookingModal } from '../components/HotelBookingModal';
+import { RoomBookingModal } from '../components/RoomBookingModal';
+import { TrackBookingModal } from '../components/TrackBookingModal';
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from '../components/BookingIcons';
 import { useSEO } from '../utils/seo';
-import { getFirstActiveWhatsApp, getChannelHref } from '../utils/channels';
+import { getFirstActiveWhatsApp, getChannelHref, buildWhatsAppLink } from '../utils/channels';
 import { useLanguage } from '../context/LanguageContext';
+import { EditableText } from '../components/EditableText';
 import { 
   Star, 
   MapPin, 
@@ -47,6 +50,16 @@ interface HotelDetailPageProps {
   siteSettings?: SiteSettings;
 }
 
+const LUXURY_FALLBACK_HOTEL_IMAGE = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80';
+
+const handleHotelImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const target = e.currentTarget;
+  if (!target.dataset.fallbackApplied) {
+    target.dataset.fallbackApplied = 'true';
+    target.src = LUXURY_FALLBACK_HOTEL_IMAGE;
+  }
+};
+
 export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
   hotel,
   allHotels,
@@ -72,6 +85,8 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
 
   // Booking Modal
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [trackModalOpen, setTrackModalOpen] = useState(false);
+  const [trackBookingCode, setTrackBookingCode] = useState('');
   const [bookingForm, setBookingForm] = useState({
     name: '',
     phone: '',
@@ -167,14 +182,12 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
     setLightboxOpen(true);
   };
 
-  // Similar hotels (same city, excluding current)
-  const similarHotels = allHotels
-    .filter(h => h.id !== hotel.id && h.city === hotel.city)
-    .slice(0, 3);
-
-  const fallbackSimilar = similarHotels.length > 0 
-    ? similarHotels 
-    : allHotels.filter(h => h.id !== hotel.id).slice(0, 3);
+  // Similar hotels memoized (same city, excluding current, active only)
+  const fallbackSimilar = useMemo(() => {
+    const list = allHotels.filter(h => h.id !== hotel.id && h.isActive !== false && h.city === hotel.city);
+    if (list.length > 0) return list.slice(0, 3);
+    return allHotels.filter(h => h.id !== hotel.id && h.isActive !== false).slice(0, 3);
+  }, [allHotels, hotel.id, hotel.city]);
 
   const tabs: { key: TabKey; label: string; count?: number }[] = [
     { key: 'description', label: language === 'en' ? 'Overview' : 'الوصف الشامل' },
@@ -195,13 +208,12 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
     }, 2800);
   };
 
-  const primaryWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
+  const siteWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
+  const targetWhatsApp = hotel.hotelWhatsApp || siteWhatsApp?.value || siteSettings?.officeWhatsApp || siteSettings?.primaryPhone || '';
   const waCustomMessage = language === 'en'
-    ? `Hello, I would like to inquire and book a stay at ${hotel.name} (${hotel.city} - ${hotel.district}) via ${siteSettings?.siteTitle || 'Prestige Hotels Management'}.`
+    ? `Hello, I would like to inquire and book a stay at ${hotel.nameEn || hotel.name} (${translateDynamic(hotel.city)} - ${translateDynamic(hotel.district)}) via ${siteSettings?.siteTitle || 'Prestige Hotels Management'}.`
     : `السلام عليكم ورحمة الله، أود الاستفسار وحجز إقامة في ${hotel.name} (${hotel.city} - حي ${hotel.district}) عبر ${siteSettings?.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'}.`;
-  const whatsAppBookingUrl = primaryWhatsApp
-    ? getChannelHref(primaryWhatsApp, waCustomMessage)
-    : `https://wa.me/966500000000?text=${encodeURIComponent(waCustomMessage)}`;
+  const whatsAppBookingUrl = buildWhatsAppLink(targetWhatsApp, waCustomMessage);
 
   const getAmenityIcon = (text: string) => {
     if (text.includes('واي فاي') || text.includes('إنترنت')) return <Wifi className="w-5 h-5" />;
@@ -388,6 +400,20 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
               </a>
             )}
 
+            {/* Direct WhatsApp Quick Link */}
+            {hotel.showHotelWhatsApp !== false && !!whatsAppBookingUrl && (
+              <a
+                href={whatsAppBookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 sm:px-3 sm:py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-sm transition-all flex items-center gap-1.5 text-xs font-bold"
+                title={language === 'en' ? 'Direct WhatsApp Booking' : 'حجز وتواصل مباشر عبر واتساب'}
+              >
+                <WhatsAppIcon className="w-4 h-4" />
+                <span className="hidden md:inline">{language === 'en' ? 'WhatsApp' : 'واتساب'}</span>
+              </a>
+            )}
+
             {/* Share Link */}
             <button 
               onClick={() => {
@@ -414,8 +440,11 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
               className="md:col-span-2 relative aspect-[16/10] md:aspect-auto md:h-full bg-stone-100 cursor-pointer group overflow-hidden"
             >
               <img
-                src={hotel.mainImage}
+                src={hotel.mainImage || LUXURY_FALLBACK_HOTEL_IMAGE}
                 alt={hotel.name}
+                loading="eager"
+                decoding="async"
+                onError={handleHotelImageError}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
               />
               <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
@@ -446,8 +475,11 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                   className="relative aspect-[4/3] bg-stone-100 cursor-pointer group overflow-hidden"
                 >
                   <img
-                    src={imgUrl}
+                    src={imgUrl || LUXURY_FALLBACK_HOTEL_IMAGE}
                     alt={`${hotel.name} - ${idx + 1}`}
+                    loading="lazy"
+                    decoding="async"
+                    onError={handleHotelImageError}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                   />
                   <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
@@ -580,7 +612,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
             )}
 
             {/* Direct WhatsApp CTA */}
-            {hotel.showHotelWhatsApp !== false && (
+            {hotel.showHotelWhatsApp !== false && !!whatsAppBookingUrl && (
               <a
                 id="sticky-whatsapp-book-btn"
                 href={whatsAppBookingUrl}
@@ -596,10 +628,17 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
             {/* Gold CTA "طلب حجز واستفسار" */}
             <button
               id="sticky-book-now-button"
-              onClick={() => setBookingModalOpen(true)}
-              className="px-4 sm:px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer"
+              onClick={() => {
+                if (onNavigate) {
+                  onNavigate('room-booking', hotel.id);
+                } else {
+                  window.location.hash = `#/bookings?hotel=${hotel.id}`;
+                }
+              }}
+              className="px-4 sm:px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
             >
-              {language === 'en' ? 'Book / Inquire' : 'للتواصل أو الحجز'}
+              <BedDouble className="w-4 h-4" />
+              <span>{language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}</span>
             </button>
           </div>
         </section>
@@ -859,8 +898,11 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                         className="group relative aspect-[4/3] rounded-2xl overflow-hidden cursor-pointer bg-stone-100 border border-stone-200 hover:border-[#C9A24B] shadow-sm transition-all"
                       >
                         <img
-                          src={imgUrl}
+                          src={imgUrl || LUXURY_FALLBACK_HOTEL_IMAGE}
                           alt={`${hotel.name} - ${i + 1}`}
+                          loading="lazy"
+                          decoding="async"
+                          onError={handleHotelImageError}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors" />
@@ -1127,10 +1169,22 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
         <section id="similar-hotels-section" className="border-t border-stone-200 pt-14">
           <div className="mb-8">
             <span className="text-xs font-bold text-[#C9A24B] uppercase tracking-wider block mb-1">
-              {language === 'en' ? 'Similar Choices' : 'خيارات إضافية'}
+              <EditableText
+                contentKey="hotelDetail.similar.badge"
+                fallback={siteSettings?.similarHotelsBadge || (language === 'en' ? 'Similar Choices' : 'خيارات إضافية')}
+                inline={true}
+              />
             </span>
             <h3 className="text-2xl font-cairo font-bold text-stone-900">
-              {language === 'en' ? `Other Premier Hotels in ${translateDynamic(hotel.city)}` : `فنادق أخرى مميزة في ${hotel.city}`}
+              <EditableText
+                contentKey="hotelDetail.similar.title"
+                fallback={
+                  siteSettings?.similarHotelsTitle
+                    ? siteSettings.similarHotelsTitle.replace('{city}', hotel.city)
+                    : (language === 'en' ? `Other Premier Hotels in ${translateDynamic(hotel.city)}` : `فنادق أخرى مميزة في ${hotel.city}`)
+                }
+                as="span"
+              />
             </h3>
           </div>
 
@@ -1140,17 +1194,39 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                 key={simHotel.id}
                 hotel={simHotel}
                 onClick={() => onSelectHotel(simHotel.slug || simHotel.id)}
+                siteSettings={siteSettings}
               />
             ))}
           </div>
         </section>
       </div>
 
-      {/* Hotel Booking Modal */}
-      <HotelBookingModal
-        isOpen={bookingModalOpen}
-        onClose={() => setBookingModalOpen(false)}
-        hotel={hotel}
+      {/* Interactive Room Booking Modal with Room Choices, Meal Plans & Digital Key */}
+      {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.showInHotelDetail !== false ? (
+        <RoomBookingModal
+          isOpen={bookingModalOpen}
+          onClose={() => setBookingModalOpen(false)}
+          hotel={hotel}
+          siteSettings={siteSettings}
+          onOpenTrackModal={(code) => {
+            setTrackBookingCode(code);
+            setTrackModalOpen(true);
+          }}
+        />
+      ) : (
+        <HotelBookingModal
+          isOpen={bookingModalOpen}
+          onClose={() => setBookingModalOpen(false)}
+          hotel={hotel}
+          siteSettings={siteSettings}
+        />
+      )}
+
+      {/* Track & Review Booking Modal */}
+      <TrackBookingModal
+        isOpen={trackModalOpen}
+        onClose={() => setTrackModalOpen(false)}
+        initialCode={trackBookingCode}
         siteSettings={siteSettings}
       />
     </div>

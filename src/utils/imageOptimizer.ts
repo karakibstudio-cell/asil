@@ -1,7 +1,7 @@
 /**
- * Image optimization & PNG processing utility
- * Converts and compresses uploaded images (especially PNG with transparency) 
- * so they fit safely within localStorage and Firestore quotas while keeping crisp quality.
+ * Image optimization & High-Fidelity processing utility
+ * Converts and compresses uploaded images (especially PNG with transparency and crisp posters)
+ * while preserving high resolution, clean text edges, and true color accuracy.
  */
 
 export interface OptimizeImageOptions {
@@ -13,7 +13,7 @@ export interface OptimizeImageOptions {
 
 /**
  * Optimizes an image File (supports PNG, JPG, WebP, SVG).
- * For PNGs, transparency is preserved.
+ * For PNGs, alpha transparency and crisp lines are preserved.
  * Output is an optimized Base64 Data URL.
  */
 export async function optimizeImageFile(
@@ -21,13 +21,13 @@ export async function optimizeImageFile(
   options: OptimizeImageOptions = {}
 ): Promise<string> {
   const {
-    maxWidth = 1000,
-    maxHeight = 1000,
-    quality = 0.85,
+    maxWidth = 3840,
+    maxHeight = 3840,
+    quality = 0.95,
     forcePng = false
   } = options;
 
-  // If SVG, return as standard Data URL (SVGs are vector and usually tiny)
+  // If SVG, return as standard Data URL (SVGs are vector and resolution-independent)
   if (file.type === 'image/svg+xml') {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -80,13 +80,13 @@ export async function optimizeImageFile(
 
           let dataUrl: string;
           if (isPng || forcePng) {
-            // Preserve PNG transparency
+            // Preserve PNG transparency & sharpness
             dataUrl = canvas.toDataURL('image/png');
-            // If PNG is still over ~600KB, try scaling slightly down once more
-            if (dataUrl.length > 700000 && width > 400) {
+            // If PNG is very large (>1.2MB), scale gently to maintain quality
+            if (dataUrl.length > 1500000 && width > 800) {
               const scaledCanvas = document.createElement('canvas');
-              scaledCanvas.width = Math.round(width * 0.7);
-              scaledCanvas.height = Math.round(height * 0.7);
+              scaledCanvas.width = Math.round(width * 0.85);
+              scaledCanvas.height = Math.round(height * 0.85);
               const sCtx = scaledCanvas.getContext('2d', { alpha: true });
               if (sCtx) {
                 sCtx.imageSmoothingEnabled = true;
@@ -96,7 +96,7 @@ export async function optimizeImageFile(
               }
             }
           } else {
-            // For JPG / other formats, use JPEG or WebP
+            // For JPG / other formats, use WebP or High Quality JPEG
             try {
               dataUrl = canvas.toDataURL('image/webp', quality);
               if (!dataUrl.startsWith('data:image/webp')) {
@@ -123,4 +123,100 @@ export async function optimizeImageFile(
 
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Safely opens any image (Base64 data URL, blob URL, or standard HTTP/HTTPS link) in a new browser tab.
+ * Avoids Chromium security block when navigating the top frame to 'data:' URLs.
+ */
+export function openImageInNewTab(imageUrl: string, title = 'معاينة الصورة'): void {
+  if (!imageUrl || !imageUrl.trim()) return;
+
+  const url = imageUrl.trim();
+
+  // If base64 data URL, convert to Blob URL so Chrome/Edge can display it directly in a new tab without blocking
+  if (url.startsWith('data:')) {
+    try {
+      const parts = url.split(',');
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+      const bstr = atob(parts[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const blob = new Blob([u8arr], { type: mime });
+      const blobUrl = URL.createObjectURL(blob);
+      const win = window.open(blobUrl, '_blank');
+      if (win) {
+        return;
+      }
+    } catch (err) {
+      console.warn('Failed opening base64 image as blob URL, falling back to styled HTML window:', err);
+    }
+
+    // Secondary fallback: open blank window and write styled HTML image viewer
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>${title}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #0c0a09;
+        color: #e7e5e4;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      .wrapper {
+        background: #1c1917;
+        border: 1px solid #44403c;
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        max-width: 95vw;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      img {
+        max-width: 85vw;
+        max-height: 75vh;
+        object-fit: contain;
+        border-radius: 12px;
+      }
+      .caption {
+        margin-top: 16px;
+        font-size: 13px;
+        color: #a8a29e;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrapper">
+      <img src="${url}" alt="${title}" />
+      <div class="caption">${title}</div>
+    </div>
+  </body>
+</html>`);
+      win.document.close();
+      return;
+    }
+  }
+
+  // Standard HTTP/HTTPS link or Blob URL
+  window.open(url, '_blank', 'noopener,noreferrer');
 }

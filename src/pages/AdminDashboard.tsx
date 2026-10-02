@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Hotel, Offer, ContactMessage, ActivePage, SiteSettings, ContactChannel, HotelCategory, ALL_HOTEL_CATEGORIES, HotelReview, District, AdminUser, UserRole, BranchLocation, DepartmentContact, QuickLinkItem } from '../types';
+import { Hotel, Offer, ContactMessage, ActivePage, SiteSettings, ContactChannel, HotelCategory, ALL_HOTEL_CATEGORIES, HotelReview, District, AdminUser, UserRole, BranchLocation, DepartmentContact, QuickLinkItem, StoryTeaserSettings, IntegratedServicesSettings, HomeSectionsSettings } from '../types';
 import { AdminChannelsManager } from '../components/AdminChannelsManager';
 import { AdminHeroSlidesManager } from '../components/AdminHeroSlidesManager';
 import { AdminDistrictsManager } from '../components/AdminDistrictsManager';
@@ -9,8 +9,15 @@ import { AdminDepartmentContactsManager } from '../components/AdminDepartmentCon
 import { AdminQuickLinksManager } from '../components/AdminQuickLinksManager';
 import { HotelMediaAlbumManager } from '../components/HotelMediaAlbumManager';
 import { AdminAboutManager } from '../components/AdminAboutManager';
+import { AdminStoryTeaserManager } from '../components/AdminStoryTeaserManager';
+import { AdminServicesManager } from '../components/AdminServicesManager';
+import { AdminHomeSectionsManager } from '../components/AdminHomeSectionsManager';
+import { AdminBookingsManager } from '../components/AdminBookingsManager';
+import { AdminRoomsManager } from '../components/AdminRoomsManager';
+import { getBookingsFromDb } from '../services/bookingService';
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from '../components/BookingIcons';
 import { optimizeImageFile } from '../utils/imageOptimizer';
+import { buildWhatsAppLink } from '../utils/channels';
 import { 
   auth, 
   signInWithEmailAndPassword, 
@@ -59,6 +66,7 @@ import {
   MessageSquare,
   CheckCircle2,
   Clock,
+  Calendar,
   MapPin,
   Footprints,
   Users,
@@ -76,7 +84,10 @@ import {
   Play,
   Volume2,
   VolumeX,
-  Sparkles
+  Sparkles,
+  Sliders,
+  Layers,
+  LayoutGrid
 } from 'lucide-react';
 import { 
   getSupabaseConfig, 
@@ -86,6 +97,8 @@ import {
   uploadMediaToSupabase
 } from '../services/supabase';
 import { SafeVideoPlayer } from '../components/SafeVideoPlayer';
+
+export type AdminDashboardTab = 'hotels' | 'bookings' | 'rooms-inventory' | 'districts' | 'users' | 'intro-video' | 'slides' | 'offers' | 'home-sections' | 'story-teaser' | 'services' | 'about' | 'reviews' | 'messages' | 'settings';
 
 interface AdminDashboardProps {
   hotels: Hotel[];
@@ -97,6 +110,7 @@ interface AdminDashboardProps {
   setIsAdminLoggedIn: (status: boolean) => void;
   siteSettings: SiteSettings;
   onUpdateSiteSettings: (newSettings: SiteSettings) => Promise<void>;
+  initialTab?: AdminDashboardTab;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -108,7 +122,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   isAdminLoggedIn,
   setIsAdminLoggedIn,
   siteSettings,
-  onUpdateSiteSettings
+  onUpdateSiteSettings,
+  initialTab = 'hotels'
 }) => {
   // Login Form States
   const [email, setEmail] = useState('');
@@ -117,8 +132,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [loginError, setLoginError] = useState('');
 
   // Dashboard Sidebar Navigation
-  type AdminTab = 'hotels' | 'districts' | 'users' | 'intro-video' | 'slides' | 'offers' | 'about' | 'reviews' | 'messages' | 'settings';
-  const [activeTab, setActiveTab] = useState<AdminTab>('hotels');
+  type AdminTab = AdminDashboardTab;
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
+
+  useEffect(() => {
+    if (initialTab && initialTab !== activeTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  const handleSelectTab = (tab: AdminTab) => {
+    setActiveTab(tab);
+    if (window.location.hash !== `#/admin/${tab}`) {
+      window.location.hash = `#/admin/${tab}`;
+    }
+  };
 
   // Local optimistic state for instant 0ms response on reorder and toggle
   const [localHotels, setLocalHotels] = useState<Hotel[]>(hotels);
@@ -142,6 +170,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [reviews, setReviews] = useState<HotelReview[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<'all' | 'pending' | 'approved'>('all');
+
+  // Bookings Counter State
+  const [pendingBookingsCount, setPendingBookingsCount] = useState(0);
+  const [totalBookingsCount, setTotalBookingsCount] = useState(0);
+
+  useEffect(() => {
+    getBookingsFromDb().then(b => {
+      setTotalBookingsCount(b.length);
+      setPendingBookingsCount(b.filter(x => x.status === 'pending').length);
+    }).catch(() => {});
+  }, [activeTab]);
 
   // Delete Confirmation Modal State
   const [deleteModal, setDeleteModal] = useState<{
@@ -258,6 +297,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Site Settings Form State & Debounced Auto-Save
   const [settingsForm, setSettingsForm] = useState<SiteSettings>(siteSettings);
+  const [settingsSubTab, setSettingsSubTab] = useState<'brand' | 'booking-module' | 'visibility' | 'contact-data' | 'hotel-detail' | 'database'>('brand');
   const [savingSettings, setSavingSettings] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const initialSettingsLoadedRef = React.useRef(false);
@@ -527,6 +567,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleStoryTeaserChange = async (updatedStoryTeaser: StoryTeaserSettings) => {
+    const updated: SiteSettings = {
+      ...settingsForm,
+      storyTeaser: updatedStoryTeaser,
+    };
+    setSettingsForm(updated);
+    try {
+      await onUpdateSiteSettings(updated);
+    } catch (err) {
+      console.error('Failed to auto-save story teaser:', err);
+    }
+  };
+
+  const handleServicesChange = async (updatedServices: IntegratedServicesSettings) => {
+    const updated: SiteSettings = {
+      ...settingsForm,
+      integratedServices: updatedServices,
+    };
+    setSettingsForm(updated);
+    try {
+      await onUpdateSiteSettings(updated);
+    } catch (err) {
+      console.error('Failed to auto-save services:', err);
+    }
+  };
+
+  const handleHomeSectionsChange = async (updatedHomeSections: HomeSectionsSettings) => {
+    const updated: SiteSettings = {
+      ...settingsForm,
+      homeSections: updatedHomeSections,
+    };
+    setSettingsForm(updated);
+    try {
+      await onUpdateSiteSettings(updated);
+    } catch (err) {
+      console.error('Failed to auto-save home sections:', err);
+    }
+  };
+
   // Check auth state on mount
   useEffect(() => {
     if (auth) {
@@ -601,14 +680,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleApproveReview = async (review: HotelReview) => {
+    // 1. INSTANT 0ms OPTIMISTIC UI: Mark review as approved in state immediately
+    setReviews(prev => prev.map(r => r.id === review.id ? { ...r, status: 'approved' } : r));
+    onShowToast(`تم اعتماد تقييم "${review.authorName}" وإضافته للفندق بنجاح`, 'success');
+
+    // 2. Background async sync to Supabase / Database (non-blocking)
     try {
       await approveReview(review.id);
-      onShowToast(`تم اعتماد تقييم "${review.authorName}" وإضافته للفندق بنجاح`, 'success');
-      await loadReviews();
-      await onRefreshData();
+      onRefreshData();
     } catch (err) {
-      console.error(err);
-      onShowToast('حدث خطأ أثناء اعتماد التقييم', 'error');
+      console.error('Error approving review:', err);
+      // Revert if error
+      await loadReviews();
+      onShowToast('حدث خطأ أثناء حفظ اعتماد التقييم في الخادم', 'error');
     }
   };
 
@@ -1166,43 +1250,74 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  // Execution of Delete
+  // Execution of Delete (0ms Instant Optimistic UI + Background Sync)
   const handleExecuteDelete = async () => {
-    try {
-      if (deleteModal.type === 'hotel') {
-        setLocalHotels(prev => prev.filter(h => h.id !== deleteModal.id));
-        await deleteHotelFromDb(deleteModal.id);
-        onShowToast(`تم حذف الفندق "${deleteModal.title}" نهائياً`, 'success');
-      } else if (deleteModal.type === 'offer') {
-        await deleteOfferFromDb(deleteModal.id);
-        onShowToast(`تم حذف العرض "${deleteModal.title}" نهائياً`, 'success');
-      } else if (deleteModal.type === 'review') {
-        await deleteReviewFromDb(deleteModal.id);
-        onShowToast(`تم حذف التقييم بنجاح`, 'success');
-        await loadReviews();
-      } else if (deleteModal.type === 'message') {
-        await deleteMessageFromDb(deleteModal.id);
-        onShowToast(`تم حذف الرسالة بنجاح`, 'success');
-        await loadMessages();
+    const { type, id, title } = deleteModal;
+    if (!id) return;
+
+    // 1. INSTANT 0ms OPTIMISTIC UI: Close modal immediately!
+    setDeleteModal({ isOpen: false, type: 'hotel', id: '', title: '' });
+
+    // 2. Remove item from local state and toast immediately
+    if (type === 'hotel') {
+      setLocalHotels(prev => prev.filter(h => h.id !== id));
+      onShowToast(`تم حذف الفندق "${title}" نهائياً`, 'success');
+      try {
+        await deleteHotelFromDb(id);
+        onRefreshData();
+      } catch (err) {
+        console.error('Error deleting hotel:', err);
+        setLocalHotels(hotels);
+        onShowToast('حدث خطأ أثناء حذف الفندق من قاعدة البيانات', 'error');
       }
-      await onRefreshData();
-    } catch (err) {
-      console.error(err);
-      onShowToast('حدث خطأ أثناء الحذف', 'error');
-    } finally {
-      setDeleteModal({ isOpen: false, type: 'hotel', id: '', title: '' });
+    } else if (type === 'offer') {
+      onShowToast(`تم حذف العرض "${title}" نهائياً`, 'success');
+      try {
+        await deleteOfferFromDb(id);
+        onRefreshData();
+      } catch (err) {
+        console.error('Error deleting offer:', err);
+        onRefreshData();
+        onShowToast('حدث خطأ أثناء حذف العرض من قاعدة البيانات', 'error');
+      }
+    } else if (type === 'review') {
+      setReviews(prev => prev.filter(r => r.id !== id));
+      onShowToast('تم حذف التقييم بنجاح', 'success');
+      try {
+        await deleteReviewFromDb(id);
+        onRefreshData();
+      } catch (err) {
+        console.error('Error deleting review:', err);
+        await loadReviews();
+        onShowToast('حدث خطأ أثناء حذف التقييم من قاعدة البيانات', 'error');
+      }
+    } else if (type === 'message') {
+      setMessages(prev => prev.filter(m => m.id !== id));
+      onShowToast('تم حذف الرسالة بنجاح', 'success');
+      try {
+        await deleteMessageFromDb(id);
+        onRefreshData();
+      } catch (err) {
+        console.error('Error deleting message:', err);
+        await loadMessages();
+        onShowToast('حدث خطأ أثناء حذف الرسالة من قاعدة البيانات', 'error');
+      }
     }
   };
 
   const handleToggleMessageRead = async (msg: ContactMessage) => {
+    const newStatus = !msg.read;
+    // 1. INSTANT 0ms OPTIMISTIC UI
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, read: newStatus } : m));
+    onShowToast(newStatus ? 'تم تعليم الرسالة كمقروءة ✓' : 'تم تعليم الرسالة كغير مقروءة ✉️', 'info');
+
+    // 2. Background Sync
     try {
-      const newStatus = !msg.read;
       await markMessageAsReadInDb(msg.id, newStatus);
-      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, read: newStatus } : m));
-      onShowToast(newStatus ? 'تم تعليم الرسالة كمقروءة ✓' : 'تم تعليم الرسالة كغير مقروءة ✉️', 'info');
     } catch (e) {
-      console.error(e);
-      onShowToast('حدث خطأ أثناء تحديث حالة الرسالة', 'error');
+      console.error('Error toggling message read status:', e);
+      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, read: !newStatus } : m));
+      onShowToast('حدث خطأ أثناء تحديث حالة الرسالة في الخادم', 'error');
     }
   };
 
@@ -1359,60 +1474,127 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Dashboard Grid Layout: Compact 2-cols sidebar on desktop gives 10-cols spacious width for main tables */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-          {/* Sidebar Tabs (2 cols on xl, 3 on lg, responsive horizontal swipe bar on mobile) */}
-          <div className="lg:col-span-3 xl:col-span-2 flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 gap-2 no-scrollbar">
+          {/* Sidebar Tabs (Organized in 4 Visual Categories) */}
+          <div className="lg:col-span-3 xl:col-span-2 flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 gap-3 no-scrollbar">
             {[
-              { id: 'hotels' as AdminTab, label: 'الفنادق المعتمدة', icon: Building2, count: hotels.length },
-              { id: 'districts' as AdminTab, label: 'المناطق والأحياء', icon: MapPin, count: districts.length || undefined },
-              { id: 'users' as AdminTab, label: 'المستخدمين والصلاحيات', icon: Users, count: adminUsers.length || undefined, restricted: currentUser?.role === 'controller' },
-              { id: 'intro-video' as AdminTab, label: 'فيديو الإنترو (الرئيسية)', icon: Film },
-              { id: 'slides' as AdminTab, label: 'شرائح الترحيب (الهيرو)', icon: ImageIcon, count: siteSettings?.heroSlides?.length || undefined },
-              { id: 'offers' as AdminTab, label: 'إدارة الإعلانات', icon: Tag, count: offers.length },
-              { id: 'about' as AdminTab, label: 'من نحن والمكتب', icon: Info },
-              { id: 'reviews' as AdminTab, label: 'إدارة التقييمات', icon: MessageSquare, count: pendingReviewsCount > 0 ? pendingReviewsCount : (reviews.length || undefined), badgeAlert: pendingReviewsCount > 0 },
-              { id: 'messages' as AdminTab, label: 'الرسائل الواردة', icon: Mail, count: unreadMessagesCount > 0 ? unreadMessagesCount : (messages.length || undefined), badgeAlert: unreadMessagesCount > 0 },
-              { id: 'settings' as AdminTab, label: 'الإعدادات والهوية', icon: Settings, restricted: currentUser?.role === 'controller' }
-            ].map((item) => {
-              const Icon = item.icon;
-              const isSelected = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  id={`admin-tab-btn-${item.id}`}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`shrink-0 lg:w-full flex items-center justify-between p-3 sm:p-4 rounded-2xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap lg:whitespace-normal ${
-                    isSelected
-                      ? 'bg-[#C9A24B] text-white shadow-md shadow-[#C9A24B]/20'
-                      : 'bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 shadow-xs'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <Icon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                    <span>{item.label}</span>
-                    {item.restricted && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-500 font-normal hidden sm:inline">
-                        أدمن فقط
-                      </span>
-                    )}
-                  </div>
-                  {item.count !== undefined && (
-                    <span className={`text-[11px] sm:text-xs mr-2 px-2 py-0.5 rounded-full font-mono font-bold ${
-                      isSelected 
-                        ? 'bg-white/20 text-white' 
-                        : item.badgeAlert 
-                        ? 'bg-amber-500 text-white animate-pulse'
-                        : 'bg-stone-100 text-[#B38A34]'
-                    }`}>
-                      {item.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+              {
+                categoryTitle: 'حجوزات الغرف والتسكين',
+                categoryIcon: Calendar,
+                items: [
+                  { 
+                    id: 'bookings' as AdminTab, 
+                    label: 'سجل الحجوزات', 
+                    icon: Calendar, 
+                    count: pendingBookingsCount > 0 ? pendingBookingsCount : (totalBookingsCount || undefined),
+                    badgeAlert: pendingBookingsCount > 0 
+                  },
+                  { id: 'rooms-inventory' as AdminTab, label: 'إدارة الغرف والمفاتيح والوجبات', icon: Key }
+                ]
+              },
+              {
+                categoryTitle: 'الفنادق والمحتوى',
+                categoryIcon: Building2,
+                items: [
+                  { id: 'hotels' as AdminTab, label: 'الفنادق المعتمدة', icon: Building2, count: hotels.length },
+                  { id: 'offers' as AdminTab, label: 'عروض وإعلانات', icon: Tag, count: offers.length },
+                  { id: 'districts' as AdminTab, label: 'المناطق والأحياء', icon: MapPin, count: districts.length || undefined }
+                ]
+              },
+              {
+                categoryTitle: 'الواجهة والعرض',
+                categoryIcon: LayoutGrid,
+                items: [
+                  { id: 'home-sections' as AdminTab, label: 'أقسام الرئيسية', icon: Sliders },
+                  { id: 'slides' as AdminTab, label: 'شرائح الترحيب (الهيرو)', icon: ImageIcon, count: siteSettings?.heroSlides?.length || undefined },
+                  { id: 'intro-video' as AdminTab, label: 'فيديو الإنترو', icon: Film },
+                  { id: 'story-teaser' as AdminTab, label: 'نبذة وقصة الشركة', icon: Sparkles },
+                  { id: 'services' as AdminTab, label: 'منظومة الخدمات', icon: Layers }
+                ]
+              },
+              {
+                categoryTitle: 'الشركة والتواصل',
+                categoryIcon: Info,
+                items: [
+                  { id: 'about' as AdminTab, label: 'من نحن والمقر الرئيسي', icon: Info }
+                ]
+              },
+              {
+                categoryTitle: 'الإدارة والعملاء',
+                categoryIcon: Settings,
+                items: [
+                  { id: 'messages' as AdminTab, label: 'الرسائل الواردة', icon: Mail, count: unreadMessagesCount > 0 ? unreadMessagesCount : (messages.length || undefined), badgeAlert: unreadMessagesCount > 0 },
+                  { id: 'reviews' as AdminTab, label: 'إدارة التقييمات', icon: MessageSquare, count: pendingReviewsCount > 0 ? pendingReviewsCount : (reviews.length || undefined), badgeAlert: pendingReviewsCount > 0 },
+                  { id: 'users' as AdminTab, label: 'المستخدمين والصلاحيات', icon: Users, count: adminUsers.length || undefined, restricted: currentUser?.role === 'controller' },
+                  { id: 'settings' as AdminTab, label: 'الإعدادات والهوية', icon: Settings, restricted: currentUser?.role === 'controller' }
+                ]
+              }
+            ].map((group, gIdx) => (
+              <div key={gIdx} className="space-y-1.5 shrink-0 lg:w-full">
+                <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-stone-500 bg-stone-100/70 rounded-lg">
+                  <group.categoryIcon className="w-3.5 h-3.5 text-[#B38A34]" />
+                  <span>{group.categoryTitle}</span>
+                </div>
+                <div className="flex lg:flex-col gap-1.5">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const isSelected = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        id={`admin-tab-btn-${item.id}`}
+                        onClick={() => handleSelectTab(item.id)}
+                        className={`shrink-0 lg:w-full flex items-center justify-between p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap lg:whitespace-normal ${
+                          isSelected
+                            ? 'bg-[#C9A24B] text-white shadow-md shadow-[#C9A24B]/20'
+                            : 'bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 shadow-2xs'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 sm:gap-2.5">
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                          {item.restricted && (
+                            <span className="text-[9px] px-1 py-0.5 rounded bg-stone-100 text-stone-500 font-normal hidden sm:inline">
+                              أدمن
+                            </span>
+                          )}
+                        </div>
+                        {item.count !== undefined && (
+                          <span className={`text-[10px] sm:text-xs mr-1.5 px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                            isSelected 
+                              ? 'bg-white/20 text-white' 
+                              : item.badgeAlert 
+                              ? 'bg-amber-500 text-white animate-pulse'
+                              : 'bg-stone-100 text-[#B38A34]'
+                          }`}>
+                            {item.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Main Content Area (10 cols on xl, 9 on lg) */}
           <div className="lg:col-span-9 xl:col-span-10">
+            {/* ROOM BOOKINGS TAB */}
+            {activeTab === 'bookings' && (
+              <AdminBookingsManager 
+                onShowToast={onShowToast}
+                siteSettings={siteSettings}
+              />
+            )}
+
+            {/* ROOMS & KEYS INVENTORY TAB */}
+            {activeTab === 'rooms-inventory' && (
+              <AdminRoomsManager 
+                hotels={hotels}
+                onShowToast={onShowToast}
+              />
+            )}
+
             {/* 1. HOTELS MANAGEMENT TAB */}
             {activeTab === 'hotels' && (
               <div id="admin-hotels-section" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
@@ -1835,10 +2017,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     {/* Column 2: Titles & Texts Overlay */}
                     <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+                      {/* Overlay Filter Style (إزالة الطابعة الداكنة) */}
+                      <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-[#B38A34]" />
+                            <span>نمط تدرج الغطاء وصفاء الفيديو (Overlay Style):</span>
+                          </label>
+                          <span className="text-[10px] font-bold text-[#B38A34] bg-white px-2 py-0.5 rounded-full border border-amber-200">
+                            معالجة الطابعة الداكنة
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { id: 'clear' as const, title: 'فائق الإشراق والنقاء ✨', desc: 'بدون طبقة عاتمة مع بريق ذهبي ناعم' },
+                            { id: 'subtle' as const, title: 'هادئ ومشرق', desc: 'تدرج ضوئي خفيف يحافظ على ألوان الفيديو' },
+                            { id: 'cinematic' as const, title: 'سينمائي متوازن', desc: 'تدرج كلاسيكي متوسط لتباين النص' },
+                            { id: 'none' as const, title: 'بدون أي تدرج (نقي 100%)', desc: 'فيديو خام بدون أي طبقات تغطية' }
+                          ].map((ov) => {
+                            const isCurrent = (settingsForm.introVideo?.overlayStyle || 'clear') === ov.id;
+                            return (
+                              <button
+                                key={ov.id}
+                                type="button"
+                                onClick={() => {
+                                  const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                                  const updated = {
+                                    ...settingsForm,
+                                    introVideo: { ...current, overlayStyle: ov.id }
+                                  };
+                                  triggerAutoSaveSettings(updated);
+                                }}
+                                className={`p-2.5 rounded-xl text-right transition-all text-xs border cursor-pointer ${
+                                  isCurrent
+                                    ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-2xs font-bold'
+                                    : 'bg-white hover:bg-amber-100/50 text-stone-700 border-stone-200'
+                                }`}
+                              >
+                                <span className="block font-bold mb-0.5">{ov.title}</span>
+                                <span className={`text-[10px] block leading-tight ${isCurrent ? 'text-amber-100' : 'text-stone-500'}`}>
+                                  {ov.desc}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Title input with toggle */}
                       <div>
-                        <label className="text-xs font-bold text-stone-800 block mb-1">
-                          العنوان الترحيبي العريض (Title):
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-stone-800">
+                            العنوان الترحيبي العريض (Title):
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                              const updated = {
+                                ...settingsForm,
+                                introVideo: { ...current, showTitle: current.showTitle === false ? true : false }
+                              };
+                              triggerAutoSaveSettings(updated);
+                            }}
+                            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all ${
+                              settingsForm.introVideo?.showTitle !== false
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-stone-200 text-stone-600'
+                            }`}
+                          >
+                            {settingsForm.introVideo?.showTitle !== false ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            <span>{settingsForm.introVideo?.showTitle !== false ? 'ظاهر' : 'مخفي'}</span>
+                          </button>
+                        </div>
                         <input
                           type="text"
                           value={settingsForm.introVideo?.title || ''}
@@ -1855,10 +2106,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                       </div>
 
+                      {/* Subtitle input with toggle */}
                       <div>
-                        <label className="text-xs font-bold text-stone-800 block mb-1">
-                          الوصف الترحيبي (Subtitle):
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-stone-800">
+                            الوصف الترحيبي (Subtitle):
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                              const updated = {
+                                ...settingsForm,
+                                introVideo: { ...current, showSubtitle: current.showSubtitle === false ? true : false }
+                              };
+                              triggerAutoSaveSettings(updated);
+                            }}
+                            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all ${
+                              settingsForm.introVideo?.showSubtitle !== false
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-stone-200 text-stone-600'
+                            }`}
+                          >
+                            {settingsForm.introVideo?.showSubtitle !== false ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            <span>{settingsForm.introVideo?.showSubtitle !== false ? 'ظاهر' : 'مخفي'}</span>
+                          </button>
+                        </div>
                         <textarea
                           rows={2}
                           value={settingsForm.introVideo?.subtitle || ''}
@@ -1875,10 +2148,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                       </div>
 
+                      {/* Badge input with toggle */}
                       <div>
-                        <label className="text-xs font-bold text-stone-800 block mb-1">
-                          شارة الفيديو العلوية (Badge):
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-stone-800">
+                            شارة الفيديو العلوية (Badge):
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                              const updated = {
+                                ...settingsForm,
+                                introVideo: { ...current, showBadge: current.showBadge === false ? true : false }
+                              };
+                              triggerAutoSaveSettings(updated);
+                            }}
+                            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all ${
+                              settingsForm.introVideo?.showBadge !== false
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-stone-200 text-stone-600'
+                            }`}
+                          >
+                            {settingsForm.introVideo?.showBadge !== false ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            <span>{settingsForm.introVideo?.showBadge !== false ? 'ظاهر' : 'مخفي'}</span>
+                          </button>
+                        </div>
                         <input
                           type="text"
                           value={settingsForm.introVideo?.badgeText || ''}
@@ -1897,15 +2192,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
-                  {/* Playback Toggles & Skip Button */}
+                  {/* Playback Toggles & Action Button */}
                   <div className="p-5 rounded-2xl bg-stone-900 text-white space-y-4">
                     <h4 className="font-cairo font-bold text-sm text-stone-100 border-b border-stone-800 pb-2">
-                      خيارات التشغيل والتحكم التفاعلي
+                      خيارات التشغيل والتحكم التفاعلي والأزرار
                     </h4>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                       {/* Autoplay Toggle */}
-                      <label className="flex items-center gap-3 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                      <label className="flex items-center gap-2.5 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
                         <input
                           type="checkbox"
                           checked={settingsForm.introVideo?.autoPlay !== false}
@@ -1921,12 +2216,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                         <div>
                           <strong className="text-xs block text-stone-100">تشغيل تلقائي</strong>
-                          <span className="text-[10px] text-stone-400">يبدأ الفيديو عند فتح الموقع</span>
+                          <span className="text-[10px] text-stone-400">يبدأ الفيديو فوراً</span>
                         </div>
                       </label>
 
                       {/* Muted Toggle */}
-                      <label className="flex items-center gap-3 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                      <label className="flex items-center gap-2.5 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
                         <input
                           type="checkbox"
                           checked={settingsForm.introVideo?.muted !== false}
@@ -1942,12 +2237,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                         <div>
                           <strong className="text-xs block text-stone-100">صامت افتراضياً</strong>
-                          <span className="text-[10px] text-stone-400">مع زر تحكم بالصوت للزائر</span>
+                          <span className="text-[10px] text-stone-400">كتم الصوت بالبداية</span>
+                        </div>
+                      </label>
+
+                      {/* Sound Button Toggle */}
+                      <label className="flex items-center gap-2.5 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={settingsForm.introVideo?.showSoundButton !== false}
+                          onChange={(e) => {
+                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                            const updated = {
+                              ...settingsForm,
+                              introVideo: { ...current, showSoundButton: e.target.checked }
+                            };
+                            triggerAutoSaveSettings(updated);
+                          }}
+                          className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                        />
+                        <div>
+                          <strong className="text-xs block text-stone-100">زر الصوت</strong>
+                          <span className="text-[10px] text-stone-400">زر للتحكم بالصوت</span>
                         </div>
                       </label>
 
                       {/* Loop Toggle */}
-                      <label className="flex items-center gap-3 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                      <label className="flex items-center gap-2.5 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
                         <input
                           type="checkbox"
                           checked={settingsForm.introVideo?.loop !== false}
@@ -1963,12 +2279,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                         <div>
                           <strong className="text-xs block text-stone-100">تكرار الفيديو</strong>
-                          <span className="text-[10px] text-stone-400">إعادة التشغيل بعد الانتهاء</span>
+                          <span className="text-[10px] text-stone-400">إعادة التشغيل</span>
                         </div>
                       </label>
 
                       {/* Skip Button Toggle */}
-                      <label className="flex items-center gap-3 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
+                      <label className="flex items-center gap-2.5 p-3 rounded-xl bg-stone-800/80 border border-stone-700 cursor-pointer hover:bg-stone-800 transition-colors">
                         <input
                           type="checkbox"
                           checked={settingsForm.introVideo?.showSkipButton !== false}
@@ -1983,34 +2299,96 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           className="w-4 h-4 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
                         />
                         <div>
-                          <strong className="text-xs block text-stone-100">زر التخطي للأسفل</strong>
-                          <span className="text-[10px] text-stone-400">ينقل الزائر لباقي الأقسام</span>
+                          <strong className="text-xs block text-stone-100">زر التخطي</strong>
+                          <span className="text-[10px] text-stone-400">للانتقال للأسفل</span>
                         </div>
                       </label>
                     </div>
 
-                    {/* Skip Button Text Customization */}
-                    {settingsForm.introVideo?.showSkipButton !== false && (
-                      <div className="pt-2 flex items-center gap-3">
-                        <label className="text-xs text-stone-300 font-semibold whitespace-nowrap">
-                          نص زر التخطي:
-                        </label>
-                        <input
-                          type="text"
-                          value={settingsForm.introVideo?.skipButtonText || ''}
-                          onChange={(e) => {
-                            const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
-                            const updated = {
-                              ...settingsForm,
-                              introVideo: { ...current, skipButtonText: e.target.value }
-                            };
-                            triggerAutoSaveSettings(updated);
-                          }}
-                          placeholder="تخطي إلى محتوى الموقع ⬇"
-                          className="max-w-xs w-full px-3 py-1.5 rounded-xl bg-stone-800 border border-stone-700 text-stone-100 text-xs focus:border-[#C9A24B] focus:outline-none"
-                        />
+                    {/* Action Button & Skip Button Customization Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-stone-800">
+                      {/* Action Button settings */}
+                      <div className="space-y-2 bg-stone-800/50 p-3 rounded-xl border border-stone-700">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-stone-200 font-bold flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={settingsForm.introVideo?.showActionButton !== false}
+                              onChange={(e) => {
+                                const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                                const updated = {
+                                  ...settingsForm,
+                                  introVideo: { ...current, showActionButton: e.target.checked }
+                                };
+                                triggerAutoSaveSettings(updated);
+                              }}
+                              className="w-3.5 h-3.5 rounded text-[#C9A24B] focus:ring-[#C9A24B]"
+                            />
+                            <span>زر الإجراء التفاعلي (Action Button)</span>
+                          </label>
+                          <span className="text-[10px] text-[#DFBE72]">رابط مباشر في الفيديو</span>
+                        </div>
+                        {settingsForm.introVideo?.showActionButton !== false && (
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <input
+                              type="text"
+                              value={settingsForm.introVideo?.actionButtonText || ''}
+                              onChange={(e) => {
+                                const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                                const updated = {
+                                  ...settingsForm,
+                                  introVideo: { ...current, actionButtonText: e.target.value }
+                                };
+                                triggerAutoSaveSettings(updated);
+                              }}
+                              placeholder="استكشف فنادقنا"
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-[#C9A24B] focus:outline-none"
+                            />
+                            <select
+                              value={settingsForm.introVideo?.actionButtonPage || 'hotels'}
+                              onChange={(e) => {
+                                const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                                const updated = {
+                                  ...settingsForm,
+                                  introVideo: { ...current, actionButtonPage: e.target.value as any }
+                                };
+                                triggerAutoSaveSettings(updated);
+                              }}
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-[#C9A24B] focus:outline-none"
+                            >
+                              <option value="hotels">صفحة الفنادق</option>
+                              <option value="offers">صفحة العروض</option>
+                              <option value="about">صفحة من نحن</option>
+                              <option value="contact">صفحة التواصل</option>
+                              <option value="whatsapp">محادثة واتساب</option>
+                            </select>
+                          </div>
+                        )}
                       </div>
-                    )}
+
+                      {/* Skip Button Text Customization */}
+                      {settingsForm.introVideo?.showSkipButton !== false && (
+                        <div className="space-y-2 bg-stone-800/50 p-3 rounded-xl border border-stone-700">
+                          <label className="text-xs text-stone-200 font-bold block">
+                            نص زر التخطي للأسفل:
+                          </label>
+                          <input
+                            type="text"
+                            value={settingsForm.introVideo?.skipButtonText || ''}
+                            onChange={(e) => {
+                              const current = settingsForm.introVideo || { enabled: true, videoUrl: '' };
+                              const updated = {
+                                ...settingsForm,
+                                introVideo: { ...current, skipButtonText: e.target.value }
+                              };
+                              triggerAutoSaveSettings(updated);
+                            }}
+                            placeholder="تخطي إلى محتوى الموقع ⬇"
+                            className="w-full px-3 py-1.5 rounded-lg bg-stone-900 border border-stone-700 text-stone-100 text-xs focus:border-[#C9A24B] focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Live Interactive Video Preview */}
@@ -2018,7 +2396,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="p-3 bg-stone-900 border-b border-stone-800 flex items-center justify-between text-xs text-stone-300">
                       <span className="font-bold flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5 text-[#C9A24B]" />
-                        <span>معاينة حية لفيديو الإنترو (كما يظهر للنزيل)</span>
+                        <span>معاينة حية لفيديو الإنترو (بدون طابعة داكنة)</span>
                       </span>
                       {settingsForm.introVideo?.videoUrl ? (
                         <span className="text-emerald-400 text-[11px] font-mono">● جاهز للعرض</span>
@@ -2046,21 +2424,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       {/* Simulation Overlays */}
                       {settingsForm.introVideo?.videoUrl && (
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/40 pointer-events-none p-6 flex flex-col justify-between">
+                        <div className={`absolute inset-0 pointer-events-none p-6 flex flex-col justify-between ${
+                          (settingsForm.introVideo?.overlayStyle === 'clear' || !settingsForm.introVideo?.overlayStyle)
+                            ? 'bg-gradient-to-t from-black/45 via-transparent to-black/20'
+                            : settingsForm.introVideo?.overlayStyle === 'subtle'
+                            ? 'bg-gradient-to-t from-black/55 via-black/15 to-black/25'
+                            : settingsForm.introVideo?.overlayStyle === 'none'
+                            ? 'bg-transparent'
+                            : 'bg-gradient-to-t from-black/75 via-black/30 to-black/40'
+                        }`}>
                           <div>
-                            {settingsForm.introVideo?.badgeText && (
+                            {settingsForm.introVideo?.badgeText && settingsForm.introVideo?.showBadge !== false && (
                               <span className="inline-block bg-[#C9A24B] text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-md">
                                 {settingsForm.introVideo.badgeText}
                               </span>
                             )}
                           </div>
                           <div>
-                            <h3 className="text-lg sm:text-2xl font-cairo font-bold text-white mb-1 drop-shadow-md">
-                              {settingsForm.introVideo?.title || 'عنوان فيديو الإنترو الترحيبي'}
-                            </h3>
-                            <p className="text-xs text-stone-200 max-w-xl drop-shadow-sm line-clamp-2">
-                              {settingsForm.introVideo?.subtitle || 'الوصف الترحيبي لشركة برستيج للفنادق'}
-                            </p>
+                            {settingsForm.introVideo?.showTitle !== false && (
+                              <h3 className="text-lg sm:text-2xl font-cairo font-bold text-white mb-1 drop-shadow-md">
+                                {settingsForm.introVideo?.title || 'عنوان فيديو الإنترو الترحيبي'}
+                              </h3>
+                            )}
+                            {settingsForm.introVideo?.showSubtitle !== false && (
+                              <p className="text-xs text-stone-200 max-w-xl drop-shadow-sm line-clamp-2">
+                                {settingsForm.introVideo?.subtitle || 'الوصف الترحيبي لشركة برستيج للفنادق'}
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -2264,12 +2654,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* 4. ABOUT US & OFFICE MANAGEMENT TAB */}
+            {/* 4. HOME SECTIONS CONTROLLER TAB */}
+            {activeTab === 'home-sections' && (
+              <div id="admin-home-sections-container">
+                <AdminHomeSectionsManager
+                  homeSections={settingsForm.homeSections || siteSettings?.homeSections}
+                  onUpdateHomeSections={handleHomeSectionsChange}
+                  onShowToast={onShowToast}
+                />
+              </div>
+            )}
+
+            {/* 5. STORY & NARRATIVE TEASER TAB */}
+            {activeTab === 'story-teaser' && (
+              <div id="admin-story-teaser-container">
+                <AdminStoryTeaserManager
+                  storyTeaser={settingsForm.storyTeaser || siteSettings?.storyTeaser}
+                  onUpdateStoryTeaser={handleStoryTeaserChange}
+                  onShowToast={onShowToast}
+                />
+              </div>
+            )}
+
+            {/* 6. INTEGRATED SERVICES TAB */}
+            {activeTab === 'services' && (
+              <div id="admin-services-container">
+                <AdminServicesManager
+                  integratedServices={settingsForm.integratedServices || siteSettings?.integratedServices}
+                  onUpdateIntegratedServices={handleServicesChange}
+                  onShowToast={onShowToast}
+                />
+              </div>
+            )}
+
+            {/* 4. ABOUT US, STORY TEASER, SERVICES & OFFICE MANAGEMENT TAB */}
             {activeTab === 'about' && (
               <div id="admin-about-section">
                 <AdminAboutManager
                   aboutUs={settingsForm.aboutUs || siteSettings?.aboutUs || {}}
                   siteLogoUrl={settingsForm.logoUrl || siteSettings?.logoUrl || ''}
+                  storyTeaser={settingsForm.storyTeaser || siteSettings?.storyTeaser}
+                  integratedServices={settingsForm.integratedServices || siteSettings?.integratedServices}
+                  onUpdateStoryTeaser={handleStoryTeaserChange}
+                  onUpdateIntegratedServices={handleServicesChange}
                   onUpdateAboutUs={async (updatedAboutUs, updatedLogo) => {
                     const updatedSettings: SiteSettings = {
                       ...settingsForm,
@@ -2629,41 +3056,92 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* 5. SITE SETTINGS & CHANNELS */}
             {activeTab === 'settings' && (
-              <div id="admin-settings-section" className="space-y-8">
-                {/* Brand and Logo Manager */}
-                <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
-                  <div className="flex items-center justify-between pb-4 border-b border-stone-200">
-                    <div>
-                      <h2 className="text-xl font-cairo font-bold text-stone-900">هوية الموقع والشعار العام</h2>
+              <div id="admin-settings-section" className="space-y-6">
+                {/* Header Bar with Auto-Save Status & Save Button */}
+                <div className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
+                        <Settings className="w-5 h-5" />
+                      </div>
+                      <h2 className="text-xl font-cairo font-bold text-stone-900">إعدادات المنصة الشاملة</h2>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-1">
+                      إدارة الهوية، الشعار، عناصر التواصل، الفروع، الربط السحابي، والتحكم في ظهور كافة الأقسام.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {autoSaveStatus === 'saving' && (
+                      <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl flex items-center gap-1.5 animate-pulse">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>جاري الحفظ التلقائي...</span>
+                      </span>
+                    )}
+                    {autoSaveStatus === 'saved' && (
+                      <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>تم الحفظ تلقائياً ✓</span>
+                      </span>
+                    )}
+
+                    <button
+                      onClick={handleSaveSettings}
+                      disabled={savingSettings}
+                      className="px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{savingSettings ? 'جاري الحفظ...' : 'حفظ التغييرات'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sub-Tabs Categorization Navigation */}
+                <div className="bg-white rounded-3xl border border-stone-200 p-2 sm:p-2.5 shadow-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    {[
+                      { id: 'brand' as const, label: 'الهوية والشعار والتبويب', icon: Building2, desc: 'اسم الموقع، الشعار الرسمي، والأيقونة' },
+                      { id: 'booking-module' as const, label: 'نظام الحجوزات والغرف', icon: Key, desc: 'تفعيل/إخفاء الحجز، الواتساب، والبريد' },
+                      { id: 'visibility' as const, label: 'إظهار وإخفاء عناصر تواصل معنا', icon: Eye, desc: 'تحكم في كل عنوان وزر وبطاقة' },
+                      { id: 'contact-data' as const, label: 'بيانات الفروع والقنوات والأقسام', icon: Phone, desc: 'أرقام التواصل، الخرائط، والمسؤولين' },
+                      { id: 'hotel-detail' as const, label: 'نصوص الفندق وروابط الفوتر', icon: Sliders, desc: 'الفنادق المقترحة وروابط الوصول' },
+                      { id: 'database' as const, label: 'قاعدة البيانات وسوبا بيز', icon: Database, desc: 'Supabase PostgreSQL والاتصال' }
+                    ].map((tab) => {
+                      const Icon = tab.icon;
+                      const isCurrent = settingsSubTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setSettingsSubTab(tab.id)}
+                          className={`p-3 rounded-2xl text-right transition-all flex flex-col gap-1 cursor-pointer border ${
+                            isCurrent
+                              ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-sm font-bold'
+                              : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Icon className={`w-4 h-4 ${isCurrent ? 'text-white' : 'text-[#B38A34]'}`} />
+                            <strong className="text-xs font-bold truncate">{tab.label}</strong>
+                          </div>
+                          <span className={`text-[10px] truncate ${isCurrent ? 'text-amber-100' : 'text-stone-400'}`}>
+                            {tab.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Sub-Tab 1: Brand & Logo Manager */}
+                {settingsSubTab === 'brand' && (
+                  <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6 animate-fadeIn">
+                    <div className="pb-4 border-b border-stone-200">
+                      <h3 className="text-lg font-cairo font-bold text-stone-900">هوية الموقع والشعار العام</h3>
                       <p className="text-xs text-stone-500">
                         التحكم في اسم المنصة، الشعار المرفوع، والروابط الرسمية
                       </p>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      {autoSaveStatus === 'saving' && (
-                        <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl flex items-center gap-1.5 animate-pulse">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>جاري الحفظ التلقائي...</span>
-                        </span>
-                      )}
-                      {autoSaveStatus === 'saved' && (
-                        <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl flex items-center gap-1.5">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>تم الحفظ تلقائياً ✓</span>
-                        </span>
-                      )}
-
-                      <button
-                        onClick={handleSaveSettings}
-                        disabled={savingSettings}
-                        className="px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center gap-2"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>{savingSettings ? 'جاري الحفظ...' : 'حفظ التغييرات'}</span>
-                      </button>
-                    </div>
-                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -2830,166 +3308,704 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
                 </div>
+              )}
 
-                {/* Contact Channels Manager Card */}
-                <div id="admin-channels-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
-                  <AdminChannelsManager
-                    channels={settingsForm.channels || []}
-                    onChange={handleChannelsChange}
-                    onShowToast={onShowToast}
-                  />
-                </div>
-
-                {/* Branches & Google Maps Links Manager Card */}
-                <div id="admin-branches-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
-                  <AdminBranchesManager
-                    branches={settingsForm.branches || []}
-                    onChange={handleBranchesChange}
-                    onShowToast={onShowToast}
-                  />
-                </div>
-
-                {/* Specialized Department Contacts (مبيعات / حجوزات / حسابات) */}
-                <div id="admin-department-contacts-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
-                  <AdminDepartmentContactsManager
-                    contacts={settingsForm.departmentContacts || []}
-                    onChange={handleDepartmentContactsChange}
-                    onShowToast={onShowToast}
-                  />
-                </div>
-
-                {/* Quick Links Manager Card (روابط سريعة في الفوتر) */}
-                <div id="admin-quick-links-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
-                  <AdminQuickLinksManager
-                    links={settingsForm.quickLinks || []}
-                    onChange={handleQuickLinksChange}
-                    onShowToast={onShowToast}
-                  />
-                </div>
-
-                {/* Supabase Database Connection & Migration Card */}
-                <div id="admin-supabase-manager-card" className="bg-white rounded-3xl border border-[#C9A24B]/40 p-6 sm:p-8 shadow-md space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200 shrink-0">
-                        <Database className="w-6 h-6" />
-                      </div>
+                {/* Sub-Tab: Booking Module Settings (التحكم في إظهار وإخفاء نظام الحجوزات) */}
+                {settingsSubTab === 'booking-module' && (
+                  <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6 animate-fadeIn">
+                    <div className="pb-4 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h2 className="text-xl font-cairo font-bold text-stone-900">ربط قاعدة بيانات سوبا بيز (Supabase)</h2>
-                          {isSupabaseConfigured() ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>مفعل ومتصل</span>
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                              بانتظار إدخال المفاتيح
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-stone-500 mt-0.5">
-                          تخزين واسترجاع بيانات الفنادق، العروض، الرسائل، والمستخدمين مباشرة وسحابياً عبر Supabase PostgreSQL
+                        <h3 className="text-lg font-cairo font-bold text-stone-900">
+                          إعدادات نظام الحجوزات والغرف الفندقية
+                        </h3>
+                        <p className="text-xs text-stone-500">
+                          تحكم شامل في تفعيل أو إخفاء ميزة حجز الغرف، أرقام الواتساب والبريد المخصصة للحجز، وتوليد المفاتيح الرقمية.
                         </p>
                       </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectTab('bookings')}
+                          className="px-3.5 py-1.5 rounded-xl bg-[#C9A24B]/10 hover:bg-[#C9A24B]/20 text-[#B38A34] text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>فتح سجل الحجوزات</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectTab('rooms-inventory')}
+                          className="px-3.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Key className="w-3.5 h-3.5" />
+                          <span>إدارة الغرف والمفاتيح</span>
+                        </button>
+                      </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowSqlSchemaModal(true)}
-                      className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-[#C9A24B] text-stone-800 hover:text-white font-bold text-xs transition-colors flex items-center gap-2 shrink-0 border border-stone-300 cursor-pointer"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>عرض ونسخ سكريبت SQL</span>
-                    </button>
-                  </div>
+                    {/* Master Switch: Enable / Disable Booking Module */}
+                    <div className="p-5 rounded-2xl bg-amber-50/60 border border-amber-200 flex items-center justify-between gap-4">
+                      <div>
+                        <strong className="text-sm font-bold text-amber-950 block">
+                          تفعيل منظومة حجز الغرف في الموقع بالكامل
+                        </strong>
+                        <p className="text-xs text-amber-800 mt-0.5">
+                          عند التعطيل، يتم إخفاء أزرار الحجز وقوائم الغرف ومتابعة الحجز عن كافة زوار الموقع في ثوانٍ.
+                        </p>
+                      </div>
 
-                  {/* Supabase Test Result Banner */}
-                  {supabaseTestResult && (
-                    <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-3 ${
-                      supabaseTestResult.success
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                        : 'bg-red-50 border-red-300 text-red-800'
-                    }`}>
-                      {supabaseTestResult.success ? (
-                        <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
-                      ) : (
-                        <AlertTriangle className="w-5 h-5 shrink-0 text-red-600" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const currentEnabled = settingsForm.bookingModule?.enabled !== false;
+                          triggerAutoSaveSettings({
+                            ...settingsForm,
+                            bookingModule: {
+                              ...settingsForm.bookingModule,
+                              enabled: !currentEnabled,
+                              showInHeader: settingsForm.bookingModule?.showInHeader !== false,
+                              showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
+                              showInHero: settingsForm.bookingModule?.showInHero !== false,
+                              showInHotelDetail: settingsForm.bookingModule?.showInHotelDetail !== false,
+                              enableWhatsAppRedirect: settingsForm.bookingModule?.enableWhatsAppRedirect !== false,
+                              enableEmailNotification: settingsForm.bookingModule?.enableEmailNotification !== false,
+                              autoAssignDigitalKey: settingsForm.bookingModule?.autoAssignDigitalKey !== false
+                            }
+                          });
+                        }}
+                        className={`w-14 h-8 rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                          settingsForm.bookingModule?.enabled !== false ? 'bg-[#C9A24B]' : 'bg-stone-300'
+                        }`}
+                      >
+                        <div className={`w-6 h-6 rounded-full bg-white shadow-md transform transition-transform ${
+                          settingsForm.bookingModule?.enabled !== false ? (document.dir === 'rtl' ? '-translate-x-6' : 'translate-x-6') : 'translate-x-0'
+                        }`} />
+                      </button>
+                    </div>
+
+                    {/* Toggles Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+                      {[
+                        {
+                          key: 'showInHeader',
+                          title: 'إظهار زر "حجز غرفة" في القائمة العلوية',
+                          desc: 'زر مميز في شريط التنقل للوصول المباشر'
+                        },
+                        {
+                          key: 'showTrackBookingModal',
+                          title: 'إظهار خيار "متابعة الحجز" للنزلاء',
+                          desc: 'تمكين النزيل من البحث عن حجزه وعرض مفتاحه'
+                        },
+                        {
+                          key: 'showInHotelDetail',
+                          title: 'تفعيل حجز الغرف في صفحة تفاصيل الفندق',
+                          desc: 'عرض بطاقات الغرف وحساب التكلفة التلقائي'
+                        },
+                        {
+                          key: 'enableWhatsAppRedirect',
+                          title: 'فتح واتساب العميل تلقائياً عند التأكيد',
+                          desc: 'تجهيز رسالة الحجز الكاملة ليقوم بإرسالها فوراً'
+                        },
+                        {
+                          key: 'autoAssignDigitalKey',
+                          title: 'توليد المفتاح الرقمي (Digital Key) تلقائياً',
+                          desc: 'إصدار كود دخول مؤقت لكل حجز مسجل'
+                        },
+                        {
+                          key: 'enableEmailNotification',
+                          title: 'تفعيل إشعارات البريد الإلكتروني',
+                          desc: 'إرسال تأكيد الحجز لبريد العميل والإدارة'
+                        }
+                      ].map((item) => {
+                        const isChecked = (settingsForm.bookingModule as any)?.[item.key] !== false;
+                        return (
+                          <div 
+                            key={item.key}
+                            className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-start justify-between gap-3"
+                          >
+                            <div>
+                              <strong className="text-xs font-bold text-stone-900 block">{item.title}</strong>
+                              <p className="text-[11px] text-stone-500 mt-0.5">{item.desc}</p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    enabled: settingsForm.bookingModule?.enabled !== false,
+                                    showInHeader: settingsForm.bookingModule?.showInHeader !== false,
+                                    showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
+                                    showInHero: settingsForm.bookingModule?.showInHero !== false,
+                                    showInHotelDetail: settingsForm.bookingModule?.showInHotelDetail !== false,
+                                    enableWhatsAppRedirect: settingsForm.bookingModule?.enableWhatsAppRedirect !== false,
+                                    enableEmailNotification: settingsForm.bookingModule?.enableEmailNotification !== false,
+                                    autoAssignDigitalKey: settingsForm.bookingModule?.autoAssignDigitalKey !== false,
+                                    [item.key]: !isChecked
+                                  }
+                                });
+                              }}
+                              className={`w-11 h-6 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 mt-0.5 ${
+                                isChecked ? 'bg-[#C9A24B]' : 'bg-stone-300'
+                              }`}
+                            >
+                              <div className={`w-5 h-5 rounded-full bg-white shadow-xs transform transition-transform ${
+                                isChecked ? (document.dir === 'rtl' ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                              }`} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* WhatsApp & Email Inputs */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-stone-200">
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">
+                          رقم واتساب المخصص لاستقبال الحجوزات:
+                        </label>
+                        <input
+                          type="tel"
+                          dir="ltr"
+                          placeholder="+966544076726"
+                          value={settingsForm.bookingModule?.bookingWhatsApp || ''}
+                          onChange={(e) => {
+                            triggerAutoSaveSettings({
+                              ...settingsForm,
+                              bookingModule: {
+                                ...settingsForm.bookingModule,
+                                enabled: settingsForm.bookingModule?.enabled !== false,
+                                showInHeader: settingsForm.bookingModule?.showInHeader !== false,
+                                showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
+                                showInHero: settingsForm.bookingModule?.showInHero !== false,
+                                showInHotelDetail: settingsForm.bookingModule?.showInHotelDetail !== false,
+                                enableWhatsAppRedirect: settingsForm.bookingModule?.enableWhatsAppRedirect !== false,
+                                enableEmailNotification: settingsForm.bookingModule?.enableEmailNotification !== false,
+                                autoAssignDigitalKey: settingsForm.bookingModule?.autoAssignDigitalKey !== false,
+                                bookingWhatsApp: e.target.value
+                              }
+                            });
+                          }}
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-bold text-right focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
+                        />
+                        <span className="text-[10px] text-stone-400 mt-1 block">
+                          عند قيام العميل بالحجز، يفتح محادثة واتساب مباشرة مع هذا الرقم
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">
+                          بريد الحجوزات الرسمي (Gmail / Corporate):
+                        </label>
+                        <input
+                          type="email"
+                          dir="ltr"
+                          placeholder="bookings@prestigeksa.com"
+                          value={settingsForm.bookingModule?.bookingEmail || ''}
+                          onChange={(e) => {
+                            triggerAutoSaveSettings({
+                              ...settingsForm,
+                              bookingModule: {
+                                ...settingsForm.bookingModule,
+                                enabled: settingsForm.bookingModule?.enabled !== false,
+                                showInHeader: settingsForm.bookingModule?.showInHeader !== false,
+                                showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
+                                showInHero: settingsForm.bookingModule?.showInHero !== false,
+                                showInHotelDetail: settingsForm.bookingModule?.showInHotelDetail !== false,
+                                enableWhatsAppRedirect: settingsForm.bookingModule?.enableWhatsAppRedirect !== false,
+                                enableEmailNotification: settingsForm.bookingModule?.enableEmailNotification !== false,
+                                autoAssignDigitalKey: settingsForm.bookingModule?.autoAssignDigitalKey !== false,
+                                bookingEmail: e.target.value
+                              }
+                            });
+                          }}
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-bold text-right focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
+                        />
+                        <span className="text-[10px] text-stone-400 mt-1 block">
+                          البريد الذي تصله تفاصيل الحجز فورياً وبشكل مجاني
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-Tab 2: Granular Visibility Controls for Contact Us */}
+                {settingsSubTab === 'visibility' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    <div id="admin-contact-sections-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-8">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
+                            <Eye className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-cairo font-bold text-lg text-stone-900">
+                              التحكم الدقيق في إظهار وإخفاء عناصر صفحة "تواصل معنا"
+                            </h3>
+                            <p className="text-xs text-stone-500">
+                              إمكانية إخفاء وإظهار كل عنوان، كل بطاقة، وكل زر اتصال أو خرائط أو إرسال بشكل منفرد
+                            </p>
+                          </div>
+                        </div>
+
+                        <span className="text-xs font-bold text-[#B38A34] bg-[#C9A24B]/10 px-3 py-1 rounded-full border border-[#C9A24B]/20 shrink-0">
+                          تحديث فوري ولحظي
+                        </span>
+                      </div>
+
+                      {/* Group 1: Header Elements */}
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                          <span>١. ترويسة صفحة التواصل الرئيسية</span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {[
+                            { key: 'showBadge' as const, label: 'شارة الترحيب العلوية', desc: 'نحن في خدمتكم دائماً' },
+                            { key: 'showTitle' as const, label: 'العنوان الرئيسي', desc: 'تواصل معنا واستفسر عن الحجوزات' },
+                            { key: 'showSubtitle' as const, label: 'الوصف الفرعي التوضيحي', desc: 'فريق استشاريي التسكين متاح 24/7' }
+                          ].map((item) => {
+                            const isVisible = (settingsForm.contactSections as any)?.[item.key] !== false;
+                            return (
+                              <div
+                                key={item.key}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                                  isVisible ? 'bg-white border-stone-200 shadow-2xs' : 'bg-stone-50 border-dashed border-stone-300 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <strong className="text-xs font-bold text-stone-900">{item.label}</strong>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const cs = settingsForm.contactSections || {};
+                                      const updatedCs = { ...cs, [item.key]: !isVisible };
+                                      triggerAutoSaveSettings({ ...settingsForm, contactSections: updatedCs });
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                      isVisible ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-stone-200 text-stone-600'
+                                    }`}
+                                  >
+                                    {isVisible ? <Eye className="w-3 h-3 text-emerald-600" /> : <EyeOff className="w-3 h-3 text-stone-500" />}
+                                    <span>{isVisible ? 'ظاهر' : 'مخفي'}</span>
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-stone-500">{item.desc}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Group 2: Departments & Actions */}
+                      <div className="space-y-3 pt-3 border-t border-stone-100">
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                          <span>٢. بطاقات الأقسام المتخصصة (مبيعات / حجوزات / حسابات)</span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          {[
+                            { key: 'showDepartments' as const, label: 'قسم الأقسام ككل', desc: 'إظهار أو إخفاء حاوية الأقسام بالكامل' },
+                            { key: 'showDepartmentsTitle' as const, label: 'عنوان قسم الأقسام', desc: 'الأقسام المتخصصة والتواصل المباشر' },
+                            { key: 'showDepartmentsCallButton' as const, label: 'أزرار الاتصال الهاتفي', desc: 'زر الاتصال المباشر بكل قسم' },
+                            { key: 'showDepartmentsWhatsAppButton' as const, label: 'أزرار محادثة واتساب', desc: 'زر واتساب السريع لكل قسم' }
+                          ].map((item) => {
+                            const isVisible = (settingsForm.contactSections as any)?.[item.key] !== false;
+                            return (
+                              <div
+                                key={item.key}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                                  isVisible ? 'bg-white border-stone-200 shadow-2xs' : 'bg-stone-50 border-dashed border-stone-300 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <strong className="text-xs font-bold text-stone-900">{item.label}</strong>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const cs = settingsForm.contactSections || {};
+                                      const updatedCs = { ...cs, [item.key]: !isVisible };
+                                      triggerAutoSaveSettings({ ...settingsForm, contactSections: updatedCs });
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                      isVisible ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-stone-200 text-stone-600'
+                                    }`}
+                                  >
+                                    {isVisible ? <Eye className="w-3 h-3 text-emerald-600" /> : <EyeOff className="w-3 h-3 text-stone-500" />}
+                                    <span>{isVisible ? 'ظاهر' : 'مخفي'}</span>
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-stone-500">{item.desc}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Group 3: WhatsApp Fast Banner */}
+                      <div className="space-y-3 pt-3 border-t border-stone-100">
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                          <span>٣. شريط الواتساب السريع المباشر (24/7)</span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          {[
+                            { key: 'showWaBanner' as const, label: 'شريط الواتساب ككل', desc: 'إظهار أو إخفاء البانر كاملاً' },
+                            { key: 'showWaBannerTitle' as const, label: 'عنوان شريط الواتساب', desc: 'خدمة العملاء السريعة عبر واتساب' },
+                            { key: 'showWaBannerDesc' as const, label: 'النص والوصف التوضيحي', desc: 'استفسارات تسكين وحجوزات فورية' },
+                            { key: 'showWaBannerButton' as const, label: 'زر بدء المحادثة', desc: 'زر فتح دردشة واتساب الفورية' }
+                          ].map((item) => {
+                            const isVisible = (settingsForm.contactSections as any)?.[item.key] !== false;
+                            return (
+                              <div
+                                key={item.key}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                                  isVisible ? 'bg-white border-stone-200 shadow-2xs' : 'bg-stone-50 border-dashed border-stone-300 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <strong className="text-xs font-bold text-stone-900">{item.label}</strong>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const cs = settingsForm.contactSections || {};
+                                      const updatedCs = { ...cs, [item.key]: !isVisible };
+                                      triggerAutoSaveSettings({ ...settingsForm, contactSections: updatedCs });
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                      isVisible ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-stone-200 text-stone-600'
+                                    }`}
+                                  >
+                                    {isVisible ? <Eye className="w-3 h-3 text-emerald-600" /> : <EyeOff className="w-3 h-3 text-stone-500" />}
+                                    <span>{isVisible ? 'ظاهر' : 'مخفي'}</span>
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-stone-500">{item.desc}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Group 4: Channels & Branches */}
+                      <div className="space-y-3 pt-3 border-t border-stone-100">
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                          <span>٤. قنوات الاتصال المعتمدة والمكاتب الميدانية والفروع</span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          {[
+                            { key: 'showChannels' as const, label: 'قسم القنوات ككل', desc: 'هواتف، بريد، ومنصات التواصل' },
+                            { key: 'showChannelsTitle' as const, label: 'عنوان قنوات الاتصال', desc: 'قنوات التواصل المعتمدة' },
+                            { key: 'showBranches' as const, label: 'قسم الفروع ككل', desc: 'فروع مكة المكرمة والمدينة المنورة' },
+                            { key: 'showBranchesTitle' as const, label: 'عنوان قسم الفروع', desc: 'المكاتب الميدانية والفروع' },
+                            { key: 'showBranchesMapButton' as const, label: 'زر خرائط Google', desc: 'زر فتح لوكيشن الفرع على الخريطة' },
+                            { key: 'showBranchesPhoneButton' as const, label: 'زر هاتف الفرع', desc: 'زر الاتصال المباشر بالفرع' },
+                            { key: 'showBranchesWhatsAppButton' as const, label: 'زر واتساب الفرع', desc: 'زر محادثة واتساب الخاص بالفرع' },
+                            { key: 'showBranchesFooterInfo' as const, label: 'أوقات العمل والمعلومات', desc: 'ساعات الدوام والبريد في الفرع' }
+                          ].map((item) => {
+                            const isVisible = (settingsForm.contactSections as any)?.[item.key] !== false;
+                            return (
+                              <div
+                                key={item.key}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                                  isVisible ? 'bg-white border-stone-200 shadow-2xs' : 'bg-stone-50 border-dashed border-stone-300 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <strong className="text-xs font-bold text-stone-900">{item.label}</strong>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const cs = settingsForm.contactSections || {};
+                                      const updatedCs = { ...cs, [item.key]: !isVisible };
+                                      triggerAutoSaveSettings({ ...settingsForm, contactSections: updatedCs });
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                      isVisible ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-stone-200 text-stone-600'
+                                    }`}
+                                  >
+                                    {isVisible ? <Eye className="w-3 h-3 text-emerald-600" /> : <EyeOff className="w-3 h-3 text-stone-500" />}
+                                    <span>{isVisible ? 'ظاهر' : 'مخفي'}</span>
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-stone-500">{item.desc}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Group 5: Inquiry Form */}
+                      <div className="space-y-3 pt-3 border-t border-stone-100">
+                        <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                          <span>٥. نموذج إرسال الاستفسار والرسالة</span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          {[
+                            { key: 'showContactForm' as const, label: 'نموذج التواصل ككل', desc: 'إظهار أو إخفاء استمارة المراسلة' },
+                            { key: 'showContactFormHeader' as const, label: 'ترويسة وعنوان النموذج', desc: 'أرسل لنا استفسارك وسنعاود الاتصال' },
+                            { key: 'showContactFormSubmitButton' as const, label: 'زر إرسال الرسالة', desc: 'زر إتمام وإرسال الاستمارة' }
+                          ].map((item) => {
+                            const isVisible = (settingsForm.contactSections as any)?.[item.key] !== false;
+                            return (
+                              <div
+                                key={item.key}
+                                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                                  isVisible ? 'bg-white border-stone-200 shadow-2xs' : 'bg-stone-50 border-dashed border-stone-300 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <strong className="text-xs font-bold text-stone-900">{item.label}</strong>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const cs = settingsForm.contactSections || {};
+                                      const updatedCs = { ...cs, [item.key]: !isVisible };
+                                      triggerAutoSaveSettings({ ...settingsForm, contactSections: updatedCs });
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                      isVisible ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-stone-200 text-stone-600'
+                                    }`}
+                                  >
+                                    {isVisible ? <Eye className="w-3 h-3 text-emerald-600" /> : <EyeOff className="w-3 h-3 text-stone-500" />}
+                                    <span>{isVisible ? 'ظاهر' : 'مخفي'}</span>
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-stone-500">{item.desc}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-Tab 3: Channels, Branches & Department Contacts Data */}
+                {settingsSubTab === 'contact-data' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    {/* Contact Channels Manager Card */}
+                    <div id="admin-channels-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
+                      <AdminChannelsManager
+                        channels={settingsForm.channels || []}
+                        onChange={handleChannelsChange}
+                        onShowToast={onShowToast}
+                      />
+                    </div>
+
+                    {/* Branches & Google Maps Links Manager Card */}
+                    <div id="admin-branches-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
+                      <AdminBranchesManager
+                        branches={settingsForm.branches || []}
+                        onChange={handleBranchesChange}
+                        onShowToast={onShowToast}
+                      />
+                    </div>
+
+                    {/* Specialized Department Contacts (مبيعات / حجوزات / حسابات) */}
+                    <div id="admin-department-contacts-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
+                      <AdminDepartmentContactsManager
+                        contacts={settingsForm.departmentContacts || []}
+                        onChange={handleDepartmentContactsChange}
+                        onShowToast={onShowToast}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-Tab 4: Hotel Detail Texts & Quick Links */}
+                {settingsSubTab === 'hotel-detail' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    {/* Hotel Detail Page Custom Texts (الفنادق المقترحة والخيارات الإضافية) */}
+                    <div id="admin-hotel-detail-texts-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
+                      <div className="flex items-center justify-between pb-4 border-b border-stone-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
+                            <Building2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="font-cairo font-bold text-lg text-stone-900">
+                              نصوص وعناوين صفحة الفندق (قسم الفنادق المقترحة)
+                            </h3>
+                            <p className="text-xs text-stone-500">
+                              التحكم في عنوان وشارة قسم "فنادق أخرى مميزة في مكة المكرمة / المدينة المنورة" الذي يظهر أسفل صفحة الفندق
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="text-xs font-bold text-stone-700 block mb-1.5">
+                            الشارة العلوية (Badge):
+                          </label>
+                          <input
+                            type="text"
+                            value={settingsForm.similarHotelsBadge || ''}
+                            onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, similarHotelsBadge: e.target.value })}
+                            placeholder="خيارات إضافية"
+                            className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-stone-700 block mb-1.5 flex items-center justify-between">
+                            <span>العنوان الرئيسي المقترح:</span>
+                            <span className="text-[11px] text-[#B38A34] font-normal">استخدم {'{city}'} لاسم المدينة تلقائياً</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={settingsForm.similarHotelsTitle || ''}
+                            onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, similarHotelsTitle: e.target.value })}
+                            placeholder="فنادق أخرى مميزة في {city}"
+                            className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm font-bold focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Links Manager Card (روابط سريعة في الفوتر) */}
+                    <div id="admin-quick-links-manager-card" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
+                      <AdminQuickLinksManager
+                        links={settingsForm.quickLinks || []}
+                        onChange={handleQuickLinksChange}
+                        onShowToast={onShowToast}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-Tab 5: Supabase Database Connection & Migration */}
+                {settingsSubTab === 'database' && (
+                  <div className="animate-fadeIn">
+                    <div id="admin-supabase-manager-card" className="bg-white rounded-3xl border border-[#C9A24B]/40 p-6 sm:p-8 shadow-md space-y-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200 shrink-0">
+                            <Database className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h2 className="text-xl font-cairo font-bold text-stone-900">ربط قاعدة بيانات سوبا بيز (Supabase)</h2>
+                              {isSupabaseConfigured() ? (
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>مفعل ومتصل</span>
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                  بانتظار إدخال المفاتيح
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-stone-500 mt-0.5">
+                              تخزين واسترجاع بيانات الفنادق، العروض، الرسائل، والمستخدمين مباشرة وسحابياً عبر Supabase PostgreSQL
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowSqlSchemaModal(true)}
+                          className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-[#C9A24B] text-stone-800 hover:text-white font-bold text-xs transition-colors flex items-center gap-2 shrink-0 border border-stone-300 cursor-pointer"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>عرض ونسخ سكريبت SQL</span>
+                        </button>
+                      </div>
+
+                      {/* Supabase Test Result Banner */}
+                      {supabaseTestResult && (
+                        <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-center gap-3 ${
+                          supabaseTestResult.success 
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-800' 
+                            : 'bg-red-50 border-red-300 text-red-800'
+                        }`}>
+                          {supabaseTestResult.success ? (
+                            <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+                          ) : (
+                            <AlertTriangle className="w-5 h-5 shrink-0 text-red-600" />
+                          )}
+                          <span>{supabaseTestResult.message}</span>
+                        </div>
                       )}
-                      <span>{supabaseTestResult.message}</span>
-                    </div>
-                  )}
 
-                  {/* Inputs */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                        <Database className="w-3.5 h-3.5 text-[#B38A34]" />
-                        <span>رابط مشروع سوبا بيز (Supabase Project URL):</span>
-                      </label>
-                      <input
-                        type="url"
-                        value={supabaseUrl}
-                        onChange={(e) => setSupabaseUrl(e.target.value)}
-                        placeholder="https://your-project-id.supabase.co"
-                        className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors dir-ltr"
-                      />
-                      <span className="text-[11px] text-stone-400 block">من إعدادات Project Settings {'>'} API في لوحة Supabase</span>
-                    </div>
+                      {/* Inputs */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                            <Database className="w-3.5 h-3.5 text-[#B38A34]" />
+                            <span>رابط مشروع سوبا بيز (Supabase Project URL):</span>
+                          </label>
+                          <input
+                            type="url"
+                            value={supabaseUrl}
+                            onChange={(e) => setSupabaseUrl(e.target.value)}
+                            placeholder="https://your-project-id.supabase.co"
+                            className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors dir-ltr"
+                          />
+                          <span className="text-[11px] text-stone-400 block">من إعدادات Project Settings {'>'} API في لوحة Supabase</span>
+                        </div>
 
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
-                        <Key className="w-3.5 h-3.5 text-[#B38A34]" />
-                        <span>مفتاح الوصول العام (Anon / Public Key):</span>
-                      </label>
-                      <input
-                        type="password"
-                        value={supabaseAnonKey}
-                        onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                        className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors dir-ltr"
-                      />
-                      <span className="text-[11px] text-stone-400 block">مفتاح anon public للوصول الآمن والعمليات الفورية</span>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                            <Key className="w-3.5 h-3.5 text-[#B38A34]" />
+                            <span>مفتاح الوصول العام (Anon / Public Key):</span>
+                          </label>
+                          <input
+                            type="password"
+                            value={supabaseAnonKey}
+                            onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                            placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                            className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors dir-ltr"
+                          />
+                          <span className="text-[11px] text-stone-400 block">مفتاح anon public للوصول الآمن والعمليات الفورية</span>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+                        <div className="text-xs text-stone-500">
+                          💡 في حال لم تكن المفاتيح مدخلة، يعمل النظام تلقائياً عبر التخزين المحلي والفايرستور البديل دون أي انقطاع.
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={handleTestSupabase}
+                            disabled={testingSupabase || !supabaseUrl || !supabaseAnonKey}
+                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                          >
+                            {testingSupabase ? (
+                              <>
+                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                <span>جاري الاختبار...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>اختبار الاتصال المباشر</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleSaveSupabaseConfig}
+                            className="px-5 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
+                          >
+                            <Check className="w-4 h-4" />
+                            <span>حفظ الإعدادات</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
-                    <div className="text-xs text-stone-500">
-                      💡 في حال لم تكن المفاتيح مدخلة، يعمل النظام تلقائياً عبر التخزين المحلي والفايرستور البديل دون أي انقطاع.
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={handleTestSupabase}
-                        disabled={testingSupabase || !supabaseUrl || !supabaseAnonKey}
-                        className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                      >
-                        {testingSupabase ? (
-                          <>
-                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span>جاري الاختبار...</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>اختبار الاتصال المباشر</span>
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleSaveSupabaseConfig}
-                        className="px-5 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>حفظ الإعدادات</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -3675,7 +4691,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               واتساب مخصص للفندق (WhatsApp)
                             </span>
                             <span className="text-[11px] text-stone-500 block">
-                              رقم التواصل والحجز المباشر عبر الواتساب
+                              رقم التواصل والحجز المباشر (يقبل 05XXXXXXXX أو +966 أو روابط wa.me)
                             </span>
                           </div>
                         </div>
@@ -3704,13 +4720,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </button>
                       </div>
 
-                      <input
-                        type="tel"
-                        value={hotelForm.hotelWhatsApp || ''}
-                        onChange={(e) => setHotelForm({ ...hotelForm, hotelWhatsApp: e.target.value })}
-                        placeholder="+966500000000 (اتركه فارغاً لاستخدام رقم واتساب الموقع الافتراضي)"
-                        className="w-full px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B] dir-ltr text-left"
-                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={hotelForm.hotelWhatsApp || ''}
+                          onChange={(e) => setHotelForm({ ...hotelForm, hotelWhatsApp: e.target.value })}
+                          placeholder="مثال: 0544076726 أو +966544076726 أو رابط wa.me"
+                          className="flex-1 px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B] dir-ltr text-left"
+                        />
+                        {hotelForm.hotelWhatsApp?.trim() && (
+                          <a
+                            href={buildWhatsAppLink(hotelForm.hotelWhatsApp, `السلام عليكم، تجربة رسالة استفسار وحجز فندق ${hotelForm.name}`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl border border-emerald-300 shrink-0 transition-colors flex items-center gap-1"
+                            title="فتح الرابط في واتساب للتأكد من الرقم"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>اختبار</span>
+                          </a>
+                        )}
+                      </div>
+
+                      {hotelForm.hotelWhatsApp?.trim() ? (
+                        <div className="mt-2 text-[11px] text-stone-600 flex items-center gap-1 dir-ltr text-left font-mono bg-stone-50 p-2 rounded-lg border border-stone-200/80">
+                          <span className="text-stone-400 shrink-0">رابط الواتساب النشط:</span>
+                          <span className="text-emerald-700 truncate">{buildWhatsAppLink(hotelForm.hotelWhatsApp)}</span>
+                        </div>
+                      ) : (
+                        <p className="mt-1.5 text-[11px] text-stone-400">
+                          * إذا تركته فارغاً سيتم استخدام رقم واتساب الموقع الافتراضي تلقائياً.
+                        </p>
+                      )}
                     </div>
 
                     {/* 6. Email */}

@@ -8,11 +8,13 @@ import {
   Building,
   CalendarCheck,
   ExternalLink,
-  PhoneCall
+  PhoneCall,
+  BedDouble
 } from 'lucide-react';
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from './BookingIcons';
 import { HotelBookingModal } from './HotelBookingModal';
 import { useLanguage } from '../context/LanguageContext';
+import { buildWhatsAppLink, getFirstActiveWhatsApp } from '../utils/channels';
 
 interface HotelCardProps {
   hotel: Hotel;
@@ -43,11 +45,7 @@ export const HotelCard: React.FC<HotelCardProps> = ({
 
   const handleBookingClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onOpenBookingModal) {
-      onOpenBookingModal(hotel);
-    } else {
-      setIsBookingOpen(true);
-    }
+    window.location.hash = `#/bookings?hotel=${hotel.id}`;
   };
 
   const bookingUrl = hotel.bookingUrl || `https://www.booking.com/searchresults.ar.html?ss=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`;
@@ -61,7 +59,13 @@ export const HotelCard: React.FC<HotelCardProps> = ({
   const showAgoda = hotel.showAgodaUrl !== false;
   const showExpedia = hotel.showExpediaUrl !== false && !!hotel.expediaUrl;
   const showMaps = hotel.showGoogleMapsUrl !== false;
-  const showWhatsApp = hotel.showHotelWhatsApp !== false && !!hotel.hotelWhatsApp;
+  const siteWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
+  const resolvedWhatsApp = hotel.hotelWhatsApp || siteWhatsApp?.value || siteSettings?.officeWhatsApp || '';
+  const showWhatsApp = hotel.showHotelWhatsApp !== false && !!resolvedWhatsApp;
+  const hotelWaMsg = language === 'en'
+    ? `Hello, I would like to inquire about accommodation rates at ${hotel.nameEn || hotel.name} (${translateDynamic(hotel.city)}).`
+    : `السلام عليكم ورحمة الله، أود الاستفسار وحجز إقامة في فندق ${hotel.name} (${hotel.city}).`;
+  const whatsAppUrl = buildWhatsAppLink(resolvedWhatsApp, hotelWaMsg);
   const showEmail = hotel.showHotelEmail !== false && !!hotel.hotelEmail;
 
   return (
@@ -75,10 +79,18 @@ export const HotelCard: React.FC<HotelCardProps> = ({
         {/* Image Container with Fixed Aspect Ratio & Zoom */}
         <div className="relative aspect-[16/10] sm:aspect-[16/11] w-full overflow-hidden bg-stone-100">
           <img
-            src={hotel.mainImage}
+            src={hotel.mainImage || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80'}
             alt={hotel.name}
             className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
             loading="lazy"
+            decoding="async"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.dataset.fallbackApplied) {
+                target.dataset.fallbackApplied = 'true';
+                target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80';
+              }
+            }}
           />
 
           {/* Gradient Overlay for Badges Contrast */}
@@ -167,9 +179,9 @@ export const HotelCard: React.FC<HotelCardProps> = ({
             )}
 
             {/* WhatsApp icon */}
-            {showWhatsApp && (
+            {showWhatsApp && !!whatsAppUrl && (
               <a
-                href={`https://wa.me/${(hotel.hotelWhatsApp || '').replace(/[^0-9]/g, '')}`}
+                href={whatsAppUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
@@ -253,11 +265,11 @@ export const HotelCard: React.FC<HotelCardProps> = ({
               type="button"
               id={`hotel-card-book-btn-${hotel.id}`}
               onClick={handleBookingClick}
-              className="flex-1 py-2 px-3 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all hover:shadow-md cursor-pointer"
-              title={language === 'en' ? 'Direct WhatsApp Booking' : 'للتواصل والحجز المباشر'}
+              className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-[#B38A34] to-[#C9A24B] hover:from-[#98752B] hover:to-[#B38A34] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all hover:shadow-md cursor-pointer"
+              title={language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}
             >
-              <WhatsAppIcon className="w-3.5 h-3.5" />
-              <span>{t('hotels.bookNow', 'للتواصل والحجز')}</span>
+              <BedDouble className="w-3.5 h-3.5" />
+              <span>{language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}</span>
             </button>
 
             {/* View Details Button */}
