@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
   <!-- الصفحة الرئيسية -->
   <url>
     <loc>https://prestige-ksa.web.app/</loc>
-    <lastmod>2026-10-01</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
@@ -11,7 +15,7 @@
   <!-- صفحة قائمة الفنادق -->
   <url>
     <loc>https://prestige-ksa.web.app/hotels</loc>
-    <lastmod>2026-10-01</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
@@ -19,7 +23,7 @@
   <!-- فنادق مكة المكرمة -->
   <url>
     <loc>https://prestige-ksa.web.app/hotels/makkah</loc>
-    <lastmod>2026-10-01</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
@@ -27,15 +31,23 @@
   <!-- فنادق المدينة المنورة -->
   <url>
     <loc>https://prestige-ksa.web.app/hotels/madinah</loc>
-    <lastmod>2026-10-01</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
 
-  <!-- صفحة العروض والخصومات الحصرية -->
+  <!-- بوابة الحجوزات وإدارة الحجز -->
+  <url>
+    <loc>https://prestige-ksa.web.app/bookings</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- صفحة العروض والخصومات -->
   <url>
     <loc>https://prestige-ksa.web.app/offers</loc>
-    <lastmod>2026-10-01</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -43,16 +55,17 @@
   <!-- صفحة من نحن -->
   <url>
     <loc>https://prestige-ksa.web.app/about</loc>
-    <lastmod>2026-10-01</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
 
-  <!-- صفحة تواصل معنا وخدمة العملاء -->
+  <!-- صفحة تواصل معنا -->
   <url>
     <loc>https://prestige-ksa.web.app/contact</loc>
-    <lastmod>2026-10-01</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
+
 </urlset>

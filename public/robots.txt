@@ -1,4 +1,9 @@
 User-agent: *
 Allow: /
 
+# Exclude Admin Panel from crawling
+Disallow: /admin
+Disallow: /#/admin
+
 Sitemap: https://prestige-ksa.web.app/sitemap.xml
+Sitemap: https://prestige-ksa.web.app/sitemap.txt

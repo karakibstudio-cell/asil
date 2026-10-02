@@ -10,6 +10,24 @@
     ],
     "headers": [
       {
+        "source": "/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "/images/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=2592000"
+          }
+        ]
+      },
+      {
         "source": "/sitemap.xml",
         "headers": [
           {
@@ -18,7 +36,55 @@
           },
           {
             "key": "Cache-Control",
-            "value": "public, max-age=3600"
+            "value": "public, max-age=3600, must-revalidate"
+          },
+          {
+            "key": "X-Robots-Tag",
+            "value": "all"
+          }
+        ]
+      },
+      {
+        "source": "/sitemap.txt",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "text/plain; charset=UTF-8"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/robots.txt",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "text/plain; charset=UTF-8"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/(llms.txt|ai-catalog.json)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=86400"
+          }
+        ]
+      },
+      {
+        "source": "/(favicon.ico|favicon.svg)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800"
           }
         ]
       }

@@ -34,16 +34,26 @@
     <meta name="twitter:description" content="ريادة واحترافية في إدارة وتشغيل الفنادق وتقديم أرقى حلول الضيافة والتسكين الفندقي في مكة والمدينة." />
     <meta name="twitter:image" content="https://prestige-ksa.web.app/favicon.svg" />
 
+    <!-- Sitemap & Discovery Links -->
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+
     <!-- Preconnect & CDN Optimizations -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://images.unsplash.com" crossorigin>
-    <link rel="dns-prefetch" href="https://images.unsplash.com">
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" media="print" onload="this.media='all'">
-    <noscript>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap">
-    </noscript>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://images.unsplash.com" crossorigin />
+    <link rel="dns-prefetch" href="https://images.unsplash.com" />
+    <link rel="preload" as="image" href="/favicon.svg" fetchpriority="high" />
+
+    <!-- High-Performance Typography (Immediate render without CLS layout shifts) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" />
+
+    <!-- Zero Layout Shift (CLS) Baseline & Core Metrics Stabilization -->
+    <style>
+      html { scroll-behavior: smooth; }
+      body { min-height: 100vh; overflow-x: hidden; font-family: 'Cairo', system-ui, -apple-system, sans-serif; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+      #root { min-height: 100vh; display: flex; flex-direction: column; }
+      #hero-slider-section { min-height: 100dvh; contain: layout style; }
+    </style>
 
     <!-- Structured Data (JSON-LD) for Google Rich Snippets -->
     <script type="application/ld+json">

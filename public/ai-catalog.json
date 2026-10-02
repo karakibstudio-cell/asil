@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/schema-org-thing.json",
+  "name": "Prestige Hotels Management AI Catalog",
+  "description": "فهرس خدمات ومنظومة شركة برستيج لإدارة وتشغيل الفنادق بمكة المكرمة والمدينة المنورة",
+  "url": "https://prestige-ksa.web.app/",
+  "provider": {
+    "name": "شركة برستيج لإدارة وتشغيل الفنادق",
+    "url": "https://prestige-ksa.web.app/"
+  },
+  "services": [
+    {
+      "name": "إدارة وتشغيل الفنادق",
+      "description": "إدارة كاملة للأصول والمرافق الفندقية في مكة والمدينة بأعلى معايير الضيافة",
+      "url": "https://prestige-ksa.web.app/hotels"
+    },
+    {
+      "name": "حجز فنادق مكة والمدينة",
+      "description": "تسكين مباشر وفوري لضيوف الرحمن والمجموعات والشركات",
+      "url": "https://prestige-ksa.web.app/bookings"
+    },
+    {
+      "name": "عروض الشركات والمجموعات",
+      "description": "عقود موسمية وسنوية مباشرة بأفضل الأسعار المعتمدة",
+      "url": "https://prestige-ksa.web.app/offers"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# شركة برستيج لإدارة وتشغيل الفنادق (Prestige Hotels Management)
+> منصة رائدة في إدارة وتشغيل الفنادق والضيافة الفاخرة وخدمات التسكين المباشر في مكة المكرمة والمدينة المنورة لضيوف الرحمن والشركات.
+
+## الخدمات الأساسية
+- إدارة وتشغيل الأصول الفندقية في مكة والمدينة
+- فندق برستيج أجياد (فندق الشركة الخاص)
+- حجز فنادق محبس الجن، أجياد، والمسفلة
+- عقود سنوية وموسمية لشركات السياحة وحملات الحج والعمرة
+- خدمات النقل والإعاشة واستخراج التأشيرات
+
+## الروابط الرسمية
+- الرئيسية: https://prestige-ksa.web.app/
+- استعراض الفنادق: https://prestige-ksa.web.app/hotels
+- فنادق مكة المكرمة: https://prestige-ksa.web.app/hotels/makkah
+- فنادق المدينة المنورة: https://prestige-ksa.web.app/hotels/madinah
+- بوابة الحجوزات: https://prestige-ksa.web.app/bookings
+- العروض والخصومات: https://prestige-ksa.web.app/offers
+- من نحن: https://prestige-ksa.web.app/about
+- تواصل معنا: https://prestige-ksa.web.app/contact
