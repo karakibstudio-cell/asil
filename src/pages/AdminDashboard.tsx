@@ -87,7 +87,8 @@ import {
   Sparkles,
   Sliders,
   Layers,
-  LayoutGrid
+  LayoutGrid,
+  BedDouble
 } from 'lucide-react';
 import { 
   getSupabaseConfig, 
