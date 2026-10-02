@@ -342,6 +342,36 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
     setPeriodRate(Math.round(base * p.multiplier));
   };
 
+  // Toggle Hotel Website Visibility (إظهار / إخفاء الفندق بالكامل من الموقع)
+  const handleToggleHotelActive = async (hotel: Hotel) => {
+    const currentActive = hotel.isActive !== false;
+    const newActive = !currentActive;
+    const updatedHotel: Hotel = {
+      ...hotel,
+      isActive: newActive
+    };
+
+    setHotelList(prev => prev.map(h => h.id === hotel.id ? updatedHotel : h));
+    if (onUpdateHotel) {
+      onUpdateHotel(updatedHotel);
+    }
+
+    try {
+      await saveHotelToDb(updatedHotel);
+      onShowToast(
+        newActive 
+          ? `تم إظهار فندق "${hotel.name}" للزوار في الموقع بنجاح` 
+          : `تم إخفاء فندق "${hotel.name}" من الموقع ولن يظهر للزوار`,
+        'success'
+      );
+      if (onRefreshHotels) {
+        await onRefreshHotels();
+      }
+    } catch {
+      onShowToast('فشل تحديث حالة ظهور الفندق', 'error');
+    }
+  };
+
   // Toggle Hotel Online Booking Availability
   const handleToggleHotelOnline = async (hotel: Hotel) => {
     const currentStatus = hotel.onlineBookingEnabled !== false;
@@ -847,22 +877,53 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
                 }`}
               >
                 <div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-1 flex-wrap">
                     <span className="text-[11px] text-stone-400 font-bold">{h.city} • {h.district}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleHotelOnline(h);
-                      }}
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-colors cursor-pointer ${
-                        isOnline 
-                          ? 'bg-emerald-100 text-emerald-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      {isOnline ? 'متاح أونلاين ✓' : 'غير متاح أونلاين ✕'}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {/* Website Active/Hidden Toggle */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleHotelActive(h);
+                        }}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors cursor-pointer ${
+                          h.isActive !== false
+                            ? 'bg-blue-100 text-blue-800 hover:bg-blue-200' 
+                            : 'bg-stone-200 text-stone-600 hover:bg-stone-300 line-through'
+                        }`}
+                        title={h.isActive !== false ? 'الفندق ظاهر في الموقع - اضغط لإخفائه' : 'الفندق مخفي من الموقع - اضغط لإظهاره'}
+                      >
+                        {h.isActive !== false ? (
+                          <>
+                            <Eye className="w-3 h-3 text-blue-600" />
+                            <span>ظاهر بالموقع</span>
+                          </>
+                        ) : (
+                          <>
+                            <EyeOff className="w-3 h-3 text-stone-500" />
+                            <span>مخفي</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Online Booking Toggle */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleHotelOnline(h);
+                        }}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors cursor-pointer ${
+                          isOnline 
+                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' 
+                            : 'bg-red-100 text-red-800 hover:bg-red-200'
+                        }`}
+                        title={isOnline ? 'الحجز أونلاين مفعّل - اضغط للتعطيل' : 'الحجز أونلاين معطّل - اضغط للتفعيل'}
+                      >
+                        {isOnline ? 'متاح أونلاين ✓' : 'غير متاح أونلاين ✕'}
+                      </button>
+                    </div>
                   </div>
 
                   <h4 className="text-sm font-bold text-stone-900 mt-2">{h.name}</h4>
