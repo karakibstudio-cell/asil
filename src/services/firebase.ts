@@ -593,6 +593,21 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   storyTeaser: DEFAULT_STORY_TEASER,
   integratedServices: DEFAULT_INTEGRATED_SERVICES,
   homeSections: DEFAULT_HOME_SECTIONS,
+  bookingModule: {
+    enabled: true,
+    allowPublicBookingCreation: true,
+    mode: 'full',
+    showInHeader: true,
+    showTrackBookingModal: true,
+    showInHero: true,
+    showInHotelDetail: true,
+    bookingEmail: 'bookings@prestigeksa.com',
+    bookingWhatsApp: '+966544076726',
+    enableWhatsAppRedirect: true,
+    enableEmailNotification: true,
+    autoAssignDigitalKey: true,
+    currency: 'ر.س'
+  },
   ...(INITIAL_SITE_SETTINGS || {})
 };
 
@@ -739,6 +754,10 @@ export async function getHotelsFromDb(skipCache = false): Promise<Hotel[]> {
     hotelEmail: h.hotelEmail || '',
     showHotelEmail: h.showHotelEmail !== false,
     isActive: h.isActive !== false,
+    onlineBookingEnabled: typeof h.onlineBookingEnabled === 'boolean'
+      ? h.onlineBookingEnabled
+      : (typeof h.online_booking_enabled === 'boolean' ? h.online_booking_enabled : true),
+    bookingPolicy: h.bookingPolicy || h.booking_policy || undefined,
     order: typeof h.order === 'number' 
       ? h.order 
       : (typeof (h.location as any)?.order === 'number' ? (h.location as any).order : 0),

@@ -459,6 +459,24 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
     }));
   };
 
+  // Quick Toggle Room Status & Availability
+  const handleToggleRoomStatus = async (room: RoomTypeItem) => {
+    const nextStatus = room.status === 'available' ? 'booked' : (room.status === 'booked' ? 'maintenance' : 'available');
+    const updatedRoom: RoomTypeItem = {
+      ...room,
+      status: nextStatus,
+      isActive: nextStatus !== 'maintenance'
+    };
+
+    setRooms(prev => prev.map(r => r.id === room.id ? updatedRoom : r));
+    try {
+      await saveRoomToDb(updatedRoom);
+      onShowToast(`تم تحديث حالة "${room.name}" إلى: ${nextStatus === 'available' ? 'متاح للحجز ✓' : nextStatus === 'booked' ? 'محجوز بالكامل ⏳' : 'تحت الصيانة / معطل ✕'}`);
+    } catch {
+      onShowToast('فشل حفظ حالة الغرفة', 'error');
+    }
+  };
+
   // Open Add Room Modal
   const handleOpenAddRoom = () => {
     setEditingRoomId(null);
@@ -961,12 +979,17 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
                         )}
 
                         <div className="flex items-center justify-between">
-                          <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
-                            room.status === 'available' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                            room.status === 'booked' ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-red-50 text-red-700'
-                          }`}>
-                            {room.status === 'available' ? 'متاح للحجز' : room.status === 'booked' ? 'محجوز بالكامل' : 'صيانة'}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRoomStatus(room)}
+                            className={`text-[10px] px-2.5 py-1 rounded-full font-bold transition-all hover:scale-105 cursor-pointer flex items-center gap-1 ${
+                              room.status === 'available' ? 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100' :
+                              room.status === 'booked' ? 'bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100' : 'bg-red-50 text-red-700 border border-red-300 hover:bg-red-100'
+                            }`}
+                            title="اضغط للتبديل السريع بين (متاح / محجوز / صيانة)"
+                          >
+                            <span>{room.status === 'available' ? 'متاح للحجز ✓' : room.status === 'booked' ? 'محجوز بالكامل ⏳' : 'صيانة / معطل ✕'}</span>
+                          </button>
 
                           {room.seasonPeriods && room.seasonPeriods.length > 0 && (
                             <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-bold border border-purple-200">

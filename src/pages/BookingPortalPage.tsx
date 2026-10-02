@@ -19,6 +19,7 @@ import {
   getPackagesFromDb 
 } from '../services/bookingService';
 import { RoomBookingModal } from '../components/RoomBookingModal';
+import { WhatsAppIcon } from '../components/BookingIcons';
 import { 
   Search, 
   Calendar, 
@@ -84,10 +85,18 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
   onSelectHotel,
   initialHotelId
 }) => {
-  const { language, isRtl } = useLanguage();
+  const isCreationAllowed = siteSettings?.bookingModule?.allowPublicBookingCreation !== false;
 
   // Top View Switcher: 'search' (حجز جديد) vs 'manage' (إدارة ومتابعة حجز)
-  const [activePortalTab, setActivePortalTab] = useState<'search' | 'manage'>('search');
+  const [activePortalTab, setActivePortalTab] = useState<'search' | 'manage'>(() => {
+    return isCreationAllowed ? 'search' : 'manage';
+  });
+
+  useEffect(() => {
+    if (!isCreationAllowed && activePortalTab === 'search') {
+      setActivePortalTab('manage');
+    }
+  }, [isCreationAllowed, activePortalTab]);
 
   // Dates
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -244,6 +253,86 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     return list.length > 0 ? list : [FALLBACK_HOTEL_IMG];
   }, [targetHotel]);
 
+  if (siteSettings?.bookingModule?.enabled === false) {
+    const siteWhatsApp = siteSettings?.bookingModule?.bookingWhatsApp || siteSettings?.channels?.find(c => c.type === 'whatsapp')?.value || '+966544076726';
+    const cleanWa = siteWhatsApp.replace(/[^0-9]/g, '');
+    const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent('السلام عليكم ورحمة الله، أود الاستفسار وحجز إقامة فندقية لديكم.')}`;
+
+    return (
+      <div className="min-h-screen bg-[#F8F7F4] text-stone-900 font-cairo pt-28 pb-16" dir={isRtl ? 'rtl' : 'ltr'}>
+        <div className="max-w-4xl mx-auto px-4 sm:px-6">
+          <div className="bg-white rounded-3xl border border-[#EFE6D8] p-8 sm:p-12 shadow-xl text-center space-y-6 relative overflow-hidden">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-[#C9A24B]/30 flex items-center justify-center mx-auto text-[#B38A34] shadow-xs">
+              <PhoneCall className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="inline-block px-3.5 py-1 rounded-full bg-[#C9A24B]/10 text-[#98752B] text-xs font-bold">
+                الحجز والتسكين المباشر عبر خدمة العملاء
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black text-stone-900">
+                نظام الحجز أونلاين مغلق حالياً
+              </h2>
+              <p className="text-sm text-stone-600 max-w-xl mx-auto leading-relaxed">
+                تم إيقاف نظام الحجز الذكي الآلي مؤقتاً. فريق برستيج لخدمة العملاء والحجوزات جاهز لاستقبال طلباتكم وتأكيد إقامتكم فورياً بأفضل الأسعار عبر الواتساب أو الهاتف مباشرة.
+              </p>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto px-8 py-3.5 rounded-full bg-gradient-to-r from-[#25D366] to-[#20bd5a] hover:from-[#1eb852] hover:to-[#179641] text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+              >
+                <WhatsAppIcon className="w-5 h-5" />
+                <span>طلب حجز مباشر عبر الواتساب</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => onNavigate('hotels')}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-full bg-stone-900 hover:bg-stone-800 text-white font-bold text-sm shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Building2 className="w-4 h-4 text-[#C9A24B]" />
+                <span>استعراض قائمة الفنادق</span>
+              </button>
+            </div>
+
+            {/* Hotels Quick Directory */}
+            <div className="mt-8 pt-8 border-t border-stone-100 text-right">
+              <h4 className="text-xs font-bold text-stone-400 mb-4 text-center">أو تواصل مباشرة مع أحد فنادقنا:</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {hotels.filter(h => h.isActive !== false).map((hotel) => {
+                  const hWa = hotel.hotelWhatsApp || siteWhatsApp;
+                  const hWaLink = `https://wa.me/${hWa.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`السلام عليكم، أود حجز إقامة في ${hotel.name}`)}`;
+                  return (
+                    <div key={hotel.id} className="p-4 rounded-2xl bg-stone-50 border border-stone-200/70 flex items-center justify-between">
+                      <div>
+                        <strong className="text-sm font-bold text-stone-900 block">{hotel.name}</strong>
+                        <span className="text-xs text-stone-500">{hotel.city} • {hotel.district}</span>
+                      </div>
+                      <a
+                        href={hWaLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#25D366] hover:text-white text-stone-800 text-xs font-bold border border-stone-200 transition-colors flex items-center gap-1"
+                      >
+                        <WhatsAppIcon className="w-3.5 h-3.5" />
+                        <span>حجز</span>
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8F7F4] text-stone-900 font-cairo pt-24 pb-16" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Top Hero Header Section */}
@@ -251,14 +340,18 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
         <div className="text-center max-w-3xl mx-auto space-y-3">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold border border-[#C9A24B]/30 backdrop-blur-md">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>منصة الحجوزات الفندقية الذكية المباشرة</span>
+            <span>{isCreationAllowed ? 'منصة الحجوزات الفندقية الذكية المباشرة' : 'بوابة متابعة وإدارة الحجوزات الفندقية'}</span>
           </div>
 
           <h1 className="text-2xl sm:text-4xl font-extrabold text-stone-900 tracking-tight leading-tight">
-            احجز إقامتك الفاخرة بجوار الحرمين بأفضل سعر مضمون
+            {isCreationAllowed 
+              ? 'احجز إقامتك الفاخرة بجوار الحرمين بأفضل سعر مضمون'
+              : 'إدارة ومتابعة حجزك الفندقي واستعراض المفتاح الرقمي'}
           </h1>
           <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
-            تحقق من الإتاحة الفورية، استعرض صور الفنادق والمرافق، قارن بين الغرف والأجنحة الفندقية، واحصل على تأكيد حجزك فورياً.
+            {isCreationAllowed
+              ? 'تحقق من الإتاحة الفورية، استعرض صور الفنادق والمرافق، قارن بين الغرف والأجنحة الفندقية، واحصل على تأكيد حجزك فورياً.'
+              : 'استعلم برقم الحجز أو رقم الهاتف لعرض تفاصيل إقامتك، كود الدخول والمفتاح الرقمي الذكي، وحالة التسكين ومواعيد الوصول.'}
           </p>
         </div>
       </div>
@@ -267,18 +360,20 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
         {/* Top Control Bar: Switcher between Search & Manage Booking */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="inline-flex items-center p-1.5 rounded-2xl bg-white border border-stone-200 shadow-xs gap-1.5">
-            <button
-              type="button"
-              onClick={() => setActivePortalTab('search')}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                activePortalTab === 'search'
-                  ? 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] text-white shadow-sm'
-                  : 'text-stone-700 hover:text-stone-950 hover:bg-stone-50'
-              }`}
-            >
-              <Search className="w-4 h-4" />
-              <span>بحث وحجز الغرف</span>
-            </button>
+            {isCreationAllowed && (
+              <button
+                type="button"
+                onClick={() => setActivePortalTab('search')}
+                className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                  activePortalTab === 'search'
+                    ? 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] text-white shadow-sm'
+                    : 'text-stone-700 hover:text-stone-950 hover:bg-stone-50'
+                }`}
+              >
+                <Search className="w-4 h-4" />
+                <span>بحث وحجز الغرف</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -296,7 +391,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
 
           <div className="hidden sm:flex items-center gap-2 text-xs text-stone-500 bg-white/70 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-stone-200">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>إلغاء مرن مجاني حتى 48 ساعة • الدفع عند الوصول بالفندق</span>
+            <span>{isCreationAllowed ? 'إلغاء مرن مجاني حتى 48 ساعة • الدفع عند الوصول بالفندق' : 'خدمة ضيوف الرحمن 24/7 • متابعة فورية للحجوزات'}</span>
           </div>
         </div>
 

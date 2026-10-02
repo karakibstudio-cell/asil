@@ -13,17 +13,19 @@ export interface OptimizeImageOptions {
 
 /**
  * Optimizes an image File (supports PNG, JPG, WebP, SVG).
- * For PNGs, alpha transparency and crisp lines are preserved.
- * Output is an optimized Base64 Data URL.
+ * Converts large images to ultra-fast modern WebP format while preserving crisp text, high resolution, and true color.
+ * Output is an optimized, lightweight Base64 Data URL.
  */
 export async function optimizeImageFile(
   file: File,
   options: OptimizeImageOptions = {}
 ): Promise<string> {
+  const isLogo = file.name.toLowerCase().includes('logo') || file.name.toLowerCase().includes('favicon') || file.name.toLowerCase().includes('icon');
+  
   const {
-    maxWidth = 3840,
-    maxHeight = 3840,
-    quality = 0.95,
+    maxWidth = isLogo ? 600 : 1400,
+    maxHeight = isLogo ? 600 : 950,
+    quality = 0.82,
     forcePng = false
   } = options;
 
@@ -76,27 +78,11 @@ export async function optimizeImageFile(
           ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, width, height);
 
-          const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
-
           let dataUrl: string;
-          if (isPng || forcePng) {
-            // Preserve PNG transparency & sharpness
+          if (forcePng) {
             dataUrl = canvas.toDataURL('image/png');
-            // If PNG is very large (>1.2MB), scale gently to maintain quality
-            if (dataUrl.length > 1500000 && width > 800) {
-              const scaledCanvas = document.createElement('canvas');
-              scaledCanvas.width = Math.round(width * 0.85);
-              scaledCanvas.height = Math.round(height * 0.85);
-              const sCtx = scaledCanvas.getContext('2d', { alpha: true });
-              if (sCtx) {
-                sCtx.imageSmoothingEnabled = true;
-                sCtx.imageSmoothingQuality = 'high';
-                sCtx.drawImage(canvas, 0, 0, scaledCanvas.width, scaledCanvas.height);
-                dataUrl = scaledCanvas.toDataURL('image/png');
-              }
-            }
           } else {
-            // For JPG / other formats, use WebP or High Quality JPEG
+            // Modern WebP format with high visual fidelity and tiny footprint
             try {
               dataUrl = canvas.toDataURL('image/webp', quality);
               if (!dataUrl.startsWith('data:image/webp')) {

@@ -94,12 +94,18 @@ export const Header: React.FC<HeaderProps> = ({
   }, [isHovered, mobileMenuOpen]);
 
   const isBookingEnabled = siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.showInHeader !== false;
+  const isCreationAllowed = siteSettings?.bookingModule?.allowPublicBookingCreation !== false;
 
   const navItems = [
     { id: 'home' as ActivePage, label: t('nav.home', 'الرئيسية') },
     { id: 'hotels' as ActivePage, label: t('nav.hotels', 'الفنادق') },
     ...(isBookingEnabled
-      ? [{ id: 'room-booking' as ActivePage, label: language === 'en' ? 'Bookings' : 'الحجوزات' }]
+      ? [{ 
+          id: 'room-booking' as ActivePage, 
+          label: language === 'en' 
+            ? (isCreationAllowed ? 'Bookings' : 'Track Booking') 
+            : (isCreationAllowed ? 'الحجوزات' : 'متابعة الحجز') 
+        }]
       : []),
     { id: 'offers' as ActivePage, label: t('nav.offers', 'الإعلانات') },
     { id: 'about' as ActivePage, label: t('nav.about', 'من نحن') },

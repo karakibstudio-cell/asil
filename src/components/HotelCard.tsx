@@ -43,9 +43,17 @@ export const HotelCard: React.FC<HotelCardProps> = ({
     if (onSelect) onSelect(targetKey);
   };
 
+  const isOnlineBookingActive = siteSettings?.bookingModule?.enabled !== false && hotel.onlineBookingEnabled !== false;
+
   const handleBookingClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    window.location.hash = `#/bookings?hotel=${hotel.id}`;
+    if (isOnlineBookingActive) {
+      window.location.hash = `#/bookings?hotel=${hotel.id}`;
+    } else if (whatsAppUrl) {
+      window.open(whatsAppUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      handleSelectHotel(e);
+    }
   };
 
   const bookingUrl = hotel.bookingUrl || `https://www.booking.com/searchresults.ar.html?ss=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`;
@@ -260,17 +268,42 @@ export const HotelCard: React.FC<HotelCardProps> = ({
 
           {/* Card Actions: Contact/Book & View Details */}
           <div className="pt-3 border-t border-stone-100 flex items-center gap-2">
-            {/* Direct Booking Modal Button */}
-            <button
-              type="button"
-              id={`hotel-card-book-btn-${hotel.id}`}
-              onClick={handleBookingClick}
-              className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-[#B38A34] to-[#C9A24B] hover:from-[#98752B] hover:to-[#B38A34] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all hover:shadow-md cursor-pointer"
-              title={language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}
-            >
-              <BedDouble className="w-3.5 h-3.5" />
-              <span>{language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}</span>
-            </button>
+            {/* Direct Booking / WhatsApp Button */}
+            {isOnlineBookingActive ? (
+              <button
+                type="button"
+                id={`hotel-card-book-btn-${hotel.id}`}
+                onClick={handleBookingClick}
+                className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-[#B38A34] to-[#C9A24B] hover:from-[#98752B] hover:to-[#B38A34] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all hover:shadow-md cursor-pointer"
+                title={language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}
+              >
+                <BedDouble className="w-3.5 h-3.5" />
+                <span>{language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}</span>
+              </button>
+            ) : whatsAppUrl ? (
+              <a
+                id={`hotel-card-wa-book-btn-${hotel.id}`}
+                href={whatsAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-[#25D366] to-[#20bd5a] hover:from-[#1eb852] hover:to-[#179641] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all hover:shadow-md cursor-pointer"
+                title={language === 'en' ? 'Direct WhatsApp Booking' : 'حجز مباشر عبر الواتساب'}
+              >
+                <WhatsAppIcon className="w-3.5 h-3.5" />
+                <span>{language === 'en' ? 'WhatsApp' : 'حجز واتساب'}</span>
+              </a>
+            ) : (
+              <button
+                type="button"
+                id={`hotel-card-book-btn-${hotel.id}`}
+                onClick={handleSelectHotel}
+                className="flex-1 py-2 px-3 rounded-xl bg-stone-800 hover:bg-stone-900 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              >
+                <PhoneCall className="w-3.5 h-3.5 text-[#C9A24B]" />
+                <span>{language === 'en' ? 'Contact' : 'تواصل للحجز'}</span>
+              </button>
+            )}
 
             {/* View Details Button */}
             <button

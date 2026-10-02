@@ -835,6 +835,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       walkingTimeMinutes: 2,
       featured: true,
       isActive: true,
+      onlineBookingEnabled: true,
+      bookingPolicy: 'flexible',
       order: hotels.length + 1,
       categories: ['فنادق العمرة'],
       rating: 4.8,
@@ -879,6 +881,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       district: hotel.district || (hotel.city === 'مكة المكرمة' ? 'المنطقة المركزية' : 'المنطقة المركزية الشمالية'),
       featured: hotel.featured ?? true,
       isActive: hotel.isActive !== false,
+      onlineBookingEnabled: hotel.onlineBookingEnabled !== false,
+      bookingPolicy: hotel.bookingPolicy || 'flexible',
       order: typeof hotel.order === 'number' && hotel.order > 0 ? hotel.order : (sortedHotels.findIndex(h => h.id === hotel.id) + 1),
       categories: hotel.categories && hotel.categories.length > 0 ? hotel.categories : ['فنادق العمرة'],
       bookingUrl: hotel.bookingUrl || '',
@@ -937,6 +941,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       // Revert if error
       setLocalHotels(hotels);
       onShowToast('حدث خطأ أثناء تعديل حالة الفندق', 'error');
+    }
+  };
+
+  // Toggle Hotel Online Booking (تفعيل أو تعطيل الحجز أونلاين) - Instant 0ms Optimistic Update
+  const handleToggleHotelOnlineBooking = async (hotel: Hotel) => {
+    const newOnline = hotel.onlineBookingEnabled === false ? true : false;
+    const updated: Hotel = { ...hotel, onlineBookingEnabled: newOnline };
+
+    setLocalHotels(prev => prev.map(h => h.id === hotel.id ? updated : h));
+
+    onShowToast(
+      newOnline
+        ? `تم تفعيل الحجز أونلاين لفندق "${hotel.name}"`
+        : `تم تحويل الحجز لفندق "${hotel.name}" إلى حجز مباشر عبر الواتساب فقط`,
+      'success'
+    );
+
+    try {
+      await saveHotelToDb(updated);
+      onRefreshData();
+    } catch (err) {
+      console.error('Error toggling hotel online booking:', err);
+      setLocalHotels(hotels);
+      onShowToast('حدث خطأ أثناء تعديل حالة الحجز أونلاين للفندق', 'error');
     }
   };
 
@@ -1625,6 +1653,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <th className="pb-3 min-w-[90px]">النجوم</th>
                         <th className="pb-3 min-w-[180px]">التصنيفات</th>
                         <th className="pb-3 text-center min-w-[130px]">حالة الفندق</th>
+                        <th className="pb-3 text-center min-w-[130px]">حجز أونلاين</th>
                         <th className="pb-3 text-center min-w-[110px]">البار الرئيسي</th>
                         <th className="pb-3 min-w-[90px]">المسافة</th>
                         <th className="pb-3 pl-2 text-left min-w-[120px]">الإجراءات</th>
@@ -1755,7 +1784,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </button>
                           </td>
 
-                          {/* 7. Featured Bar Toggle */}
+                          {/* 7. Online Booking Toggle Button (تفعيل أو تحويل الحجز لواتساب) */}
+                          <td className="py-3.5 text-center whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleHotelOnlineBooking(hotel)}
+                              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer active:scale-95 shadow-2xs ${
+                                hotel.onlineBookingEnabled !== false
+                                  ? 'bg-amber-50 text-[#B38A34] border-amber-300 hover:bg-amber-100'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                              }`}
+                              title={hotel.onlineBookingEnabled !== false ? 'الحجز أونلاين مفعّل - اضغط للتحويل إلى واتساب فقط' : 'الحجز عبر واتساب فقط - اضغط لتفعيل الحجز أونلاين'}
+                            >
+                              {hotel.onlineBookingEnabled !== false ? (
+                                <>
+                                  <BedDouble className="w-3.5 h-3.5 text-[#B38A34]" />
+                                  <span>أونلاين</span>
+                                </>
+                              ) : (
+                                <>
+                                  <WhatsAppIcon className="w-3.5 h-3.5" />
+                                  <span>واتساب فقط</span>
+                                </>
+                              )}
+                            </button>
+                          </td>
+
+                          {/* 8. Featured Bar Toggle */}
                           <td className="py-3.5 text-center whitespace-nowrap">
                             <button
                               type="button"
@@ -3363,6 +3418,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             bookingModule: {
                               ...settingsForm.bookingModule,
                               enabled: !currentEnabled,
+                              allowPublicBookingCreation: settingsForm.bookingModule?.allowPublicBookingCreation !== false,
+                              mode: settingsForm.bookingModule?.mode || (settingsForm.bookingModule?.allowPublicBookingCreation === false ? 'manage_only' : 'full'),
                               showInHeader: settingsForm.bookingModule?.showInHeader !== false,
                               showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
                               showInHero: settingsForm.bookingModule?.showInHero !== false,
@@ -3383,12 +3440,105 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </button>
                     </div>
 
+                    {/* Operating Mode: Full Online Booking vs Manage & Track Only */}
+                    <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200/90 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <strong className="text-sm font-bold text-stone-900 block">
+                            نمط تشغيل نظام الحجوزات والفنادق
+                          </strong>
+                          <p className="text-xs text-stone-600 mt-0.5">
+                            التحكم في إتاحة حجز الغرف أونلاين على الموقع أو تحويل النظام إلى إدارة ومتابعة فقط (الفنادق غير متاحة للحجز المباشر على الموقع).
+                          </p>
+                        </div>
+
+                        <div className="inline-flex p-1 rounded-xl bg-stone-200/80 shrink-0 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              triggerAutoSaveSettings({
+                                ...settingsForm,
+                                bookingModule: {
+                                  ...settingsForm.bookingModule,
+                                  enabled: settingsForm.bookingModule?.enabled !== false,
+                                  allowPublicBookingCreation: true,
+                                  mode: 'full',
+                                  showInHeader: settingsForm.bookingModule?.showInHeader !== false,
+                                  showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
+                                  showInHero: settingsForm.bookingModule?.showInHero !== false,
+                                  showInHotelDetail: settingsForm.bookingModule?.showInHotelDetail !== false,
+                                  enableWhatsAppRedirect: settingsForm.bookingModule?.enableWhatsAppRedirect !== false,
+                                  enableEmailNotification: settingsForm.bookingModule?.enableEmailNotification !== false,
+                                  autoAssignDigitalKey: settingsForm.bookingModule?.autoAssignDigitalKey !== false
+                                }
+                              });
+                            }}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              settingsForm.bookingModule?.allowPublicBookingCreation !== false
+                                ? 'bg-white text-stone-900 shadow-xs'
+                                : 'text-stone-600 hover:text-stone-900'
+                            }`}
+                          >
+                            حجز مباشر أونلاين (كامل)
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              triggerAutoSaveSettings({
+                                ...settingsForm,
+                                bookingModule: {
+                                  ...settingsForm.bookingModule,
+                                  enabled: settingsForm.bookingModule?.enabled !== false,
+                                  allowPublicBookingCreation: false,
+                                  mode: 'manage_only',
+                                  showInHeader: settingsForm.bookingModule?.showInHeader !== false,
+                                  showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
+                                  showInHero: settingsForm.bookingModule?.showInHero !== false,
+                                  showInHotelDetail: settingsForm.bookingModule?.showInHotelDetail !== false,
+                                  enableWhatsAppRedirect: settingsForm.bookingModule?.enableWhatsAppRedirect !== false,
+                                  enableEmailNotification: settingsForm.bookingModule?.enableEmailNotification !== false,
+                                  autoAssignDigitalKey: settingsForm.bookingModule?.autoAssignDigitalKey !== false
+                                }
+                              });
+                            }}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              settingsForm.bookingModule?.allowPublicBookingCreation === false
+                                ? 'bg-[#C9A24B] text-white shadow-xs'
+                                : 'text-stone-600 hover:text-stone-900'
+                            }`}
+                          >
+                            إدارة ومتابعة حجز فقط (تعطيل الحجز على الموقع)
+                          </button>
+                        </div>
+                      </div>
+
+                      {settingsForm.bookingModule?.allowPublicBookingCreation === false && (
+                        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5 animate-fadeIn">
+                          <ShieldCheck className="w-4 h-4 text-[#B38A34] shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block">
+                              وضع المنظومة الحالي: إدارة ومتابعة فقط (الحجز المباشر مغلق على الموقع)
+                            </span>
+                            <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
+                              تم إخفاء نماذج الحجز الآلي من واجهة الزوار، وأصبحت أزرار الفنادق تحوّل للطلب والاستفسار عبر الواتساب/الهاتف، بينما يظل بإمكان النزلاء متابعة حجوزاتهم المسجلة بالكود أو الهاتف، وللإدارة كامل الصلاحيات لإدارة الحجوزات وتعيين الغرف من لوحة التحكم.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Toggles Grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
                       {[
                         {
+                          key: 'allowPublicBookingCreation',
+                          title: 'إتاحة إنشاء حجز جديد للزوار من الموقع',
+                          desc: 'عند التعطيل تصبح الفنادق غير متاحة للحجز أونلاين وتتحول لإدارة واستفسار'
+                        },
+                        {
                           key: 'showInHeader',
-                          title: 'إظهار زر "حجز غرفة" في القائمة العلوية',
+                          title: 'إظهار رابط الحجوزات في القائمة العلوية',
                           desc: 'زر مميز في شريط التنقل للوصول المباشر'
                         },
                         {
@@ -3398,8 +3548,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         },
                         {
                           key: 'showInHotelDetail',
-                          title: 'تفعيل حجز الغرف في صفحة تفاصيل الفندق',
-                          desc: 'عرض بطاقات الغرف وحساب التكلفة التلقائي'
+                          title: 'تفعيل قسم حجز الغرف في تفاصيل الفندق',
+                          desc: 'عرض خيارات الغرف وأزرار الحجز المباشر'
                         },
                         {
                           key: 'enableWhatsAppRedirect',
@@ -3436,6 +3586,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   bookingModule: {
                                     ...settingsForm.bookingModule,
                                     enabled: settingsForm.bookingModule?.enabled !== false,
+                                    allowPublicBookingCreation: settingsForm.bookingModule?.allowPublicBookingCreation !== false,
+                                    mode: settingsForm.bookingModule?.mode || 'full',
                                     showInHeader: settingsForm.bookingModule?.showInHeader !== false,
                                     showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
                                     showInHero: settingsForm.bookingModule?.showInHero !== false,
@@ -3477,6 +3629,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               bookingModule: {
                                 ...settingsForm.bookingModule,
                                 enabled: settingsForm.bookingModule?.enabled !== false,
+                                allowPublicBookingCreation: settingsForm.bookingModule?.allowPublicBookingCreation !== false,
+                                mode: settingsForm.bookingModule?.mode || 'full',
                                 showInHeader: settingsForm.bookingModule?.showInHeader !== false,
                                 showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
                                 showInHero: settingsForm.bookingModule?.showInHero !== false,
@@ -3510,6 +3664,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               bookingModule: {
                                 ...settingsForm.bookingModule,
                                 enabled: settingsForm.bookingModule?.enabled !== false,
+                                allowPublicBookingCreation: settingsForm.bookingModule?.allowPublicBookingCreation !== false,
+                                mode: settingsForm.bookingModule?.mode || 'full',
                                 showInHeader: settingsForm.bookingModule?.showInHeader !== false,
                                 showTrackBookingModal: settingsForm.bookingModule?.showTrackBookingModal !== false,
                                 showInHero: settingsForm.bookingModule?.showInHero !== false,
@@ -4439,7 +4595,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {hotelFormStep === 4 && (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="p-3.5 rounded-2xl bg-[#C9A24B]/10 border border-[#C9A24B]/20 text-xs text-stone-800 leading-relaxed">
-                    💡 <strong>روابط الحجز ومنصات الاتصال والخرائط:</strong> تحكم في روابط الحجز الخارجية، موقع الخريطة، وقنوات التواصل المباشرة (واتساب وإيميل) مع إمكانية <strong>تفعيل أو إخفاء أي منها</strong> بضغطة زر.
+                    💡 <strong>روابط الحجز ومنصات الاتصال والخرائط:</strong> تحكم في إمكانية حجز الغرف أونلاين، وروابط الحجز الخارجية، وموقع الخريطة، وقنوات التواصل المباشرة (واتساب وإيميل) مع إمكانية <strong>تفعيل أو إخفاء أي منها</strong> بضغطة زر.
+                  </div>
+
+                  {/* 0. Direct Online Room Booking Switch */}
+                  <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <strong className="text-xs font-bold text-stone-900 block">
+                          نظام حجز الغرف المباشر أونلاين (Online Direct Booking)
+                        </strong>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          hotelForm.onlineBookingEnabled !== false ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-stone-200 text-stone-700'
+                        }`}>
+                          {hotelForm.onlineBookingEnabled !== false ? 'مفعّل (حجز غرف إلكتروني)' : 'معطّل (حجز مباشر عبر واتساب فقط)'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-600 leading-relaxed">
+                        عند التعطيل، يتحول زر الحجز للزوار إلى محادثة واتساب مجهزة بكافة تفاصيل الفندق دون فتح بوابة الحجز الإلكتروني أو فورم الرسائل.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setHotelForm(prev => ({ ...prev, onlineBookingEnabled: prev.onlineBookingEnabled === false ? true : false }))}
+                      className={`w-14 h-8 flex items-center rounded-full p-1 transition-colors duration-300 cursor-pointer shrink-0 ${
+                        hotelForm.onlineBookingEnabled !== false ? 'bg-[#C9A24B] justify-end' : 'bg-stone-300 justify-start'
+                      }`}
+                    >
+                      <div className="w-6 h-6 rounded-full bg-white shadow-md" />
+                    </button>
                   </div>
 
                   <div className="space-y-3.5">

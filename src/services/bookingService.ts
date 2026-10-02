@@ -312,6 +312,8 @@ export const INITIAL_ROOM_BOOKINGS: RoomBooking[] = [
 
 export const DEFAULT_BOOKING_SETTINGS: BookingModuleSettings = {
   enabled: true,
+  allowPublicBookingCreation: true,
+  mode: 'full',
   showInHeader: true,
   showTrackBookingModal: true,
   showInHero: true,
@@ -359,14 +361,68 @@ function setLocal<T>(key: string, val: T): void {
 // ROOM TYPES MANAGEMENT
 // ==========================================
 
+export function mapDbRowToRoom(row: any): RoomTypeItem {
+  return {
+    id: row.id,
+    hotelId: row.hotel_id || row.hotelId,
+    name: row.name,
+    nameEn: row.name_en || row.nameEn || '',
+    category: row.category || 'غرفة فاخرة',
+    basePrice: Number(row.base_price ?? row.basePrice ?? 350),
+    totalRooms: Number(row.total_rooms ?? row.totalRooms ?? 5),
+    availableRooms: Number(row.available_rooms ?? row.availableRooms ?? 5),
+    maxGuests: Number(row.max_guests ?? row.maxGuests ?? 2),
+    bedType: row.bed_type || row.bedType || 'سرير كينج مزدوج',
+    roomSize: row.room_size || row.roomSize || '32 م²',
+    features: Array.isArray(row.features) ? row.features : (typeof row.features === 'string' ? JSON.parse(row.features || '[]') : []),
+    images: Array.isArray(row.images) ? row.images : (typeof row.images === 'string' ? JSON.parse(row.images || '[]') : []),
+    keyPrefix: row.key_prefix || row.keyPrefix || 'KEY',
+    status: row.status || 'available',
+    isActive: typeof row.is_active === 'boolean' ? row.is_active : (row.isActive !== false),
+    seasonPeriods: Array.isArray(row.season_periods) ? row.season_periods : (Array.isArray(row.seasonPeriods) ? row.seasonPeriods : []),
+    packages: Array.isArray(row.packages) ? row.packages : [],
+    services: Array.isArray(row.services) ? row.services : (Array.isArray(row.features) ? row.features : []),
+    mealOptions: Array.isArray(row.meal_options) ? row.meal_options : [],
+    showFreeCancellation: row.show_free_cancellation !== false,
+    showPayAtHotel: row.show_pay_at_hotel !== false,
+    priceIncludesTax: row.price_includes_tax !== false,
+    order: typeof row.order_num === 'number' ? row.order_num : (row.order || 0)
+  };
+}
+
 export async function getRoomsFromDb(hotelId?: string): Promise<RoomTypeItem[]> {
-  const rooms = getLocal<RoomTypeItem[]>(ROOMS_KEY, DEFAULT_ROOM_TYPES);
-  if (hotelId) {
-    // If specific hotel has rooms, return them; otherwise return all or fallback
-    const filtered = rooms.filter(r => r.hotelId === hotelId);
-    return filtered.length > 0 ? filtered : rooms;
+  const localRooms = getLocal<RoomTypeItem[]>(ROOMS_KEY, DEFAULT_ROOM_TYPES);
+  
+  // Try Supabase first
+  const sb = getSb();
+  if (sb) {
+    try {
+      let query = sb.from('room_types').select('*').order('order_num', { ascending: true });
+      if (hotelId) {
+        query = query.eq('hotel_id', hotelId);
+      }
+      const { data, error } = await query;
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const mapped = data.map(mapDbRowToRoom);
+        if (!hotelId) {
+          setLocal(ROOMS_KEY, mapped);
+        } else {
+          // Merge into local cache
+          const others = localRooms.filter(r => r.hotelId !== hotelId);
+          setLocal(ROOMS_KEY, [...mapped, ...others]);
+        }
+        return mapped;
+      }
+    } catch (err) {
+      console.warn('[Supabase] Failed fetching room_types:', err);
+    }
   }
-  return rooms;
+
+  if (hotelId) {
+    const filtered = localRooms.filter(r => r.hotelId === hotelId);
+    return filtered.length > 0 ? filtered : localRooms;
+  }
+  return localRooms;
 }
 
 export async function saveRoomToDb(room: RoomTypeItem): Promise<void> {
@@ -381,23 +437,40 @@ export async function saveRoomToDb(room: RoomTypeItem): Promise<void> {
   }
   setLocal(ROOMS_KEY, updated);
 
-  // Optional background sync with Supabase if table exists
+  // Sync with Supabase
   const sb = getSb();
   if (sb) {
     try {
-      await sb.from('room_types').upsert({
+      const payload = {
         id: room.id,
         hotel_id: room.hotelId,
         name: room.name,
-        category: room.category,
-        base_price: room.basePrice,
-        total_rooms: room.totalRooms,
-        available_rooms: room.availableRooms,
-        status: room.status,
-        data: room
-      } as any);
-    } catch {
-      // Non-blocking fallback
+        name_en: room.nameEn || '',
+        category: room.category || 'غرفة فاخرة',
+        base_price: Number(room.basePrice || 0),
+        total_rooms: Number(room.totalRooms || 1),
+        available_rooms: Number(room.availableRooms || 0),
+        max_guests: Number(room.maxGuests || 2),
+        bed_type: room.bedType || 'سرير كينج مزدوج',
+        room_size: room.roomSize || '32 م²',
+        features: room.features || [],
+        images: room.images || [],
+        key_prefix: room.keyPrefix || 'KEY',
+        status: room.status || 'available',
+        season_periods: room.seasonPeriods || [],
+        packages: room.packages || [],
+        services: room.features || [],
+        meal_options: room.mealOptions || [],
+        show_free_cancellation: room.showFreeCancellation !== false,
+        show_pay_at_hotel: room.showPayAtHotel !== false,
+        price_includes_tax: room.priceIncludesTax !== false,
+        is_active: room.isActive !== false,
+        order_num: typeof room.order === 'number' ? room.order : 0,
+        updated_at: new Date().toISOString()
+      };
+      await sb.from('room_types').upsert(payload);
+    } catch (err) {
+      console.warn('[Supabase] Failed upserting room:', err);
     }
   }
 }
@@ -411,7 +484,9 @@ export async function deleteRoomFromDb(roomId: string): Promise<void> {
   if (sb) {
     try {
       await sb.from('room_types').delete().eq('id', roomId);
-    } catch {}
+    } catch (err) {
+      console.warn('[Supabase] Failed deleting room:', err);
+    }
   }
 }
 
@@ -420,6 +495,25 @@ export async function deleteRoomFromDb(roomId: string): Promise<void> {
 // ==========================================
 
 export async function getMealPlansFromDb(): Promise<MealPlanOption[]> {
+  const sb = getSb();
+  if (sb) {
+    try {
+      const { data, error } = await sb.from('meal_plans').select('*');
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const mapped: MealPlanOption[] = data.map((row: any) => ({
+          id: row.id,
+          type: row.type,
+          name: row.name,
+          nameEn: row.name_en || row.nameEn || '',
+          pricePerPersonPerNight: Number(row.price_per_person_per_night ?? row.pricePerPersonPerNight ?? 0),
+          description: row.description || '',
+          isActive: typeof row.is_active === 'boolean' ? row.is_active : (row.isActive !== false)
+        }));
+        setLocal(MEALS_KEY, mapped);
+        return mapped;
+      }
+    } catch {}
+  }
   return getLocal<MealPlanOption[]>(MEALS_KEY, DEFAULT_MEAL_PLANS);
 }
 
@@ -428,7 +522,16 @@ export async function saveMealPlansToDb(plans: MealPlanOption[]): Promise<void> 
   const sb = getSb();
   if (sb) {
     try {
-      await sb.from('meal_plans').upsert(plans as any);
+      const payloads = plans.map(p => ({
+        id: p.id,
+        type: p.type,
+        name: p.name,
+        name_en: p.nameEn || '',
+        price_per_person_per_night: p.pricePerPersonPerNight,
+        description: p.description || '',
+        is_active: p.isActive !== false
+      }));
+      await sb.from('meal_plans').upsert(payloads);
     } catch {}
   }
 }
@@ -438,6 +541,39 @@ export async function saveMealPlansToDb(plans: MealPlanOption[]): Promise<void> 
 // ==========================================
 
 export async function getBookingsFromDb(): Promise<RoomBooking[]> {
+  const sb = getSb();
+  if (sb) {
+    try {
+      const { data, error } = await sb.from('room_bookings').select('*').order('created_at', { ascending: false });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const mapped: RoomBooking[] = data.map((row: any) => {
+          const rawData = typeof row.booking_data === 'object' && row.booking_data 
+            ? row.booking_data 
+            : (typeof row.booking_data === 'string' ? JSON.parse(row.booking_data || '{}') : {});
+
+          return {
+            ...rawData,
+            id: row.id,
+            bookingCode: row.booking_code || row.bookingCode || rawData.bookingCode || 'PRS-0000',
+            digitalKey: row.digital_key || row.digitalKey || rawData.digitalKey || '',
+            hotelId: row.hotel_id || row.hotelId || rawData.hotelId || '',
+            hotelName: row.hotel_name || row.hotelName || rawData.hotelName || '',
+            guestName: row.guest_name || row.guestName || rawData.guestName || '',
+            guestPhone: row.guest_phone || row.guestPhone || rawData.guestPhone || '',
+            checkIn: row.check_in || row.checkIn || rawData.checkIn || '',
+            checkOut: row.check_out || row.checkOut || rawData.checkOut || '',
+            totalAmount: Number(row.total_amount ?? row.totalAmount ?? rawData.totalAmount ?? 0),
+            status: row.status || rawData.status || 'pending',
+            assignedRoomNumber: row.assigned_room_number || row.assignedRoomNumber || rawData.assignedRoomNumber || '',
+            adminNotes: row.admin_notes || row.adminNotes || rawData.adminNotes || '',
+            createdAt: row.created_at ? new Date(row.created_at).getTime() : (rawData.createdAt || Date.now())
+          };
+        });
+        setLocal(BOOKINGS_KEY, mapped);
+        return mapped;
+      }
+    } catch {}
+  }
   return getLocal<RoomBooking[]>(BOOKINGS_KEY, INITIAL_ROOM_BOOKINGS);
 }
 
@@ -453,26 +589,36 @@ export async function saveBookingToDb(booking: RoomBooking): Promise<void> {
   }
   setLocal(BOOKINGS_KEY, updated);
 
-  // Sync to Supabase room_bookings or messages if table configured
+  // Sync to Supabase
   const sb = getSb();
   if (sb) {
     try {
       await sb.from('room_bookings').upsert({
         id: booking.id,
         booking_code: booking.bookingCode,
-        digital_key: booking.digitalKey,
+        digital_key: booking.digitalKey || '',
         hotel_id: booking.hotelId,
         hotel_name: booking.hotelName,
         guest_name: booking.guestName,
         guest_phone: booking.guestPhone,
+        guest_email: booking.guestEmail || '',
         check_in: booking.checkIn,
         check_out: booking.checkOut,
+        nights: booking.nights || 1,
+        rooms_count: booking.roomsCount || 1,
+        adults: booking.adults || 1,
+        children: booking.children || 0,
+        room_name: booking.roomName || '',
+        meal_plan_name: booking.mealPlanName || '',
         total_amount: booking.totalAmount,
         status: booking.status,
+        special_requests: booking.specialRequests || '',
+        assigned_room_number: booking.assignedRoomNumber || '',
+        admin_notes: booking.adminNotes || '',
         booking_data: booking
       } as any);
-    } catch {
-      // Non-blocking
+    } catch (err) {
+      console.warn('[Supabase] Failed saving booking:', err);
     }
   }
 }

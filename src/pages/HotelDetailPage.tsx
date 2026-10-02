@@ -611,8 +611,8 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
               </a>
             )}
 
-            {/* Direct WhatsApp CTA */}
-            {hotel.showHotelWhatsApp !== false && !!whatsAppBookingUrl && (
+            {/* Direct WhatsApp CTA when Online Booking is Enabled */}
+            {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled !== false && hotel.showHotelWhatsApp !== false && !!whatsAppBookingUrl && (
               <a
                 id="sticky-whatsapp-book-btn"
                 href={whatsAppBookingUrl}
@@ -621,25 +621,38 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                 className="px-4 sm:px-5 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all"
               >
                 <WhatsAppIcon className="w-4 h-4" />
-                <span>{language === 'en' ? 'WhatsApp Booking' : 'حجز واتساب'}</span>
+                <span>{language === 'en' ? 'WhatsApp' : 'واتساب'}</span>
               </a>
             )}
 
-            {/* Gold CTA "طلب حجز واستفسار" */}
-            <button
-              id="sticky-book-now-button"
-              onClick={() => {
-                if (onNavigate) {
-                  onNavigate('room-booking', hotel.id);
-                } else {
-                  window.location.hash = `#/bookings?hotel=${hotel.id}`;
-                }
-              }}
-              className="px-4 sm:px-6 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
-            >
-              <BedDouble className="w-4 h-4" />
-              <span>{language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}</span>
-            </button>
+            {/* Primary Action Button: Online Booking if enabled and creation allowed, or Direct WhatsApp Booking if offline or creation disabled */}
+            {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.allowPublicBookingCreation !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled !== false ? (
+              <button
+                id="sticky-book-now-button"
+                onClick={() => {
+                  if (onNavigate) {
+                    onNavigate('room-booking', hotel.id);
+                  } else {
+                    window.location.hash = `#/bookings?hotel=${hotel.id}`;
+                  }
+                }}
+                className="px-4 sm:px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#B38A34] to-[#C9A24B] hover:from-[#98752B] hover:to-[#B38A34] text-white font-bold text-xs sm:text-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
+              >
+                <BedDouble className="w-4 h-4" />
+                <span>{language === 'en' ? 'Book Online' : 'حجز الغرف أونلاين'}</span>
+              </button>
+            ) : !!whatsAppBookingUrl ? (
+              <a
+                id="sticky-whatsapp-direct-btn"
+                href={whatsAppBookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 sm:px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#25D366] to-[#20bd5a] hover:from-[#1eb852] hover:to-[#179641] text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              >
+                <WhatsAppIcon className="w-4 h-4" />
+                <span>{language === 'en' ? 'Direct WhatsApp Booking' : 'حجز مباشر عبر واتساب'}</span>
+              </a>
+            ) : null}
           </div>
         </section>
 
@@ -1202,7 +1215,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
       </div>
 
       {/* Interactive Room Booking Modal with Room Choices, Meal Plans & Digital Key */}
-      {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.showInHotelDetail !== false ? (
+      {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.allowPublicBookingCreation !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled !== false ? (
         <RoomBookingModal
           isOpen={bookingModalOpen}
           onClose={() => setBookingModalOpen(false)}

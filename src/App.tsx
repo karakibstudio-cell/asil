@@ -536,7 +536,7 @@ export default function App() {
           />
 
           {/* Global Interactive Room Booking Modal */}
-          {hotels.length > 0 && (
+          {hotels.length > 0 && siteSettings?.bookingModule?.enabled !== false && (
             <RoomBookingModal
               isOpen={isGlobalBookingModalOpen}
               onClose={() => setIsGlobalBookingModalOpen(false)}

@@ -665,6 +665,8 @@ export interface RoomBooking {
 
 export interface BookingModuleSettings {
   enabled: boolean; // إظهار أو إخفاء نظام الحجوزات بالكامل
+  allowPublicBookingCreation?: boolean; // السماح بإنشاء حجوزات جديدة من الموقع (عند التعطيل يصبح النظام إدارة ومتابعة فقط)
+  mode?: 'full' | 'manage_only'; // نمط النظام: كامل (إنشاء وإدارة) أو إدارة ومتابعة فقط
   showInHeader: boolean; // إظهار زر "حجز غرفة" في القائمة العلوية
   showTrackBookingModal: boolean; // إظهار زر "متابعة الحجز" للنزيل
   showInHero: boolean; // إظهار شريط الحجز السريع في الصفحة الرئيسية

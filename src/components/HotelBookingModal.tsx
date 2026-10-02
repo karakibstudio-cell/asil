@@ -89,6 +89,12 @@ export const HotelBookingModal: React.FC<HotelBookingModalProps> = ({
     if (!form.name || !form.phone) return;
     setSubmitting(true);
 
+    const detailedWaMessage = language === 'en'
+      ? `Hello, I would like to book a stay at *${hotel.nameEn || hotel.name}* (${translateDynamic(hotel.city)} - ${translateDynamic(hotel.district)} District).\n- Guest Name: ${form.name}\n- Phone: ${form.phone}\n- Check-in: ${form.checkIn || 'Not specified'}\n- Check-out: ${form.checkOut || 'Not specified'}\n- Rooms: ${form.rooms}\n- Guests: ${form.guests}\n- Notes: ${form.notes || 'None'}`
+      : `السلام عليكم ورحمة الله، أود تأكيد حجز إقامة في فندق *${hotel.name}* (${hotel.city} - حي ${hotel.district}) عبر شركة برستيج.\n- اسم النزيل: ${form.name}\n- رقم الجوال: ${form.phone}\n- تاريخ الوصول: ${form.checkIn || 'غير محدد'}\n- تاريخ المغادرة: ${form.checkOut || 'غير محدد'}\n- عدد الغرف: ${form.rooms}\n- عدد النزلاء: ${form.guests}\n- ملاحظات: ${form.notes || 'لا يوجد'}`;
+
+    const waLink = buildWhatsAppLink(targetPhone, detailedWaMessage);
+
     try {
       await sendContactMessage({
         name: form.name,
@@ -102,14 +108,23 @@ export const HotelBookingModal: React.FC<HotelBookingModalProps> = ({
 
       setSubmitted(true);
       if (onSuccessToast) {
-        onSuccessToast('تم إرسال طلب الحجز بنجاح، سيتواصل معك فريق الحجوزات فوراً');
+        onSuccessToast('تم تجهيز طلب الحجز وفتح المحادثة المباشرة لتأكيده');
       }
+
+      // Open WhatsApp directly
+      if (waLink) {
+        window.open(waLink, '_blank', 'noopener,noreferrer');
+      }
+
       setTimeout(() => {
         setSubmitted(false);
         onClose();
-      }, 2500);
+      }, 1500);
     } catch (err) {
       console.error(err);
+      if (waLink) {
+        window.open(waLink, '_blank', 'noopener,noreferrer');
+      }
     } finally {
       setSubmitting(false);
     }
