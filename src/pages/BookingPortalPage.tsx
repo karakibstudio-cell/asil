@@ -85,6 +85,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
   onSelectHotel,
   initialHotelId
 }) => {
+  const { isRtl } = useLanguage();
   const isCreationAllowed = siteSettings?.bookingModule?.allowPublicBookingCreation !== false;
 
   // Top View Switcher: 'search' (حجز جديد) vs 'manage' (إدارة ومتابعة حجز)
