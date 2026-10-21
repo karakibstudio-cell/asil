@@ -154,8 +154,8 @@ export interface Offer {
   metaDescription?: string;
   meta_description?: string;
   createdAt?: number;
-  created_at?: number | string;
-  updated_at?: string;
+  created_at?: string | number;
+  updated_at?: string | number;
 }
 
 export interface HotelReview {

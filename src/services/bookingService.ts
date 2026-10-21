@@ -2051,6 +2051,11 @@ export async function getBookingsFromDb(hotelId?: string): Promise<RoomBooking[]
   return localBookings;
 }
 
+function cleanForFirestore(obj: any): any {
+  if (!obj) return obj;
+  return JSON.parse(JSON.stringify(obj));
+}
+
 export async function saveBookingToDb(booking: RoomBooking): Promise<void> {
   const current = getLocal<RoomBooking[]>(BOOKINGS_KEY, INITIAL_ROOM_BOOKINGS);
   const existingIdx = current.findIndex(b => b.id === booking.id);
@@ -2109,7 +2114,6 @@ export async function saveBookingToDb(booking: RoomBooking): Promise<void> {
     if (db) {
       try {
         const { doc, setDoc } = await import('firebase/firestore');
-        const cleanForFirestore = (obj: any): any => JSON.parse(JSON.stringify(obj));
         const sanitizedBooking = cleanForFirestore(booking);
         await setDoc(doc(db, 'room_bookings', booking.id), sanitizedBooking, { merge: true });
       } catch (err) {
