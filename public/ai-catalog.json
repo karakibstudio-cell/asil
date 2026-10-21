@@ -1,27 +1,32 @@
 {
-  "$schema": "https://json.schemastore.org/schema-org-thing.json",
-  "name": "Prestige Hotels Management AI Catalog",
+  "@context": "https://schema.org",
+  "@type": "DataCatalog",
+  "name": "Prestige Hotels AI Catalog",
   "description": "فهرس خدمات ومنظومة شركة برستيج لإدارة وتشغيل الفنادق بمكة المكرمة والمدينة المنورة",
   "url": "https://prestige-ksa.web.app/",
   "provider": {
+    "@type": "Organization",
     "name": "شركة برستيج لإدارة وتشغيل الفنادق",
     "url": "https://prestige-ksa.web.app/"
   },
-  "services": [
+  "dataset": [
     {
-      "name": "إدارة وتشغيل الفنادق",
-      "description": "إدارة كاملة للأصول والمرافق الفندقية في مكة والمدينة بأعلى معايير الضيافة",
-      "url": "https://prestige-ksa.web.app/hotels"
+      "@type": "Dataset",
+      "name": "Hotels Directory",
+      "description": "قائمة الفنادق المعتمدة في مكة والمدينة وتفاصيل التسكين والمسافات للحرم",
+      "url": "https://prestige-ksa.web.app/#/hotels"
     },
     {
-      "name": "حجز فنادق مكة والمدينة",
-      "description": "تسكين مباشر وفوري لضيوف الرحمن والمجموعات والشركات",
-      "url": "https://prestige-ksa.web.app/bookings"
+      "@type": "Dataset",
+      "name": "Bookings Portal",
+      "description": "بوابة الاستفسار وحجز الغرف الفندقية لضيوف الرحمن والمجموعات",
+      "url": "https://prestige-ksa.web.app/#/bookings"
     },
     {
-      "name": "عروض الشركات والمجموعات",
-      "description": "عقود موسمية وسنوية مباشرة بأفضل الأسعار المعتمدة",
-      "url": "https://prestige-ksa.web.app/offers"
+      "@type": "Dataset",
+      "name": "Special Offers",
+      "description": "عروض وخصومات الفنادق الموسمية وحملات العمرة والشركات",
+      "url": "https://prestige-ksa.web.app/#/offers"
     }
   ]
 }

@@ -14,6 +14,7 @@ interface SafeVideoPlayerProps {
   playsInline?: boolean;
   onPlay?: () => void;
   onPause?: () => void;
+  onEnded?: () => void;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
@@ -29,6 +30,7 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
   playsInline = true,
   onPlay,
   onPause,
+  onEnded,
   videoRef: externalVideoRef
 }) => {
   const internalVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -49,6 +51,26 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
 
   const isBackground = controls === false;
   const videoInfo = parseVideoUrl(effectiveUrl, isBackground);
+
+  const isSlowOrMobile = typeof window !== 'undefined' && (
+    Boolean((navigator as any).connection?.saveData) ||
+    ['slow-2g', '2g'].includes((navigator as any).connection?.effectiveType)
+  );
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined' || !containerRef.current) {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsVisible(entry.isIntersecting);
+    }, { rootMargin: '100px' });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   // Reset states when url changes or user retries
   useEffect(() => {
@@ -74,7 +96,8 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
 
   // Handle Autoplay safely without breaking browser autoplay restrictions
   useEffect(() => {
-    if (autoPlay && activeVideoRef.current && !videoInfo.isEmbed) {
+    // Never autoPlay if not visible or if mobile/slow data saver is active
+    if (autoPlay && isVisible && !isSlowOrMobile && activeVideoRef.current && !videoInfo.isEmbed) {
       const vid = activeVideoRef.current;
       vid.muted = muted;
       const playPromise = vid.play();
@@ -85,7 +108,6 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
             setIsLoading(false);
           })
           .catch(() => {
-            // Autoplay with sound was blocked by browser policy -> try muted autoplay
             vid.muted = true;
             setIsMuted(true);
             vid.play()
@@ -100,7 +122,7 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
           });
       }
     }
-  }, [autoPlay, url, retryKey, videoInfo.isEmbed, activeVideoRef, muted]);
+  }, [autoPlay, isVisible, isSlowOrMobile, url, retryKey, videoInfo.isEmbed, activeVideoRef, muted]);
 
   // Toggle Play / Pause directly with user gesture
   const handleTogglePlay = (e?: React.MouseEvent) => {
@@ -257,19 +279,28 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
 
   // 3. Direct HTML5 Video Player
   return (
-    <div className={`relative w-full h-full flex items-center justify-center bg-black group select-none overflow-hidden ${controls ? 'rounded-xl' : 'rounded-none'}`}>
+    <div 
+      ref={containerRef}
+      className={`relative w-full h-full flex items-center justify-center bg-black group select-none overflow-hidden ${controls ? 'rounded-xl' : 'rounded-none'}`}
+    >
       <video
         ref={activeVideoRef}
         key={`${videoInfo.directUrl}-${retryKey}`}
-        src={videoInfo.directUrl}
+        src={isVisible ? videoInfo.directUrl : undefined}
         className={className}
         controls={controls}
         playsInline={playsInline}
+        // @ts-ignore
+        webkit-playsinline="true"
+        x5-playsinline="true"
+        disablePictureInPicture
+        disableRemotePlayback
         loop={loop}
         muted={isMuted}
+        defaultMuted={isMuted}
         poster={poster}
-        autoPlay={autoPlay}
-        preload={autoPlay ? 'auto' : 'metadata'}
+        autoPlay={autoPlay && isVisible && !isSlowOrMobile}
+        preload={!isVisible ? 'none' : (isSlowOrMobile ? 'none' : 'metadata')}
         onPlay={() => {
           setIsPlaying(true);
           setIsLoading(false);
@@ -278,6 +309,19 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
         onPause={() => {
           setIsPlaying(false);
           if (onPause) onPause();
+        }}
+        onEnded={() => {
+          setIsPlaying(false);
+          if (!loop && onEnded) {
+            const vid = activeVideoRef.current;
+            if (vid && vid.duration && !isNaN(vid.duration) && vid.duration > 1.5) {
+              if (vid.currentTime >= vid.duration - 0.8) {
+                onEnded();
+              }
+            } else {
+              onEnded();
+            }
+          }
         }}
         onLoadedData={() => {
           if (activeVideoRef.current) {

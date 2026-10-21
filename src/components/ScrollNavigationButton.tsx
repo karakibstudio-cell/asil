@@ -8,19 +8,34 @@ export const ScrollNavigationButton: React.FC = () => {
   const [isAtTop, setIsAtTop] = useState(true);
 
   useEffect(() => {
-    const handleScroll = () => {
-      const scrollY = window.scrollY || document.documentElement.scrollTop;
-      const scrollHeight = document.documentElement.scrollHeight;
-      const clientHeight = document.documentElement.clientHeight;
+    let rafId: number | null = null;
 
-      setIsAtTop(scrollY < 120);
-      setIsAtBottom(scrollY + clientHeight >= scrollHeight - 120);
-      setShowButtons(scrollHeight > clientHeight + 300);
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        const scrollHeight = document.documentElement.scrollHeight;
+        const clientHeight = document.documentElement.clientHeight;
+
+        const atTop = scrollY < 120;
+        const atBottom = scrollY + clientHeight >= scrollHeight - 120;
+        const canShow = scrollHeight > clientHeight + 300;
+
+        setIsAtTop(prev => (prev !== atTop ? atTop : prev));
+        setIsAtBottom(prev => (prev !== atBottom ? atBottom : prev));
+        setShowButtons(prev => (prev !== canShow ? canShow : prev));
+      });
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll();
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
   }, []);
 
   const scrollToTop = () => {
@@ -49,6 +64,7 @@ export const ScrollNavigationButton: React.FC = () => {
         {/* Scroll To Top Button */}
         {!isAtTop && (
           <motion.button
+            key="scroll-to-top-btn"
             initial={{ opacity: 0, scale: 0.6, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.6, y: 10 }}
@@ -67,6 +83,7 @@ export const ScrollNavigationButton: React.FC = () => {
         {/* Scroll To Bottom Button */}
         {!isAtBottom && (
           <motion.button
+            key="scroll-to-bottom-btn"
             initial={{ opacity: 0, scale: 0.6, y: -10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.6, y: -10 }}

@@ -189,8 +189,12 @@ export const HotelBookingModal: React.FC<HotelBookingModalProps> = ({
               {hotel.nameEn && language === 'en' ? hotel.nameEn : hotel.name}
             </h3>
             <p className="text-xs sm:text-sm text-stone-300 mt-1 flex items-center gap-2">
-              <span>{translateDynamic(hotel.distanceText)}</span>
-              <span>•</span>
+              {hotel.showDistanceBadge !== false && hotel.showTransportInfo !== false && (
+                <>
+                  <span>{translateDynamic(hotel.distanceText)}</span>
+                  <span>•</span>
+                </>
+              )}
               <span>{translateDynamic(hotel.location?.viewType || 'إطلالة مميزة')}</span>
             </p>
           </div>

@@ -1,0 +1,1781 @@
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { 
+  Calendar, 
+  Users, 
+  BedDouble, 
+  Check, 
+  CheckCircle2, 
+  ArrowLeft, 
+  ArrowRight, 
+  Phone, 
+  Mail, 
+  User, 
+  Copy, 
+  FileText, 
+  Sparkles, 
+  ShieldCheck, 
+  AlertCircle, 
+  Utensils, 
+  Coffee, 
+  Printer, 
+  Download, 
+  ExternalLink, 
+  MessageCircle, 
+  Info, 
+  Lock, 
+  Clock, 
+  ChevronDown, 
+  ChevronUp, 
+  RefreshCw,
+  Building2,
+  MapPin,
+  Flame,
+  X,
+  Compass,
+  Layers,
+  QrCode
+} from 'lucide-react';
+import { 
+  Hotel, 
+  RoomTypeItem, 
+  MealPlanOption, 
+  RoomBooking, 
+  SiteSettings, 
+  HotelPricingPeriod 
+} from '../types';
+import { 
+  calculateBookingPrice, 
+  getStayNightDates, 
+  PricingEngineResult 
+} from '../utils/pricingEngine';
+import { 
+  checkFastStayAvailability, 
+  createBookingAtomicTransaction, 
+  prefetchNextMonth,
+  OverbookingError 
+} from '../services/availabilityService';
+import { 
+  getRoomsFromDb, 
+  getMealPlansFromDb, 
+  getPricingPeriodsFromDb, 
+  getBookingsFromDb, 
+  getHotelPolicy,
+  buildVisitorWhatsAppConfirmationLink,
+  DEFAULT_BOOKING_POLICY
+} from '../services/bookingService';
+import { sendBookingEmailViaAppsScript } from '../services/emailService';
+import { ExpressCheckInModal } from './ExpressCheckInModal';
+import { trackBookingFunnel } from '../services/analytics';
+import { getInvoiceUrl } from '../utils/routing';
+import { useLanguage } from '../context/LanguageContext';
+
+export interface CountryCodeItem {
+  code: string;
+  dialCode: string;
+  flag: string;
+  nameAr: string;
+  nameEn: string;
+}
+
+export const POPULAR_COUNTRIES: CountryCodeItem[] = [
+  { code: 'SA', dialCode: '+966', flag: '🇸🇦', nameAr: 'السعودية', nameEn: 'Saudi Arabia' },
+  { code: 'EG', dialCode: '+20', flag: '🇪🇬', nameAr: 'مصر', nameEn: 'Egypt' },
+  { code: 'AE', dialCode: '+971', flag: '🇦🇪', nameAr: 'الإمارات', nameEn: 'UAE' },
+  { code: 'KW', dialCode: '+965', flag: '🇰🇼', nameAr: 'الكويت', nameEn: 'Kuwait' },
+  { code: 'OM', dialCode: '+968', flag: '🇴🇲', nameAr: 'عُمان', nameEn: 'Oman' },
+  { code: 'BH', dialCode: '+973', flag: '🇧🇭', nameAr: 'البحرين', nameEn: 'Bahrain' },
+  { code: 'QA', dialCode: '+974', flag: '🇶🇦', nameAr: 'قطر', nameEn: 'Qatar' },
+  { code: 'JO', dialCode: '+962', flag: '🇯🇴', nameAr: 'الأردن', nameEn: 'Jordan' },
+  { code: 'ID', dialCode: '+62', flag: '🇮🇩', nameAr: 'إندونيسيا', nameEn: 'Indonesia' },
+  { code: 'MY', dialCode: '+60', flag: '🇲🇾', nameAr: 'ماليزيا', nameEn: 'Malaysia' },
+  { code: 'TR', dialCode: '+90', flag: '🇹🇷', nameAr: 'تركيا', nameEn: 'Turkey' },
+  { code: 'PK', dialCode: '+92', flag: '🇵🇰', nameAr: 'باكستان', nameEn: 'Pakistan' },
+  { code: 'IN', dialCode: '+91', flag: '🇮🇳', nameAr: 'الهند', nameEn: 'India' },
+  { code: 'GB', dialCode: '+44', flag: '🇬🇧', nameAr: 'بريطانيا', nameEn: 'United Kingdom' },
+  { code: 'US', dialCode: '+1', flag: '🇺🇸', nameAr: 'أمريكا', nameEn: 'United States' }
+];
+
+const DRAFT_STORAGE_KEY = 'prestige_booking_draft_v2';
+
+export interface BookingFlowProps {
+  hotel: Hotel;
+  allHotels?: Hotel[];
+  initialRoomId?: string;
+  initialMealId?: string;
+  initialCheckIn?: string;
+  initialCheckOut?: string;
+  initialRooms?: number;
+  initialAdults?: number;
+  initialChildren?: number;
+  siteSettings?: SiteSettings;
+  onNavigateHome?: () => void;
+  onSelectAnotherHotel?: (hotelId: string) => void;
+  onOpenTrackModal?: (code: string) => void;
+}
+
+export const BookingFlow: React.FC<BookingFlowProps> = ({
+  hotel,
+  allHotels = [],
+  initialRoomId,
+  initialMealId,
+  initialCheckIn,
+  initialCheckOut,
+  initialRooms = 1,
+  initialAdults = 2,
+  initialChildren = 0,
+  siteSettings,
+  onNavigateHome,
+  onSelectAnotherHotel,
+  onOpenTrackModal
+}) => {
+  const { language, isRtl } = useLanguage();
+
+  // 3-Step Wizard: 1: Dates & Guests, 2: Choose Room & Meal, 3: Details & Confirm, 4: Confirmation Screen
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+
+  // Default dates
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const tomorrowStr = useMemo(() => new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0], []);
+
+  // Step 1 State: Dates & Guests
+  const [checkIn, setCheckIn] = useState<string>(() => {
+    return initialCheckIn || todayStr;
+  });
+  const [checkOut, setCheckOut] = useState<string>(() => {
+    return initialCheckOut || tomorrowStr;
+  });
+  const [roomsCount, setRoomsCount] = useState<number>(initialRooms || 1);
+  const [adultsCount, setAdultsCount] = useState<number>(initialAdults || 2);
+  const [childrenCount, setChildrenCount] = useState<number>(initialChildren || 0);
+
+  // Step 2 State: Selected Room & Meal
+  const [selectedRoomId, setSelectedRoomId] = useState<string>(initialRoomId || '');
+  const [selectedMealId, setSelectedMealId] = useState<string>(initialMealId || 'meal_none');
+
+  // Step 3 State: Guest Details & Consent
+  const [guestName, setGuestName] = useState<string>('');
+  const [guestEmail, setGuestEmail] = useState<string>('');
+  const [selectedCountry, setSelectedCountry] = useState<CountryCodeItem>(POPULAR_COUNTRIES[0]);
+  const [guestPhoneNumber, setGuestPhoneNumber] = useState<string>('');
+  const [specialRequests, setSpecialRequests] = useState<string>('');
+  const [consentAgreed, setConsentAgreed] = useState<boolean>(true);
+  const [honeypot, setHoneypot] = useState<string>('');
+  const [formStartTime] = useState<number>(() => Date.now());
+
+  // VIP Preferences & Express Check-in
+  const [preferredView, setPreferredView] = useState<'haram' | 'city' | 'panoramic' | 'quiet' | 'any'>('any');
+  const [preferredFloor, setPreferredFloor] = useState<'high' | 'mid' | 'low' | 'any'>('any');
+  const [expressCheckInOptIn, setExpressCheckInOptIn] = useState<boolean>(true);
+  const [showExpressModal, setShowExpressModal] = useState<boolean>(false);
+  const [emailSendingStatus, setEmailSendingStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [emailErrorMessage, setEmailErrorMessage] = useState<string>('');
+
+  // Idempotency Key (Generated once per draft session)
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => {
+    return `idem_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  });
+
+  // Data Loading & State
+  const [rooms, setRooms] = useState<RoomTypeItem[]>([]);
+  const [mealPlans, setMealPlans] = useState<MealPlanOption[]>([]);
+  const [pricingPeriods, setPricingPeriods] = useState<HotelPricingPeriod[]>([]);
+  const [existingBookings, setExistingBookings] = useState<RoomBooking[]>([]);
+  const [loadingData, setLoadingData] = useState<boolean>(true);
+
+  // Availability Cache Map by Room ID: { isAvailable, minRemainingRooms, validationErrors }
+  const [availabilityMap, setAvailabilityMap] = useState<Record<string, {
+    isAvailable: boolean;
+    minRemainingRooms: number;
+    validationErrors: string[];
+  }>>({});
+  const [checkingAvailability, setCheckingAvailability] = useState<boolean>(false);
+
+  // Confirmation Result
+  const [confirmedBooking, setConfirmedBooking] = useState<RoomBooking | null>(null);
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // UI Drawer / Details expander for Mobile Sticky Bar
+  const [isMobileSummaryOpen, setIsMobileSummaryOpen] = useState<boolean>(false);
+  const [isPolicyModalOpen, setIsPolicyModalOpen] = useState<boolean>(false);
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  // 1. Restore Auto-Saved Draft from LocalStorage on mount
+  useEffect(() => {
+    try {
+      const savedDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed.hotelId === hotel.id) {
+          if (parsed.checkIn && parsed.checkIn >= todayStr) setCheckIn(parsed.checkIn);
+          if (parsed.checkOut && parsed.checkOut > (parsed.checkIn || todayStr)) setCheckOut(parsed.checkOut);
+          if (parsed.roomsCount) setRoomsCount(parsed.roomsCount);
+          if (parsed.adultsCount) setAdultsCount(parsed.adultsCount);
+          if (parsed.childrenCount !== undefined) setChildrenCount(parsed.childrenCount);
+          if (parsed.guestName) setGuestName(parsed.guestName);
+          if (parsed.guestEmail) setGuestEmail(parsed.guestEmail);
+          if (parsed.guestPhoneNumber) setGuestPhoneNumber(parsed.guestPhoneNumber);
+          if (parsed.selectedRoomId) setSelectedRoomId(parsed.selectedRoomId);
+          if (parsed.selectedMealId) setSelectedMealId(parsed.selectedMealId);
+          if (parsed.specialRequests) setSpecialRequests(parsed.specialRequests);
+          if (parsed.idempotencyKey) setIdempotencyKey(parsed.idempotencyKey);
+        }
+      }
+    } catch {}
+  }, [hotel.id, todayStr]);
+
+  // 2. Auto-save Draft to LocalStorage whenever fields update
+  useEffect(() => {
+    if (currentStep === 4) return; // Don't persist after success
+    const draft = {
+      hotelId: hotel.id,
+      checkIn,
+      checkOut,
+      roomsCount,
+      adultsCount,
+      childrenCount,
+      selectedRoomId,
+      selectedMealId,
+      guestName,
+      guestEmail,
+      guestPhoneNumber,
+      specialRequests,
+      idempotencyKey,
+      savedAt: Date.now()
+    };
+    try {
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch {}
+  }, [
+    hotel.id,
+    checkIn,
+    checkOut,
+    roomsCount,
+    adultsCount,
+    childrenCount,
+    selectedRoomId,
+    selectedMealId,
+    guestName,
+    guestEmail,
+    guestPhoneNumber,
+    specialRequests,
+    idempotencyKey,
+    currentStep
+  ]);
+
+  // 3. Load DB records for rooms, meal plans, pricing periods
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingData(true);
+
+    Promise.all([
+      getRoomsFromDb(hotel.id),
+      getMealPlansFromDb(hotel.id),
+      getPricingPeriodsFromDb(hotel.id)
+    ]).then(([rList, mList, pList]) => {
+      if (!isMounted) return;
+      const hotelRooms = rList.filter(r => r.hotelId === hotel.id && r.isActive !== false);
+      setRooms(hotelRooms);
+      setMealPlans(mList.filter(m => m.isActive !== false));
+      setPricingPeriods(pList || []);
+      setLoadingData(false);
+
+      // Auto-select first room if none selected
+      if (!selectedRoomId && hotelRooms.length > 0) {
+        setSelectedRoomId(hotelRooms[0].id);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [hotel.id]);
+
+  // 4. Track Funnel Start
+  useEffect(() => {
+    trackBookingFunnel('booking_funnel_started', {
+      hotel_id: hotel.id,
+      hotel_name: hotel.name,
+      hotel_city: hotel.city
+    });
+  }, [hotel.id, hotel.name, hotel.city]);
+
+  // 5. Fast Availability Re-computation (Debounced & Cached)
+  useEffect(() => {
+    if (!checkIn || !checkOut || rooms.length === 0) return;
+    let isMounted = true;
+    setCheckingAvailability(true);
+
+    const timer = setTimeout(async () => {
+      const results: Record<string, { isAvailable: boolean; minRemainingRooms: number; validationErrors: string[] }> = {};
+
+      for (const room of rooms) {
+        try {
+          const avail = await checkFastStayAvailability(
+            hotel,
+            room,
+            checkIn,
+            checkOut,
+            roomsCount,
+            pricingPeriods,
+            existingBookings
+          );
+          results[room.id] = {
+            isAvailable: avail.isAvailable,
+            minRemainingRooms: avail.minRemainingRooms,
+            validationErrors: avail.validationErrors
+          };
+        } catch {
+          results[room.id] = {
+            isAvailable: true,
+            minRemainingRooms: room.availableRooms || 3,
+            validationErrors: []
+          };
+        }
+      }
+
+      if (isMounted) {
+        setAvailabilityMap(results);
+        setCheckingAvailability(false);
+
+        // Prefetch next month calendar data in background
+        const currentYm = checkIn.substring(0, 7);
+        if (rooms[0]) {
+          prefetchNextMonth(hotel.id, rooms[0], currentYm, pricingPeriods, existingBookings);
+        }
+      }
+    }, 150);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [hotel, rooms, checkIn, checkOut, roomsCount, pricingPeriods, existingBookings]);
+
+  // Selected Room Object
+  const selectedRoom = useMemo(() => {
+    return rooms.find(r => r.id === selectedRoomId) || rooms[0] || null;
+  }, [rooms, selectedRoomId]);
+
+  // Selected Meal Plan Object
+  const selectedMealPlan = useMemo(() => {
+    return mealPlans.find(m => m.id === selectedMealId) || null;
+  }, [mealPlans, selectedMealId]);
+
+  // Total Nights Count
+  const nightsCount = useMemo(() => {
+    return getStayNightDates(checkIn, checkOut).length;
+  }, [checkIn, checkOut]);
+
+  // Master Pricing Engine Calculation
+  const pricingResult: PricingEngineResult = useMemo(() => {
+    if (!selectedRoom || !checkIn || !checkOut) {
+      return {
+        isValid: false,
+        totalNights: 0,
+        averageNightlyRate: selectedRoom?.basePrice || 350,
+        roomsCost: 0,
+        mealPricePerPerson: 0,
+        mealsCost: 0,
+        subtotal: 0,
+        taxes: 0,
+        grandTotal: 0,
+        isTaxIncluded: true,
+        currency: 'SAR',
+        nightlyBreakdown: [],
+        validationErrors: ['يرجى تحديد تفاصيل الحجز'],
+        priceBreakdown: {
+          nights: 0,
+          nightlyRates: [],
+          roomsCost: 0,
+          mealPricePerPerson: 0,
+          mealsCost: 0,
+          extraCharges: 0,
+          taxes: 0,
+          isTaxIncluded: true,
+          totalAmount: 0,
+          currency: 'SAR'
+        }
+      };
+    }
+
+    return calculateBookingPrice({
+      hotel,
+      room: selectedRoom,
+      checkIn,
+      checkOut,
+      roomsCount,
+      guestsCount: adultsCount + childrenCount,
+      mealPlan: selectedMealPlan,
+      pricingPeriods
+    });
+  }, [hotel, selectedRoom, checkIn, checkOut, roomsCount, adultsCount, childrenCount, selectedMealPlan, pricingPeriods]);
+
+  // Step 1 Validation
+  const isStep1Valid = useMemo(() => {
+    const basicValid = (
+      checkIn && 
+      checkOut && 
+      checkOut > checkIn && 
+      nightsCount > 0 && 
+      roomsCount >= 1 && 
+      adultsCount >= 1
+    );
+    if (!basicValid) return false;
+
+    // If hotel is configured as periods_only, ensure stay is completely inside active periods
+    if (hotel.onlineAvailabilityMode === 'periods_only') {
+      const activePeriods = pricingPeriods.filter(p => p.isActive !== false);
+      if (activePeriods.length === 0) return false;
+      const stayDates = getStayNightDates(checkIn, checkOut);
+      const allNightsCovered = stayDates.every(d => 
+        activePeriods.some(p => d >= p.startDate && d <= p.endDate)
+      );
+      if (!allNightsCovered) return false;
+    }
+
+    return true;
+  }, [checkIn, checkOut, nightsCount, roomsCount, adultsCount, hotel.onlineAvailabilityMode, pricingPeriods]);
+
+  // Check if dates are outside active periods
+  const isOutsideActivePeriods = useMemo(() => {
+    if (hotel.onlineAvailabilityMode !== 'periods_only' || !checkIn || !checkOut || checkOut <= checkIn) {
+      return false;
+    }
+    const activePeriods = pricingPeriods.filter(p => p.isActive !== false);
+    if (activePeriods.length === 0) return true;
+    const stayDates = getStayNightDates(checkIn, checkOut);
+    return !stayDates.every(d => activePeriods.some(p => d >= p.startDate && d <= p.endDate));
+  }, [hotel.onlineAvailabilityMode, checkIn, checkOut, pricingPeriods]);
+
+  // Step 2 Validation: Must have selected an available room
+  const isStep2Valid = useMemo(() => {
+    if (!selectedRoom) return false;
+    const roomAvail = availabilityMap[selectedRoom.id];
+    if (roomAvail && !roomAvail.isAvailable) return false;
+    return pricingResult.isValid && pricingResult.grandTotal > 0;
+  }, [selectedRoom, availabilityMap, pricingResult]);
+
+  // Step 3 Validation: Guest details
+  const isStep3Valid = useMemo(() => {
+    const isNameValid = guestName.trim().length >= 3;
+    const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim());
+    const cleanPhone = guestPhoneNumber.replace(/\D/g, '');
+    const isPhoneValid = cleanPhone.length >= 7 && cleanPhone.length <= 15;
+    return isNameValid && isEmailValid && isPhoneValid && consentAgreed;
+  }, [guestName, guestEmail, guestPhoneNumber, consentAgreed]);
+
+  // Full International Phone String
+  const fullWhatsAppNumber = useMemo(() => {
+    const clean = guestPhoneNumber.replace(/^0+/, '').replace(/\D/g, '');
+    return `${selectedCountry.dialCode}${clean}`;
+  }, [selectedCountry, guestPhoneNumber]);
+
+  // Transition handlers with analytics tracking
+  const handleProceedToStep2 = () => {
+    if (!isStep1Valid) return;
+    trackBookingFunnel('booking_dates_selected', {
+      hotel_id: hotel.id,
+      check_in: checkIn,
+      check_out: checkOut,
+      nights: nightsCount,
+      rooms_count: roomsCount,
+      guests_count: adultsCount + childrenCount
+    });
+    setCurrentStep(2);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleProceedToStep3 = () => {
+    if (!isStep2Valid || !selectedRoom) return;
+    trackBookingFunnel('booking_room_selected', {
+      hotel_id: hotel.id,
+      room_id: selectedRoom.id,
+      room_name: selectedRoom.name,
+      meal_plan_id: selectedMealPlan?.id || 'meal_none',
+      total_amount: pricingResult.grandTotal
+    });
+    trackBookingFunnel('booking_details_reached', {
+      hotel_id: hotel.id,
+      step_number: 3
+    });
+    setCurrentStep(3);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Submission handler with Atomic Transaction and Idempotency Guard
+  const handleConfirmBooking = async () => {
+    if (!isStep3Valid || !selectedRoom || submitting) return;
+
+    setSubmitting(true);
+    setSubmitError(null);
+
+    trackBookingFunnel('booking_submitted', {
+      hotel_id: hotel.id,
+      room_id: selectedRoom.id,
+      total_amount: pricingResult.grandTotal,
+      idempotency_key: idempotencyKey
+    });
+
+    try {
+      const booking = await createBookingAtomicTransaction({
+        hotel,
+        room: selectedRoom,
+        checkIn,
+        checkOut,
+        roomsCount,
+        adultsCount,
+        childrenCount,
+        guestName,
+        guestPhone: fullWhatsAppNumber,
+        guestEmail,
+        mealPlan: selectedMealPlan,
+        specialRequests,
+        idempotencyKey,
+        honeypot,
+        formStartTime,
+        consentAgreed,
+        preferredView,
+        preferredFloor,
+        expressCheckInOptIn
+      });
+
+      setConfirmedBooking(booking);
+      setCurrentStep(4);
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+
+      // Automated Background Email Dispatch via Google Apps Script
+      setEmailSendingStatus('sending');
+      sendBookingEmailViaAppsScript(booking, undefined, siteSettings)
+        .then((res) => {
+          if (res.success) {
+            setEmailSendingStatus('sent');
+          } else {
+            setEmailSendingStatus('failed');
+            setEmailErrorMessage(res.error || '');
+          }
+        })
+        .catch((err) => {
+          setEmailSendingStatus('failed');
+          setEmailErrorMessage(err?.message || '');
+        });
+
+      trackBookingFunnel('booking_confirmed', {
+        hotel_id: hotel.id,
+        booking_code: booking.bookingCode,
+        total_amount: booking.totalAmount,
+        room_name: booking.roomName
+      });
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err: any) {
+      console.error('[BookingFlow] Submission failed:', err);
+      const friendlyMsg = err instanceof OverbookingError || err.message?.includes('نفدت')
+        ? err.message
+        : 'تعذر إتمام الحجز في الوقت الحالي. يرجى مراجعة البيانات والمحاولة مرة أخرى أو التواصل معنا عبر الواتساب.';
+      setSubmitError(friendlyMsg);
+      trackBookingFunnel('booking_error', {
+        hotel_id: hotel.id,
+        error_message: err.message
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResendEmail = async () => {
+    if (!confirmedBooking) return;
+    setEmailSendingStatus('sending');
+    setEmailErrorMessage('');
+    try {
+      const res = await sendBookingEmailViaAppsScript(confirmedBooking, undefined, siteSettings);
+      if (res.success) {
+        setEmailSendingStatus('sent');
+      } else {
+        setEmailSendingStatus('failed');
+        setEmailErrorMessage(res.error || '');
+      }
+    } catch (err: any) {
+      setEmailSendingStatus('failed');
+      setEmailErrorMessage(err?.message || '');
+    }
+  };
+
+  // WhatsApp instant share link after confirmation
+  const whatsappUrl = useMemo(() => {
+    if (!confirmedBooking) return '';
+    return buildVisitorWhatsAppConfirmationLink(confirmedBooking, siteSettings);
+  }, [confirmedBooking, siteSettings]);
+
+  return (
+    <div className="w-full max-w-4xl mx-auto px-4 py-6 md:py-10 text-stone-900" dir={isRtl ? 'rtl' : 'ltr'}>
+      {/* 1. Header & Hotel Badge */}
+      <div className="bg-white/80 backdrop-blur-xl border border-[#C9A24B]/30 rounded-3xl p-5 md:p-7 shadow-lg shadow-[#C9A24B]/5 mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-bold text-[#C9A24B] tracking-wide mb-1 uppercase">
+              <Building2 className="w-4 h-4" />
+              <span>{hotel.city} - {hotel.district || 'المنطقة المركزية'}</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-stone-900 tracking-tight">
+              {hotel.name}
+            </h1>
+            <p className="text-xs md:text-sm text-stone-500 mt-1">
+              {hotel.distanceText || `${hotel.distanceToHaram} متر عن الحرم`} • تصنيف {hotel.stars} نجوم
+            </p>
+          </div>
+
+          {currentStep < 4 && allHotels.length > 1 && onSelectAnotherHotel && (
+            <button
+              onClick={() => onSelectAnotherHotel('')}
+              className="text-xs font-semibold text-stone-600 hover:text-[#C9A24B] border border-stone-200 hover:border-[#C9A24B]/40 px-3.5 py-2 rounded-xl transition-colors self-start md:self-center"
+            >
+              تغيير الفندق
+            </button>
+          )}
+        </div>
+
+        {/* 2. Three-Step Visible Progress Indicator */}
+        {currentStep < 4 && (
+          <div className="mt-6 pt-6 border-t border-stone-100">
+            <div className="flex items-center justify-between relative">
+              {/* Progress Line */}
+              <div className="absolute top-1/2 left-0 right-0 h-1 bg-stone-100 -translate-y-1/2 z-0" />
+              <div 
+                className="absolute top-1/2 left-0 right-0 h-1 bg-[#C9A24B] -translate-y-1/2 z-0 transition-all duration-300"
+                style={{
+                  width: currentStep === 1 ? '16%' : currentStep === 2 ? '50%' : '100%',
+                  right: isRtl ? 0 : 'auto',
+                  left: isRtl ? 'auto' : 0
+                }}
+              />
+
+              {/* Step 1 */}
+              <button
+                type="button"
+                onClick={() => setCurrentStep(1)}
+                className="relative z-10 flex flex-col items-center gap-1.5 focus:outline-none"
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                  currentStep >= 1 ? 'bg-[#C9A24B] text-white shadow-md shadow-[#C9A24B]/30' : 'bg-stone-100 text-stone-400'
+                }`}>
+                  {currentStep > 1 ? <Check className="w-4 h-4" /> : '١'}
+                </div>
+                <span className={`text-xs font-bold ${currentStep === 1 ? 'text-[#C9A24B]' : 'text-stone-500'}`}>
+                  التواريخ والنزلاء
+                </span>
+              </button>
+
+              {/* Step 2 */}
+              <button
+                type="button"
+                onClick={() => isStep1Valid && setCurrentStep(2)}
+                disabled={!isStep1Valid}
+                className={`relative z-10 flex flex-col items-center gap-1.5 focus:outline-none ${!isStep1Valid ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                  currentStep >= 2 ? 'bg-[#C9A24B] text-white shadow-md shadow-[#C9A24B]/30' : 'bg-stone-100 text-stone-400'
+                }`}>
+                  {currentStep > 2 ? <Check className="w-4 h-4" /> : '٢'}
+                </div>
+                <span className={`text-xs font-bold ${currentStep === 2 ? 'text-[#C9A24B]' : 'text-stone-500'}`}>
+                  اختيار الغرفة
+                </span>
+              </button>
+
+              {/* Step 3 */}
+              <button
+                type="button"
+                onClick={() => isStep1Valid && isStep2Valid && setCurrentStep(3)}
+                disabled={!isStep1Valid || !isStep2Valid}
+                className={`relative z-10 flex flex-col items-center gap-1.5 focus:outline-none ${(!isStep1Valid || !isStep2Valid) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                  currentStep === 3 ? 'bg-[#C9A24B] text-white shadow-md shadow-[#C9A24B]/30' : 'bg-stone-100 text-stone-400'
+                }`}>
+                  ٣
+                </div>
+                <span className={`text-xs font-bold ${currentStep === 3 ? 'text-[#C9A24B]' : 'text-stone-500'}`}>
+                  بيانات النزيل
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. STEP CONTENT */}
+      
+      {/* ======================================================== */}
+      {/* STEP 1: Dates & Guests                                   */}
+      {/* ======================================================== */}
+      {currentStep === 1 && (
+        <div className="bg-white rounded-3xl border border-stone-200 p-6 md:p-8 shadow-sm">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-[#C9A24B]" />
+              <span>حدد تواريخ الإقامة وعدد النزلاء</span>
+            </h2>
+            <p className="text-xs md:text-sm text-stone-500 mt-1">
+              إلغاء مرن وتأكيد فوري مباشرة من إدارة الفندق بدون وسطاء.
+            </p>
+          </div>
+
+          {/* Periods-only notice banner */}
+          {hotel.onlineAvailabilityMode === 'periods_only' && (
+            <div className="mb-6 p-4 rounded-2xl bg-amber-50/80 border border-amber-200/90 text-right">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-950 mb-2">
+                <Calendar className="w-4 h-4 text-amber-600" />
+                <span>هذا الفندق متاح للحجز أونلاين حصرياً خلال الفترات والمواسم التالية:</span>
+              </div>
+              {pricingPeriods.filter(p => p.isActive !== false).length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {pricingPeriods.filter(p => p.isActive !== false).map(p => (
+                    <div key={p.id} className="px-3 py-1.5 rounded-xl bg-white border border-amber-300/80 text-xs text-amber-950 font-semibold shadow-2xs">
+                      <span className="font-bold">{p.name}:</span>{' '}
+                      <span dir="ltr" className="font-mono text-[11px] text-[#8C6D23] font-bold">{p.startDate} ~ {p.endDate}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-stone-500">لا توجد فترات نشطة مضافة حالياً. يرجى التواصل عبر الواتساب للاستفسار عن الحجز.</p>
+              )}
+            </div>
+          )}
+
+          {/* Alert if selected dates fall outside active periods */}
+          {isOutsideActivePeriods && (
+            <div className="p-4 rounded-2xl bg-amber-100/70 border border-amber-300 text-amber-950 text-xs mb-5 flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold">التواريخ المحددة خارج الفترات المتاحة لهذا الفندق</strong>
+                <p className="mt-1 text-amber-800 leading-relaxed">
+                  هذا الفندق متاح للحجز فقط خلال الفترات والمواسم المعتمدة الموضحة بالأعلى. يرجى اختيار تاريخ يقع داخل إحدى تلك الفترات للمتابعة إلى الخطوة التالية.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+            {/* Check-In Date */}
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-2">
+                تاريخ الدخول (Check-in)
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  min={todayStr}
+                  value={checkIn}
+                  onChange={(e) => {
+                    setCheckIn(e.target.value);
+                    if (e.target.value >= checkOut) {
+                      const nextDay = new Date(new Date(e.target.value).getTime() + 86400000).toISOString().split('T')[0];
+                      setCheckOut(nextDay);
+                    }
+                  }}
+                  className="w-full h-13 px-4 rounded-2xl border border-stone-200 focus:border-[#C9A24B] focus:ring-2 focus:ring-[#C9A24B]/20 text-stone-800 font-semibold text-sm transition-all bg-stone-50/50"
+                />
+              </div>
+            </div>
+
+            {/* Check-Out Date */}
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-2">
+                تاريخ المغادرة (Check-out)
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  min={checkIn || todayStr}
+                  value={checkOut}
+                  onChange={(e) => setCheckOut(e.target.value)}
+                  className="w-full h-13 px-4 rounded-2xl border border-stone-200 focus:border-[#C9A24B] focus:ring-2 focus:ring-[#C9A24B]/20 text-stone-800 font-semibold text-sm transition-all bg-stone-50/50"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Nights Badge */}
+          {nightsCount > 0 && (
+            <div className="bg-[#C9A24B]/10 border border-[#C9A24B]/30 rounded-2xl p-3.5 flex items-center justify-between text-xs md:text-sm font-bold text-[#8C6D23] mb-6">
+              <span className="flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                <span>إجمالي مدة الإقامة:</span>
+              </span>
+              <span>{nightsCount} {nightsCount === 1 ? 'ليلة واحدة' : nightsCount === 2 ? 'ليلتان' : `${nightsCount} ليالٍ`}</span>
+            </div>
+          )}
+
+          {/* Room & Guests Counter */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-stone-50 border border-stone-200/80 mb-6">
+            {/* Rooms Counter */}
+            <div className="flex items-center justify-between sm:flex-col sm:items-start gap-2">
+              <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                <BedDouble className="w-4 h-4 text-[#C9A24B]" />
+                <span>عدد الغرف</span>
+              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRoomsCount(prev => Math.max(1, prev - 1))}
+                  disabled={roomsCount <= 1}
+                  className="w-10 h-10 rounded-xl bg-white border border-stone-200 text-stone-700 font-bold flex items-center justify-center hover:border-[#C9A24B] disabled:opacity-40 transition-colors shadow-sm"
+                >
+                  -
+                </button>
+                <span className="font-extrabold text-stone-900 text-base min-w-[20px] text-center">{roomsCount}</span>
+                <button
+                  type="button"
+                  onClick={() => setRoomsCount(prev => Math.min(10, prev + 1))}
+                  className="w-10 h-10 rounded-xl bg-white border border-stone-200 text-stone-700 font-bold flex items-center justify-center hover:border-[#C9A24B] transition-colors shadow-sm"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Adults Counter */}
+            <div className="flex items-center justify-between sm:flex-col sm:items-start gap-2">
+              <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-[#C9A24B]" />
+                <span>البالغون (١٢+ سنة)</span>
+              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAdultsCount(prev => Math.max(1, prev - 1))}
+                  disabled={adultsCount <= 1}
+                  className="w-10 h-10 rounded-xl bg-white border border-stone-200 text-stone-700 font-bold flex items-center justify-center hover:border-[#C9A24B] disabled:opacity-40 transition-colors shadow-sm"
+                >
+                  -
+                </button>
+                <span className="font-extrabold text-stone-900 text-base min-w-[20px] text-center">{adultsCount}</span>
+                <button
+                  type="button"
+                  onClick={() => setAdultsCount(prev => Math.min(20, prev + 1))}
+                  className="w-10 h-10 rounded-xl bg-white border border-stone-200 text-stone-700 font-bold flex items-center justify-center hover:border-[#C9A24B] transition-colors shadow-sm"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Children Counter */}
+            <div className="flex items-center justify-between sm:flex-col sm:items-start gap-2">
+              <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-stone-400" />
+                <span>الأطفال (أقل من ١٢)</span>
+              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setChildrenCount(prev => Math.max(0, prev - 1))}
+                  disabled={childrenCount <= 0}
+                  className="w-10 h-10 rounded-xl bg-white border border-stone-200 text-stone-700 font-bold flex items-center justify-center hover:border-[#C9A24B] disabled:opacity-40 transition-colors shadow-sm"
+                >
+                  -
+                </button>
+                <span className="font-extrabold text-stone-900 text-base min-w-[20px] text-center">{childrenCount}</span>
+                <button
+                  type="button"
+                  onClick={() => setChildrenCount(prev => Math.min(10, prev + 1))}
+                  className="w-10 h-10 rounded-xl bg-white border border-stone-200 text-stone-700 font-bold flex items-center justify-center hover:border-[#C9A24B] transition-colors shadow-sm"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Button */}
+          <button
+            type="button"
+            onClick={handleProceedToStep2}
+            disabled={!isStep1Valid}
+            className="w-full h-13 rounded-2xl bg-gradient-to-r from-[#C9A24B] to-[#B38E38] text-white font-extrabold text-base shadow-lg shadow-[#C9A24B]/25 hover:shadow-xl hover:shadow-[#C9A24B]/35 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span>متابعة لاختيار الغرفة</span>
+            <ArrowLeft className={`w-5 h-5 ${isRtl ? '' : 'rotate-180'}`} />
+          </button>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* STEP 2: Choose Room & Meals                              */}
+      {/* ======================================================== */}
+      {currentStep === 2 && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-stone-900">
+              اختر نوع الغرفة وباقة الوجبات
+            </h2>
+            <button
+              type="button"
+              onClick={() => setCurrentStep(1)}
+              className="text-xs font-bold text-stone-600 hover:text-[#C9A24B] flex items-center gap-1"
+            >
+              <ArrowRight className={`w-4 h-4 ${isRtl ? '' : 'rotate-180'}`} />
+              <span>تعديل التواريخ</span>
+            </button>
+          </div>
+
+          {/* Rooms List */}
+          {loadingData ? (
+            <div className="space-y-4">
+              {[1, 2].map(n => (
+                <div key={n} className="h-44 rounded-3xl bg-stone-100 animate-pulse" />
+              ))}
+            </div>
+          ) : rooms.length === 0 ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-3xl p-6 text-center text-amber-800">
+              <AlertCircle className="w-8 h-8 text-amber-600 mx-auto mb-2" />
+              <p className="font-bold">لا توجد غرف متاحة لهذا الفندق حالياً أونلاين.</p>
+              <p className="text-xs mt-1">تفضل بالتواصل معنا مباشرة عبر الواتساب لتأكيد توفر الغرف.</p>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {rooms.map((room) => {
+                const roomAvail = availabilityMap[room.id] || { isAvailable: true, minRemainingRooms: room.availableRooms || 3, validationErrors: [] };
+                const isSelected = selectedRoomId === room.id;
+                const remaining = roomAvail.minRemainingRooms;
+                const isRoomSoldOut = !roomAvail.isAvailable || remaining < roomsCount;
+
+                return (
+                  <div
+                    key={room.id}
+                    onClick={() => {
+                      if (!isRoomSoldOut) setSelectedRoomId(room.id);
+                    }}
+                    className={`rounded-3xl p-5 md:p-6 transition-all cursor-pointer border ${
+                      isSelected 
+                        ? 'bg-white border-[#C9A24B] ring-2 ring-[#C9A24B]/30 shadow-xl shadow-[#C9A24B]/10' 
+                        : isRoomSoldOut
+                        ? 'bg-stone-50 border-stone-200 opacity-60 cursor-not-allowed'
+                        : 'bg-white border-stone-200 hover:border-[#C9A24B]/40 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                      {/* Room Details */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <h3 className="text-lg md:text-xl font-extrabold text-stone-900">
+                            {room.name}
+                          </h3>
+                          {remaining <= 3 && remaining > 0 && !isRoomSoldOut && (
+                            <span className="bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                              <Flame className="w-3.5 h-3.5" />
+                              <span>متبقي {remaining} {remaining === 1 ? 'غرفة فقط' : 'غرف فقط'}!</span>
+                            </span>
+                          )}
+                          {isRoomSoldOut && (
+                            <span className="bg-stone-200 text-stone-600 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                              غير متاح لهذه التواريخ
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs md:text-sm text-stone-500 mb-3 line-clamp-2">
+                          {room.description || 'إقامة مريحة ومميزة تشمل كافة الخدمات الفندقية المتكاملة.'}
+                        </p>
+
+                        {/* Room Features */}
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-stone-600 mb-4">
+                          <span className="bg-stone-100 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
+                            <Users className="w-3.5 h-3.5 text-stone-500" />
+                            <span>سعة {room.maxGuests || 2} نزلاء</span>
+                          </span>
+                          <span className="bg-stone-100 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
+                            <BedDouble className="w-3.5 h-3.5 text-stone-500" />
+                            <span>{room.bedType || 'سرير مزدوج فاخر'}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Room Price */}
+                      <div className="text-right md:text-left self-end md:self-start">
+                        <div className="text-xs text-stone-400">سعر الليلة للغرفة</div>
+                        <div className="text-2xl font-black text-[#C9A24B] tracking-tight">
+                          {room.basePrice || 350} <span className="text-xs font-bold text-stone-600">ر.س</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Meal Options embedded inside selected room */}
+                    {isSelected && (
+                      <div className="mt-5 pt-5 border-t border-stone-100">
+                        <span className="text-xs font-bold text-stone-700 flex items-center gap-1.5 mb-3">
+                          <Utensils className="w-4 h-4 text-[#C9A24B]" />
+                          <span>اختر وجبة الإقامة (اختياري):</span>
+                        </span>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {/* Room Only (Default) */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedMealId('meal_none');
+                            }}
+                            className={`p-3 rounded-2xl border text-right transition-all flex items-center justify-between ${
+                              selectedMealId === 'meal_none'
+                                ? 'bg-[#C9A24B]/10 border-[#C9A24B] text-stone-900 font-bold'
+                                : 'bg-stone-50 border-stone-200 text-stone-700 hover:border-stone-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                selectedMealId === 'meal_none' ? 'border-[#C9A24B] bg-[#C9A24B]' : 'border-stone-300'
+                              }`}>
+                                {selectedMealId === 'meal_none' && <Check className="w-3 h-3 text-white" />}
+                              </div>
+                              <span className="text-xs">بدون وجبات (إقامة فقط)</span>
+                            </div>
+                            <span className="text-xs font-bold text-stone-500">+0 ر.س</span>
+                          </button>
+
+                          {/* Meal Plans from DB */}
+                          {mealPlans.map((meal) => {
+                            const isMealSelected = selectedMealId === meal.id;
+                            const price = Number(meal.price ?? meal.pricePerPersonPerNight ?? 0);
+                            return (
+                              <button
+                                key={meal.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedMealId(meal.id);
+                                }}
+                                className={`p-3 rounded-2xl border text-right transition-all flex items-center justify-between ${
+                                  isMealSelected
+                                    ? 'bg-[#C9A24B]/10 border-[#C9A24B] text-stone-900 font-bold'
+                                    : 'bg-stone-50 border-stone-200 text-stone-700 hover:border-stone-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                    isMealSelected ? 'border-[#C9A24B] bg-[#C9A24B]' : 'border-stone-300'
+                                  }`}>
+                                    {isMealSelected && <Check className="w-3 h-3 text-white" />}
+                                  </div>
+                                  <span className="text-xs">{meal.name}</span>
+                                </div>
+                                <span className="text-xs font-bold text-[#C9A24B]">
+                                  +{price} ر.س / فرد
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-between gap-4 pt-4">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(1)}
+              className="h-12 px-6 rounded-2xl border border-stone-200 text-stone-700 font-bold text-sm hover:border-[#C9A24B] transition-colors"
+            >
+              السابق
+            </button>
+            <button
+              type="button"
+              onClick={handleProceedToStep3}
+              disabled={!isStep2Valid}
+              className="flex-1 max-w-sm h-12 rounded-2xl bg-gradient-to-r from-[#C9A24B] to-[#B38E38] text-white font-extrabold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span>متابعة لبيانات النزيل</span>
+              <ArrowLeft className={`w-4 h-4 ${isRtl ? '' : 'rotate-180'}`} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* STEP 3: Details & Confirm                                */}
+      {/* ======================================================== */}
+      {currentStep === 3 && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+              <User className="w-5 h-5 text-[#C9A24B]" />
+              <span>بيانات مسؤول الحجز وإصدار السند</span>
+            </h2>
+            <button
+              type="button"
+              onClick={() => setCurrentStep(2)}
+              className="text-xs font-bold text-stone-600 hover:text-[#C9A24B] flex items-center gap-1"
+            >
+              <ArrowRight className={`w-4 h-4 ${isRtl ? '' : 'rotate-180'}`} />
+              <span>تغيير الغرفة</span>
+            </button>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-stone-200 p-6 md:p-8 shadow-sm space-y-5">
+            {/* Guest Name */}
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1.5">
+                الاسم الثلاثي للنزيل (كما في الهوية أو جواز السفر) <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: أحمد عبد الله المحمدي"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  className={`w-full h-13 px-4 rounded-2xl border text-stone-900 font-medium text-sm transition-all bg-stone-50/50 ${
+                    guestName.trim().length >= 3 
+                      ? 'border-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20' 
+                      : 'border-stone-200 focus:border-[#C9A24B] focus:ring-2 focus:ring-[#C9A24B]/20'
+                  }`}
+                />
+                {guestName.trim().length >= 3 && (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 absolute top-1/2 left-4 -translate-y-1/2" />
+                )}
+              </div>
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1.5">
+                البريد الإلكتروني (لاستلام الفاتورة الإلكترونية وسند الحجز) <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  placeholder="name@example.com"
+                  value={guestEmail}
+                  onChange={(e) => setGuestEmail(e.target.value)}
+                  className="w-full h-13 px-4 rounded-2xl border border-stone-200 focus:border-[#C9A24B] focus:ring-2 focus:ring-[#C9A24B]/20 text-stone-900 font-medium text-sm transition-all bg-stone-50/50"
+                  dir="ltr"
+                />
+                <Mail className="w-5 h-5 text-stone-400 absolute top-1/2 right-4 -translate-y-1/2" />
+              </div>
+            </div>
+
+            {/* WhatsApp Phone with Country Code Selector */}
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1.5">
+                رقم الواتساب للتأكيد والتواصل الفوري <span className="text-rose-500">*</span>
+              </label>
+              <div className="flex gap-2" dir="ltr">
+                {/* Country Code Dropdown */}
+                <div className="relative min-w-[125px]">
+                  <select
+                    value={selectedCountry.dialCode}
+                    onChange={(e) => {
+                      const found = POPULAR_COUNTRIES.find(c => c.dialCode === e.target.value);
+                      if (found) setSelectedCountry(found);
+                    }}
+                    className="w-full h-13 px-3 rounded-2xl border border-stone-200 bg-stone-50/80 text-stone-800 text-xs font-bold focus:border-[#C9A24B] focus:ring-2 focus:ring-[#C9A24B]/20 appearance-none cursor-pointer"
+                  >
+                    {POPULAR_COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.dialCode}>
+                        {c.flag} {c.dialCode} ({c.nameAr})
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-stone-400 absolute top-1/2 right-3 -translate-y-1/2 pointer-events-none" />
+                </div>
+
+                {/* Phone Input */}
+                <input
+                  type="tel"
+                  required
+                  placeholder="50 123 4567"
+                  value={guestPhoneNumber}
+                  onChange={(e) => setGuestPhoneNumber(e.target.value)}
+                  className="flex-1 h-13 px-4 rounded-2xl border border-stone-200 focus:border-[#C9A24B] focus:ring-2 focus:ring-[#C9A24B]/20 text-stone-900 font-bold text-sm tracking-wide bg-stone-50/50"
+                />
+              </div>
+              <p className="text-[11px] text-stone-500 mt-1" dir={isRtl ? 'rtl' : 'ltr'}>
+                سنرسل سند الحجز ورابط الفاتورة المباشر إلى رقم الواتساب المسجل.
+              </p>
+            </div>
+
+            {/* Special Requests (Optional) */}
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1.5">
+                ملاحظات أو طلبات خاصة (اختياري)
+              </label>
+              <textarea
+                rows={2}
+                placeholder="مثال: سرير إضافي، طابق علوي هادئ، وصول مبكر..."
+                value={specialRequests}
+                onChange={(e) => setSpecialRequests(e.target.value)}
+                className="w-full p-3.5 rounded-2xl border border-stone-200 focus:border-[#C9A24B] focus:ring-2 focus:ring-[#C9A24B]/20 text-stone-800 text-xs transition-all bg-stone-50/50 resize-none"
+              />
+            </div>
+
+            {/* VIP STAY PREFERENCES & EXPRESS CHECK-IN */}
+            <div className="bg-gradient-to-br from-[#FAF7F0] to-[#F5EEDD]/40 rounded-2xl border border-[#C9A24B]/30 p-4 md:p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/20 border border-[#C9A24B]/40 flex items-center justify-center text-[#9E7B2D]">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs md:text-sm font-extrabold text-stone-900">
+                      تفضيلات الإقامة والتسكين السريع (VIP Preferences)
+                    </h4>
+                    <p className="text-[11px] text-stone-500">
+                      حدد تفضيلاتك وسنجهز غرفتك مسبقاً قبل وصولك.
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#C9A24B]/15 text-[#9E7B2D] border border-[#C9A24B]/30">
+                  خدمة مجانية
+                </span>
+              </div>
+
+              {/* View Selector */}
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-2 flex items-center gap-1.5">
+                  <Compass className="w-3.5 h-3.5 text-[#C9A24B]" />
+                  <span>الإطلالة المفضلة للغرفة:</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { id: 'any', label: 'حسب التوفر' },
+                    { id: 'haram', label: 'إطلالة الحرم الشريف' },
+                    { id: 'panoramic', label: 'إطلالة بانورامية' },
+                    { id: 'city', label: 'إطلالة على المدينة' },
+                    { id: 'quiet', label: 'إطلالة هادئة داخلية' }
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setPreferredView(item.id as any)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all text-right flex items-center justify-between cursor-pointer ${
+                        preferredView === item.id
+                          ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-sm'
+                          : 'bg-white text-stone-700 border-stone-200 hover:border-[#C9A24B]/50'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      {preferredView === item.id && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Floor Selector */}
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-2 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-[#C9A24B]" />
+                  <span>الطابق المفضل:</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'any', label: 'حسب التوفر' },
+                    { id: 'high', label: 'طابق علوي مرتفع' },
+                    { id: 'mid', label: 'طابق متوسط' },
+                    { id: 'low', label: 'طابق أرضي/منخفض' }
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setPreferredFloor(item.id as any)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all text-right flex items-center justify-between cursor-pointer ${
+                        preferredFloor === item.id
+                          ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-sm'
+                          : 'bg-white text-stone-700 border-stone-200 hover:border-[#C9A24B]/50'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      {preferredFloor === item.id && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Express Check-In Opt-in Switch */}
+              <div className="pt-2 border-t border-[#C9A24B]/20">
+                <label className="flex items-center justify-between cursor-pointer p-3 rounded-xl bg-white/80 border border-[#C9A24B]/20 hover:border-[#C9A24B]/40 transition-all">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-stone-900 block">
+                        تفعيل التسكين السريع بدون تلامس (Express Online Check-in) ⚡
+                      </span>
+                      <span className="text-[11px] text-stone-500 block">
+                        إصدار بطاقة صعود رقمية برمز QR لاستلام المفتاح عند الوصول في 10 ثوانٍ.
+                      </span>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={expressCheckInOptIn}
+                    onChange={(e) => setExpressCheckInOptIn(e.target.checked)}
+                    className="w-5 h-5 rounded text-[#C9A24B] focus:ring-[#C9A24B] border-stone-300 cursor-pointer"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Spam Honeypot field (hidden from real users) */}
+            <input
+              type="text"
+              name="company_url_hp"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+              className="hidden"
+              tabIndex={-1}
+              autoComplete="off"
+            />
+
+            {/* Policy & Consent Checkbox */}
+            <div className="pt-2">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={consentAgreed}
+                  onChange={(e) => setConsentAgreed(e.target.checked)}
+                  className="mt-0.5 w-5 h-5 rounded-lg text-[#C9A24B] focus:ring-[#C9A24B] border-stone-300"
+                />
+                <span className="text-xs text-stone-600 leading-relaxed">
+                  أوافق على{' '}
+                  <button
+                    type="button"
+                    onClick={() => setIsPolicyModalOpen(true)}
+                    className="text-[#C9A24B] font-bold underline hover:text-[#8C6D23]"
+                  >
+                    سياسة الإلغاء والشروط الخاصة بالحجز
+                  </button>
+                  ، وأفوض إدارة الفندق بإصدار سند الحجز الرقمي.
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {/* ITEM-BY-ITEM SUMMARY (Shown right above confirm button) */}
+          <div className="bg-gradient-to-br from-stone-50 to-stone-100/80 rounded-3xl border border-stone-200 p-5 md:p-6">
+            <h3 className="text-sm font-extrabold text-stone-900 mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#C9A24B]" />
+              <span>ملخص الحجز والتكلفة النهائية</span>
+            </h3>
+
+            <div className="space-y-2 text-xs md:text-sm text-stone-700">
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span>الفندق والغرفة:</span>
+                <span className="font-bold text-stone-900">{hotel.name} - {selectedRoom?.name}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span>فترة الإقامة:</span>
+                <span className="font-bold text-stone-900">{checkIn} إلى {checkOut} ({nightsCount} ليالٍ)</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span>عدد الغرف والنزلاء:</span>
+                <span className="font-bold text-stone-900">{roomsCount} غرف • {adultsCount + childrenCount} نزلاء</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span>باقة الوجبات:</span>
+                <span className="font-bold text-stone-900">{selectedMealPlan?.name || 'بدون وجبات'}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                <span>تكلفة الغرف:</span>
+                <span className="font-bold text-stone-900">{pricingResult.roomsCost} {pricingResult.currency}</span>
+              </div>
+              {pricingResult.mealsCost > 0 && (
+                <div className="flex justify-between items-center py-1 border-b border-stone-200/60">
+                  <span>تكلفة الوجبات:</span>
+                  <span className="font-bold text-stone-900">{pricingResult.mealsCost} {pricingResult.currency}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center pt-2 text-base font-extrabold text-stone-900">
+                <span>المجموع الإجمالي (شامل الضريبة):</span>
+                <span className="text-xl font-black text-[#C9A24B]">{pricingResult.grandTotal} {pricingResult.currency}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Submission Error Banner */}
+          {submitError && (
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs md:text-sm text-rose-700 font-bold flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+              <span>{submitError}</span>
+            </div>
+          )}
+
+          {/* Confirm Button */}
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(2)}
+              disabled={submitting}
+              className="h-14 px-6 rounded-2xl border border-stone-200 text-stone-700 font-bold text-sm hover:border-[#C9A24B] transition-colors"
+            >
+              السابق
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmBooking}
+              disabled={!isStep3Valid || submitting}
+              className="flex-1 h-14 rounded-2xl bg-gradient-to-r from-[#C9A24B] to-[#9E7B2D] text-white font-extrabold text-base shadow-xl shadow-[#C9A24B]/30 hover:shadow-2xl transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? (
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  <span>جاري تأكيد الحجز وإصدار السند...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-5 h-5" />
+                  <span>تأكيد الحجز الفوري الآن ({pricingResult.grandTotal} ر.س)</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* STEP 4: Success Confirmation Screen                      */}
+      {/* ======================================================== */}
+      {currentStep === 4 && confirmedBooking && (
+        <div className="bg-white rounded-3xl border border-stone-200 p-6 md:p-10 shadow-xl text-center space-y-6">
+          <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-sm">
+            <Check className="w-8 h-8 stroke-[3]" />
+          </div>
+
+          <div>
+            <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+              تم تسجيل الحجز بنجاح
+            </span>
+            <h2 className="text-2xl md:text-3xl font-extrabold text-stone-900 mt-2">
+              سند حجز فندقي موثق
+            </h2>
+            <p className="text-xs md:text-sm text-stone-500 mt-1">
+              تم حجز غرفتك في {confirmedBooking.hotelName} وتثبيت السعر المعتمد.
+            </p>
+          </div>
+
+          {/* Reference Code Card */}
+          <div className="bg-stone-50 border border-stone-200/80 rounded-2xl p-5 max-w-md mx-auto">
+            <span className="text-xs font-bold text-stone-500 block mb-1">الرقم المرجعي للحجز</span>
+            <div className="flex items-center justify-center gap-3">
+              <span className="text-2xl md:text-3xl font-black text-[#C9A24B] tracking-wider font-mono">
+                {confirmedBooking.bookingCode}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(confirmedBooking.bookingCode);
+                  setCopiedCode(true);
+                  setTimeout(() => setCopiedCode(false), 2000);
+                }}
+                className="p-2 rounded-xl bg-white border border-stone-200 text-stone-600 hover:text-[#C9A24B] transition-colors"
+                title="نسخ الرقم المرجعي"
+              >
+                {copiedCode ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Booking Summary Highlights */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-right max-w-2xl mx-auto bg-stone-50/50 p-4 rounded-2xl border border-stone-200/60 text-xs">
+            <div>
+              <span className="text-stone-400 block">الفندق</span>
+              <span className="font-bold text-stone-800">{confirmedBooking.hotelName}</span>
+            </div>
+            <div>
+              <span className="text-stone-400 block">الغرفة</span>
+              <span className="font-bold text-stone-800">{confirmedBooking.roomName}</span>
+            </div>
+            <div>
+              <span className="text-stone-400 block">فترة الإقامة</span>
+              <span className="font-bold text-stone-800">{confirmedBooking.checkIn} ({confirmedBooking.nights} ليالٍ)</span>
+            </div>
+            <div>
+              <span className="text-stone-400 block">الإجمالي المعتمد</span>
+              <span className="font-bold text-[#C9A24B]">{confirmedBooking.totalAmount} ر.س</span>
+            </div>
+          </div>
+
+          {/* VIP Express Check-In Pass Button */}
+          <div className="max-w-md mx-auto pt-2">
+            <button
+              type="button"
+              onClick={() => setShowExpressModal(true)}
+              className="w-full p-4 rounded-2xl bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 text-white border border-[#C9A24B]/60 shadow-xl shadow-black/20 hover:border-[#C9A24B] hover:shadow-2xl transition-all flex items-center justify-between gap-3 active:scale-[0.99] cursor-pointer group"
+            >
+              <div className="flex items-center gap-3 text-right">
+                <div className="w-11 h-11 rounded-xl bg-[#C9A24B]/20 border border-[#C9A24B]/50 flex items-center justify-center text-[#E0C070] shrink-0 group-hover:scale-105 transition-transform">
+                  <QrCode className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="block text-sm font-extrabold text-[#E0C070]">
+                    بطاقة وسند التسكين السريع بالـ QR ⚡
+                  </span>
+                  <span className="block text-[11px] text-stone-300">
+                    امسح الرمز واستلم المفتاح خلال 10 ثوانٍ عند الوصول
+                  </span>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-[#C9A24B] text-white text-[11px] font-bold shrink-0">
+                فتح البطاقة
+              </span>
+            </button>
+          </div>
+
+          {/* Real-time Email Delivery Indicator */}
+          <div className="bg-stone-50 border border-stone-200/90 rounded-2xl p-4 max-w-md mx-auto text-xs text-right">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                {emailSendingStatus === 'sending' && (
+                  <RefreshCw className="w-4 h-4 text-[#C9A24B] animate-spin shrink-0" />
+                )}
+                {emailSendingStatus === 'sent' && (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                )}
+                {emailSendingStatus === 'failed' && (
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                )}
+                {emailSendingStatus === 'idle' && (
+                  <Mail className="w-4 h-4 text-[#C9A24B] shrink-0" />
+                )}
+                <div>
+                  <span className="font-bold text-stone-800 block text-xs">
+                    {emailSendingStatus === 'sending' && 'جاري إرسال سند الحجز والفاتورة PDF لبريدك...'}
+                    {emailSendingStatus === 'sent' && 'تم إرسال سند الحجز والفاتورة المعتمدة لبريدك ✉️'}
+                    {emailSendingStatus === 'failed' && 'إشعار البريد الإلكتروني (يمكنك إعادة المحاولة)'}
+                    {emailSendingStatus === 'idle' && 'إشعار البريد الإلكتروني'}
+                  </span>
+                  <span className="text-[11px] text-stone-500 font-mono block">
+                    {confirmedBooking.guestEmail || guestEmail}
+                  </span>
+                </div>
+              </div>
+
+              {emailSendingStatus === 'sent' ? (
+                <button
+                  type="button"
+                  onClick={handleResendEmail}
+                  className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-[11px] font-bold border border-stone-200 transition-colors cursor-pointer"
+                >
+                  إعادة إرسال
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResendEmail}
+                  disabled={emailSendingStatus === 'sending'}
+                  className="px-2.5 py-1 rounded-lg bg-[#C9A24B] hover:bg-[#B38A34] text-white text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {emailSendingStatus === 'sending' ? 'جاري الإرسال...' : 'إرسال للبريد'}
+                </button>
+              )}
+            </div>
+            {emailErrorMessage && (
+              <p className="text-[10px] text-rose-600 mt-1 font-medium">{emailErrorMessage}</p>
+            )}
+          </div>
+
+          {/* Primary Action: Confirm via WhatsApp */}
+          <div className="space-y-3 max-w-md mx-auto pt-1">
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full h-14 rounded-2xl bg-[#25D366] hover:bg-[#20ba59] text-white font-extrabold text-base shadow-lg shadow-[#25D366]/25 hover:shadow-xl transition-all flex items-center justify-center gap-2.5 active:scale-[0.99]"
+            >
+              <MessageCircle className="w-6 h-6" />
+              <span>تأكيد واستلام الفاتورة عبر الواتساب</span>
+            </a>
+
+            {/* Secondary Action: Digital Invoice & PDF */}
+            <div className="flex gap-2.5">
+              <a
+                href={getInvoiceUrl(confirmedBooking.id, confirmedBooking.token)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 h-12 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs flex items-center justify-center gap-2 transition-colors border border-stone-200"
+              >
+                <FileText className="w-4 h-4 text-[#C9A24B]" />
+                <span>عرض الفاتورة الرقمية</span>
+              </a>
+
+              {onOpenTrackModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenTrackModal(confirmedBooking.bookingCode)}
+                  className="flex-1 h-12 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs flex items-center justify-center gap-2 transition-colors border border-stone-200"
+                >
+                  <Clock className="w-4 h-4 text-stone-500" />
+                  <span>متابعة حالة الحجز</span>
+                </button>
+              )}
+            </div>
+
+            {/* Google Maps Hotel Location Link */}
+            <div className="pt-1 text-center">
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(confirmedBooking.hotelName + ' ' + (confirmedBooking.hotelCity || 'مكة المكرمة'))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-900 font-bold transition-colors"
+              >
+                <MapPin className="w-3.5 h-3.5 text-[#C9A24B]" />
+                <span>موقع الفندق على خرائط Google Maps</span>
+              </a>
+            </div>
+          </div>
+
+          {onNavigateHome && (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="text-xs font-bold text-stone-500 hover:text-stone-800 underline pt-2"
+            >
+              العودة إلى الصفحة الرئيسية
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 4. MOBILE STICKY SUMMARY BAR (Fixed at bottom on small screens) */}
+      {currentStep < 4 && (
+        <div className="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-xl border-t border-stone-200 px-4 py-3 z-40 shadow-2xl">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg font-black text-[#C9A24B]">
+                  {pricingResult.grandTotal} <span className="text-xs font-bold text-stone-700">ر.س</span>
+                </span>
+                <span className="text-[11px] text-stone-500">/ {nightsCount} ليالٍ</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileSummaryOpen(!isMobileSummaryOpen)}
+                className="text-[11px] font-bold text-stone-500 hover:text-[#C9A24B] flex items-center gap-1"
+              >
+                <span>تفاصيل السعر</span>
+                {isMobileSummaryOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            {/* Quick Action button matching current step */}
+            {currentStep === 1 && (
+              <button
+                type="button"
+                onClick={handleProceedToStep2}
+                disabled={!isStep1Valid}
+                className="h-11 px-5 rounded-xl bg-[#C9A24B] text-white font-extrabold text-xs shadow-md disabled:opacity-50 flex items-center gap-1"
+              >
+                <span>اختيار الغرفة</span>
+                <ArrowLeft className={`w-3.5 h-3.5 ${isRtl ? '' : 'rotate-180'}`} />
+              </button>
+            )}
+
+            {currentStep === 2 && (
+              <button
+                type="button"
+                onClick={handleProceedToStep3}
+                disabled={!isStep2Valid}
+                className="h-11 px-5 rounded-xl bg-[#C9A24B] text-white font-extrabold text-xs shadow-md disabled:opacity-50 flex items-center gap-1"
+              >
+                <span>بيانات النزيل</span>
+                <ArrowLeft className={`w-3.5 h-3.5 ${isRtl ? '' : 'rotate-180'}`} />
+              </button>
+            )}
+
+            {currentStep === 3 && (
+              <button
+                type="button"
+                onClick={handleConfirmBooking}
+                disabled={!isStep3Valid || submitting}
+                className="h-11 px-5 rounded-xl bg-[#C9A24B] text-white font-extrabold text-xs shadow-md disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {submitting ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4" />
+                )}
+                <span>تأكيد الحجز</span>
+              </button>
+            )}
+          </div>
+
+          {/* Expandable Drawer on Mobile */}
+          {isMobileSummaryOpen && (
+            <div className="mt-3 pt-3 border-t border-stone-100 text-xs text-stone-600 space-y-1.5">
+              <div className="flex justify-between">
+                <span>الغرفة ({roomsCount}):</span>
+                <span className="font-bold text-stone-800">{selectedRoom?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>تكلفة الغرفة:</span>
+                <span className="font-bold text-stone-800">{pricingResult.roomsCost} ر.س</span>
+              </div>
+              {pricingResult.mealsCost > 0 && (
+                <div className="flex justify-between">
+                  <span>الوجبات:</span>
+                  <span className="font-bold text-stone-800">{pricingResult.mealsCost} ر.س</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-stone-900 pt-1 border-t border-stone-200">
+                <span>الإجمالي (شامل الضريبة):</span>
+                <span className="text-[#C9A24B]">{pricingResult.grandTotal} ر.س</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. Policy Modal / Drawer */}
+      {isPolicyModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <h3 className="font-bold text-stone-900 text-base flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[#C9A24B]" />
+                <span>شروط وسياسة الحجز المعتمدة</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsPolicyModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-stone-100 text-stone-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-stone-600 space-y-3 leading-relaxed">
+              <p><strong>أوقات التسكين:</strong> تسجيل الدخول من الساعة 4:00 عصراً، وتسجيل المغادرة حتى الساعة 12:00 ظهراً.</p>
+              <p><strong>سياسة الإلغاء:</strong> إلغاء مجاني متاح حتى 48 ساعة قبل موعد تسجيل الدخول. في حال الإلغاء بعد ذلك أو عدم الحضور، يتم تطبيق شروط الموسم.</p>
+              <p><strong>المفتاح الرقمي:</strong> يتم تفعيل المفتاح الرقمي وإرسال بيانات الغرفة فور تأكيد الحجز ومطابقة وثائق إثبات الشخصية.</p>
+              <p><strong>الضرائب والرسوم:</strong> جميع الأسعار تشمل ضريبة القيمة المضافة (15%) ورسوم الخدمة المعتمدة بالمملكة العربية السعودية.</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsPolicyModalOpen(false)}
+              className="w-full h-11 rounded-xl bg-stone-900 text-white font-bold text-xs cursor-pointer"
+            >
+              فهمت وموافق
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Express Check-in & Digital Boarding Pass Modal */}
+      {showExpressModal && confirmedBooking && (
+        <ExpressCheckInModal
+          booking={confirmedBooking}
+          siteSettings={siteSettings}
+          onClose={() => setShowExpressModal(false)}
+        />
+      )}
+    </div>
+  );
+};

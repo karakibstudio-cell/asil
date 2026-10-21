@@ -166,6 +166,20 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
     return () => clearInterval(timer);
   }, [isAutoPlaying, filteredItems.length]);
 
+  // Preload adjacent images for zero-latency slide transitions
+  useEffect(() => {
+    if (filteredItems.length > 1) {
+      const nextIdx = (currentIndex + 1) % filteredItems.length;
+      const prevIdx = (currentIndex - 1 + filteredItems.length) % filteredItems.length;
+      [filteredItems[nextIdx], filteredItems[prevIdx]].forEach(item => {
+        if (item?.url && !item.isVideo) {
+          const img = new Image();
+          img.src = item.url;
+        }
+      });
+    }
+  }, [currentIndex, filteredItems]);
+
   // Scroll active thumbnail into view
   useEffect(() => {
     if (thumbnailScrollRef.current) {
@@ -338,9 +352,12 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
           >
             {/* Main Stage Image */}
             <img
-              key={currentItem.id}
+              key={currentItem.id || `main-stage-${currentIndex}`}
               src={currentItem.url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80'}
               alt={currentItem.title}
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
               onError={(e) => {
                 const target = e.currentTarget;
                 if (!target.dataset.fallbackApplied) {
@@ -460,7 +477,7 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
                   const isActive = idx === currentIndex;
                   return (
                     <button
-                      key={item.id}
+                      key={item.id || `thumb-${idx}`}
                       onClick={() => setCurrentIndex(idx)}
                       className={`relative w-20 h-14 sm:w-28 sm:h-18 rounded-xl overflow-hidden shrink-0 transition-all duration-300 border-2 ${
                         isActive
@@ -502,7 +519,7 @@ export const HotelImageGallery: React.FC<HotelImageGalleryProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {filteredItems.map((item, idx) => (
             <div
-              key={item.id}
+              key={item.id || `gallery-grid-${idx}`}
               onClick={() => onOpenLightbox(getGlobalIndex(item))}
               className="group relative bg-white rounded-2xl overflow-hidden border border-stone-200 hover:border-[#C9A24B] shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col"
             >

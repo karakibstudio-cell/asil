@@ -79,7 +79,7 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
     
     const set = new Set<string>();
     relevantHotels.forEach(h => {
-      if (h.district) set.add(h.district);
+      if (h.district && h.district.trim()) set.add(h.district.trim());
     });
     return Array.from(set).sort();
   }, [hotels, filters.city]);
@@ -316,11 +316,11 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
                   </div>
 
                   <div className="max-h-56 overflow-y-auto space-y-1">
-                    {ALL_HOTEL_CATEGORIES.map((cat) => {
+                    {ALL_HOTEL_CATEGORIES.map((cat, catIdx) => {
                       const isSelected = filters.selectedCategories.includes(cat);
                       return (
                         <div
-                          key={cat}
+                          key={`${cat || 'cat'}-${catIdx}`}
                           onClick={() => toggleCategoryFilter(cat)}
                           className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs cursor-pointer transition-colors ${
                             isSelected
@@ -379,9 +379,9 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
                     {filters.district === 'all' && <Check className="w-3.5 h-3.5 text-[#B38A34]" />}
                   </div>
 
-                  {availableDistricts.map((dist) => (
+                  {availableDistricts.filter(Boolean).map((dist, distIdx) => (
                     <div
-                      key={dist}
+                      key={`${dist || 'dist'}-${distIdx}`}
                       onClick={() => {
                         setFilters(prev => ({ ...prev, district: dist }));
                         setOpenDropdown(null);
@@ -576,9 +576,9 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
               <span className="text-[11px] text-stone-500 font-semibold">
                 {language === 'en' ? 'Active Filters:' : 'التصنيفات المحددة:'}
               </span>
-              {filters.selectedCategories.map((cat) => (
+              {filters.selectedCategories.filter(Boolean).map((cat, catIdx) => (
                 <span
-                  key={cat}
+                  key={`${cat || 'cat'}-${catIdx}`}
                   className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-[11px] font-bold border border-[#C9A24B]/30"
                 >
                   <span>{translateDynamic(cat)}</span>
@@ -627,10 +627,11 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
-            {filteredHotels.map((hotel) => (
+            {filteredHotels.map((hotel, hIdx) => (
               <HotelCard
-                key={hotel.id}
+                key={hotel.id || `hotel-card-${hIdx}`}
                 hotel={hotel}
+                index={hIdx}
                 onClick={() => onSelectHotel(hotel.slug || hotel.id)}
                 onSelect={() => onSelectHotel(hotel.slug || hotel.id)}
                 siteSettings={siteSettings}

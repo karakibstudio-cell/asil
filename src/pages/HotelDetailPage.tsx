@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Hotel, ActivePage, SiteSettings } from '../types';
 import { HotelCard } from '../components/HotelCard';
-import { Lightbox, LightboxMediaItem } from '../components/Lightbox';
+import type { LightboxMediaItem } from '../components/Lightbox';
 import { SafeVideoPlayer } from '../components/SafeVideoPlayer';
-import { AddReviewModal } from '../components/AddReviewModal';
 import { HotelImageGallery } from '../components/HotelImageGallery';
-import { HotelBookingModal } from '../components/HotelBookingModal';
-import { RoomBookingModal } from '../components/RoomBookingModal';
-import { TrackBookingModal } from '../components/TrackBookingModal';
+
+const Lightbox = React.lazy(() => import('../components/Lightbox').then(m => ({ default: m.Lightbox })));
+const AddReviewModal = React.lazy(() => import('../components/AddReviewModal').then(m => ({ default: m.AddReviewModal })));
+const HotelBookingModal = React.lazy(() => import('../components/HotelBookingModal').then(m => ({ default: m.HotelBookingModal })));
+const RoomBookingModal = React.lazy(() => import('../components/RoomBookingModal').then(m => ({ default: m.RoomBookingModal })));
+const TrackBookingModal = React.lazy(() => import('../components/TrackBookingModal').then(m => ({ default: m.TrackBookingModal })));
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from '../components/BookingIcons';
 import { useSEO } from '../utils/seo';
 import { getFirstActiveWhatsApp, getChannelHref, buildWhatsAppLink } from '../utils/channels';
@@ -40,6 +42,7 @@ import {
   Crown
 } from 'lucide-react';
 import { getHotelShareUrl, getHotelSlug } from '../utils/routing';
+import { isBusTransportation, formatTransportText, formatDistanceDisplay } from '../utils/hotelTransport';
 
 interface HotelDetailPageProps {
   hotel: Hotel;
@@ -141,38 +144,51 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
     setActiveTab('description');
   }, [hotel.id]);
 
-  // Build complete media items for Lightbox
+  // Build complete media items for Lightbox (100% null-safe)
   const allMediaItems: LightboxMediaItem[] = [];
 
-  if (hotel.videoUrl) {
+  if (hotel.videoUrl && typeof hotel.videoUrl === 'string') {
     allMediaItems.push({
       type: 'video',
       url: hotel.videoUrl,
-      title: `فيديو تعريفي - ${hotel.name}`,
-      thumbnail: hotel.mainImage
+      title: `فيديو تعريفي - ${hotel.name || ''}`,
+      thumbnail: hotel.mainImage || LUXURY_FALLBACK_HOTEL_IMAGE
     });
   }
 
-  // Combine main and gallery images without duplicates
-  const rawGalleryUrls = (hotel.galleryImages || [])
-    .map(img => typeof img === 'string' ? img : img.url)
+  // Combine main and gallery images without duplicates (safely filter out nulls & non-objects)
+  const rawGalleryUrls = (Array.isArray(hotel.galleryImages) ? hotel.galleryImages : [])
+    .filter(Boolean)
+    .map(img => {
+      if (!img) return '';
+      if (typeof img === 'string') return img.trim();
+      if (typeof img === 'object' && img !== null) return ((img as any).url || '').trim();
+      return '';
+    })
     .filter(Boolean);
-  const uniqueImages = Array.from(new Set([hotel.mainImage, ...rawGalleryUrls]));
+
+  const cleanMainImage = (hotel.mainImage || '').trim();
+  const uniqueImages = Array.from(new Set([cleanMainImage, ...rawGalleryUrls].filter(Boolean)));
+  if (uniqueImages.length === 0) {
+    uniqueImages.push(LUXURY_FALLBACK_HOTEL_IMAGE);
+  }
+
   uniqueImages.forEach((imgUrl, i) => {
     allMediaItems.push({
       type: 'image',
       url: imgUrl,
-      title: `${hotel.name} - صورة ${i + 1}`
+      title: `${hotel.name || 'الفندق'} - صورة ${i + 1}`
     });
   });
 
-  if (hotel.additionalVideos) {
-    hotel.additionalVideos.forEach(v => {
+  if (Array.isArray(hotel.additionalVideos)) {
+    hotel.additionalVideos.filter(Boolean).forEach(v => {
+      if (!v || !v.videoUrl) return;
       allMediaItems.push({
         type: 'video',
         url: v.videoUrl,
-        title: v.title,
-        thumbnail: v.thumbnail
+        title: v.title || `${hotel.name || 'الفندق'} - جولة`,
+        thumbnail: v.thumbnail || cleanMainImage || LUXURY_FALLBACK_HOTEL_IMAGE
       });
     });
   }
@@ -193,7 +209,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
     { key: 'description', label: language === 'en' ? 'Overview' : 'الوصف الشامل' },
     { key: 'gallery', label: language === 'en' ? 'Photo Gallery' : 'معرض صور المرافق', count: uniqueImages.length },
     { key: 'rooms', label: language === 'en' ? 'Rooms & Suites' : 'الغرف والأجنحة' },
-    { key: 'amenities', label: language === 'en' ? 'Amenities & Services' : 'المرافق والخدمات', count: hotel.amenities.length },
+    { key: 'amenities', label: language === 'en' ? 'Amenities & Services' : 'المرافق والخدمات', count: (hotel.amenities || []).length },
     { key: 'location', label: language === 'en' ? 'Location & Map' : 'الموقع والخريطة' },
     { key: 'videos', label: language === 'en' ? 'Room Tours & Videos' : 'الفيديوهات وجولات الغرف', count: (hotel.additionalVideos?.length || 0) + (hotel.videoUrl ? 1 : 0) },
     { key: 'reviews', label: language === 'en' ? 'Guest Reviews' : 'التقييمات وتجارب النزلاء', count: (hotel.reviewsList?.length || 0) + (hotel.reviewCount || 0) }
@@ -274,7 +290,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                 {translateDynamic(hotel.city)} - {language === 'en' ? `${translateDynamic(hotel.district)} District` : `حي ${hotel.district}`}
               </span>
               <div className="flex items-center gap-1">
-                {[...Array(hotel.stars)].map((_, i) => (
+                {[...Array(Math.max(1, Math.min(5, Number(hotel.stars) || 5)))].map((_, i) => (
                   <Star key={i} className="w-4 h-4 fill-[#C9A24B] text-[#C9A24B]" />
                 ))}
               </div>
@@ -440,9 +456,10 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
               className="md:col-span-2 relative aspect-[16/10] md:aspect-auto md:h-full bg-stone-100 cursor-pointer group overflow-hidden"
             >
               <img
-                src={hotel.mainImage || LUXURY_FALLBACK_HOTEL_IMAGE}
+                src={(hotel.mainImage || LUXURY_FALLBACK_HOTEL_IMAGE).replace('hotel_test_1790703048618_main.png', 'hotel_test_1790703048618_main.webp')}
                 alt={hotel.name}
                 loading="eager"
+                fetchPriority="high"
                 decoding="async"
                 onError={handleHotelImageError}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
@@ -477,7 +494,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                   <img
                     src={imgUrl || LUXURY_FALLBACK_HOTEL_IMAGE}
                     alt={`${hotel.name} - ${idx + 1}`}
-                    loading="lazy"
+                    loading="eager"
                     decoding="async"
                     onError={handleHotelImageError}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
@@ -528,18 +545,24 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
               </strong>
             </div>
 
-            {/* Distance Meter */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-100 border border-stone-200 text-xs text-stone-800">
-              <Footprints className="w-4 h-4 text-[#C9A24B]" />
-              <span>{translateDynamic(hotel.distanceText)}</span>
-              <span className="text-stone-500">
-                {language === 'en' ? `(${hotel.walkingTimeMinutes} min walk)` : `(${hotel.walkingTimeMinutes} دقائق مشياً)`}
-              </span>
-            </div>
+            {/* Distance & Transport Meter */}
+            {hotel.showDistanceBadge !== false && hotel.showTransportInfo !== false && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-100 border border-stone-200 text-xs text-stone-800">
+                {isBusTransportation(hotel) ? (
+                  <Bus className="w-4 h-4 text-[#C9A24B]" />
+                ) : (
+                  <Footprints className="w-4 h-4 text-[#C9A24B]" />
+                )}
+                <span>{formatDistanceDisplay(hotel.distanceToHaram || 0, language)}</span>
+                <span className="text-stone-500 font-medium">
+                  ({formatTransportText(hotel, language).text})
+                </span>
+              </div>
+            )}
 
             {/* Star badge */}
             <div className="hidden lg:flex items-center gap-1 text-xs text-[#B38A34]">
-              {[...Array(hotel.stars)].map((_, i) => (
+              {[...Array(Math.max(1, Math.min(5, Number(hotel.stars) || 5)))].map((_, i) => (
                 <Star key={i} className="w-3.5 h-3.5 fill-current text-[#C9A24B]" />
               ))}
             </div>
@@ -612,7 +635,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
             )}
 
             {/* Direct WhatsApp CTA when Online Booking is Enabled */}
-            {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled !== false && hotel.showHotelWhatsApp !== false && !!whatsAppBookingUrl && (
+            {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled === true && hotel.showHotelWhatsApp !== false && !!whatsAppBookingUrl && (
               <a
                 id="sticky-whatsapp-book-btn"
                 href={whatsAppBookingUrl}
@@ -626,7 +649,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
             )}
 
             {/* Primary Action Button: Online Booking if enabled and creation allowed, or Direct WhatsApp Booking if offline or creation disabled */}
-            {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.allowPublicBookingCreation !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled !== false ? (
+            {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.allowPublicBookingCreation !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled === true ? (
               <button
                 id="sticky-book-now-button"
                 onClick={() => {
@@ -872,7 +895,7 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {hotel.amenities.map((amenity, idx) => (
+                  {(hotel.amenities || []).map((amenity, idx) => (
                     <div
                       key={idx}
                       className="flex items-center gap-3.5 p-4 rounded-2xl bg-stone-50 border border-stone-200 hover:border-[#C9A24B]/40 transition-colors"
@@ -945,13 +968,13 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                     </h3>
                     <p className="text-xs sm:text-sm text-stone-500 flex items-center gap-1.5">
                       <MapPin className="w-4 h-4 text-[#C9A24B]" />
-                      <span>{translateDynamic(hotel.location.address)} ({language === 'en' ? `${translateDynamic(hotel.district)} District` : `حي ${hotel.district}`})</span>
+                      <span>{translateDynamic(hotel.location?.address || hotel.district || '')} ({language === 'en' ? `${translateDynamic(hotel.district)} District` : `حي ${hotel.district}`})</span>
                     </p>
                   </div>
 
                   <a
                     id="get-directions-button"
-                    href={`https://maps.google.com/?q=${hotel.location.lat},${hotel.location.lng}`}
+                    href={hotel.googleMapsUrl || (hotel.location?.lat && hotel.location?.lng ? `https://maps.google.com/?q=${hotel.location.lat},${hotel.location.lng}` : `https://maps.google.com/?q=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-5 py-2.5 rounded-xl bg-stone-100 hover:bg-[#C9A24B] text-stone-800 hover:text-white font-semibold text-xs border border-stone-200 hover:border-[#C9A24B] transition-colors flex items-center gap-2 self-start sm:self-auto"
@@ -963,23 +986,32 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-stone-50 border border-stone-200">
                   <div className="text-center p-3">
-                    <span className="text-xs text-stone-500 block mb-1">{language === 'en' ? 'Actual Distance' : 'المسافة الفعلية'}</span>
-                    <strong className="text-lg font-bold text-[#B38A34]">{hotel.distanceToHaram} {language === 'en' ? 'meters' : 'متراً'}</strong>
+                    <span className="text-xs text-stone-500 block mb-1">{language === 'en' ? 'Actual Distance' : 'المسافة عن الحرم'}</span>
+                    <strong className="text-lg font-bold text-[#B38A34]">
+                      {formatDistanceDisplay(hotel.distanceToHaram || 0, language)} ({hotel.distanceToHaram || 0} {language === 'en' ? 'meters' : 'م'})
+                    </strong>
                   </div>
                   <div className="text-center p-3 border-r sm:border-r-0 sm:border-x border-stone-200">
-                    <span className="text-xs text-stone-500 block mb-1">{language === 'en' ? 'Walking Time' : 'وقت المشي المتوقع'}</span>
-                    <strong className="text-lg font-bold text-[#B38A34]">{hotel.walkingTimeMinutes} {language === 'en' ? 'minutes' : 'دقائق'}</strong>
+                    <span className="text-xs text-stone-500 block mb-1">
+                      {isBusTransportation(hotel)
+                        ? (language === 'en' ? 'Shuttle Bus Time' : 'وقت الوصول بالحافلة')
+                        : (language === 'en' ? 'Walking Time' : 'وقت المشي المتوقع')}
+                    </span>
+                    <strong className="text-lg font-bold text-[#B38A34]">
+                      {hotel.walkingTimeMinutes || (isBusTransportation(hotel) ? 5 : 2)} {language === 'en' ? 'minutes' : 'دقائق'}
+                      {isBusTransportation(hotel) && <span className="text-xs block text-stone-500 font-normal mt-0.5">ترددي مستمر 24/7</span>}
+                    </strong>
                   </div>
                   <div className="text-center p-3">
                     <span className="text-xs text-stone-500 block mb-1">{language === 'en' ? 'View Type' : 'نوع الإطلالة'}</span>
-                    <strong className="text-base font-bold text-stone-900">{translateDynamic(hotel.location.viewType)}</strong>
+                    <strong className="text-base font-bold text-stone-900">{translateDynamic(hotel.location?.viewType || 'إطلالة حرم')}</strong>
                   </div>
                 </div>
 
                 <div className="w-full h-80 sm:h-96 rounded-2xl overflow-hidden border border-stone-200 bg-stone-100 relative">
                   <iframe
                     title={`location of ${hotel.name}`}
-                    src={hotel.location.mapEmbedUrl || `https://maps.google.com/maps?q=${hotel.location.lat},${hotel.location.lng}&hl=${language}&z=17&output=embed`}
+                    src={hotel.location?.mapEmbedUrl || (hotel.location?.lat && hotel.location?.lng ? `https://maps.google.com/maps?q=${hotel.location.lat},${hotel.location.lng}&hl=${language}&z=17&output=embed` : `https://maps.google.com/maps?q=${encodeURIComponent(hotel.name + ' ' + hotel.city)}&hl=${language}&z=16&output=embed`)}
                     className="w-full h-full border-0"
                     loading="lazy"
                   />
@@ -1041,7 +1073,8 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
                       {language === 'en' ? `Additional Suite & View Tours (${hotel.additionalVideos.length})` : `جولات إضافية للأجنحة والإطلالات (${hotel.additionalVideos.length})`}
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-                      {hotel.additionalVideos.map((vid) => {
+                      {hotel.additionalVideos.filter(Boolean).map((vid) => {
+                        if (!vid || !vid.videoUrl) return null;
                         const targetIdx = allMediaItems.findIndex(m => m.url === vid.videoUrl);
                         return (
                           <div
@@ -1204,8 +1237,9 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
             {fallbackSimilar.map((simHotel, idx) => (
               <HotelCard
-                key={simHotel.id}
+                key={simHotel.id || `similar-hotel-${idx}`}
                 hotel={simHotel}
+                index={idx}
                 onClick={() => onSelectHotel(simHotel.slug || simHotel.id)}
                 siteSettings={siteSettings}
               />
@@ -1215,33 +1249,41 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
       </div>
 
       {/* Interactive Room Booking Modal with Room Choices, Meal Plans & Digital Key */}
-      {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.allowPublicBookingCreation !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled !== false ? (
-        <RoomBookingModal
-          isOpen={bookingModalOpen}
-          onClose={() => setBookingModalOpen(false)}
-          hotel={hotel}
-          siteSettings={siteSettings}
-          onOpenTrackModal={(code) => {
-            setTrackBookingCode(code);
-            setTrackModalOpen(true);
-          }}
-        />
-      ) : (
-        <HotelBookingModal
-          isOpen={bookingModalOpen}
-          onClose={() => setBookingModalOpen(false)}
-          hotel={hotel}
-          siteSettings={siteSettings}
-        />
+      {bookingModalOpen && (
+        <React.Suspense fallback={null}>
+          {siteSettings?.bookingModule?.enabled !== false && siteSettings?.bookingModule?.allowPublicBookingCreation !== false && siteSettings?.bookingModule?.showInHotelDetail !== false && hotel.onlineBookingEnabled === true ? (
+            <RoomBookingModal
+              isOpen={bookingModalOpen}
+              onClose={() => setBookingModalOpen(false)}
+              hotel={hotel}
+              siteSettings={siteSettings}
+              onOpenTrackModal={(code) => {
+                setTrackBookingCode(code);
+                setTrackModalOpen(true);
+              }}
+            />
+          ) : (
+            <HotelBookingModal
+              isOpen={bookingModalOpen}
+              onClose={() => setBookingModalOpen(false)}
+              hotel={hotel}
+              siteSettings={siteSettings}
+            />
+          )}
+        </React.Suspense>
       )}
 
       {/* Track & Review Booking Modal */}
-      <TrackBookingModal
-        isOpen={trackModalOpen}
-        onClose={() => setTrackModalOpen(false)}
-        initialCode={trackBookingCode}
-        siteSettings={siteSettings}
-      />
+      {trackModalOpen && (
+        <React.Suspense fallback={null}>
+          <TrackBookingModal
+            isOpen={trackModalOpen}
+            onClose={() => setTrackModalOpen(false)}
+            initialCode={trackBookingCode}
+            siteSettings={siteSettings}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 };

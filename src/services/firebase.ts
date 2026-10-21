@@ -1,14 +1,22 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { 
   getFirestore, 
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   Firestore, 
   collection, 
   getDocs, 
-  getDoc,
+  getDoc, 
   doc, 
   setDoc, 
+  updateDoc,
   deleteDoc, 
   query, 
+  where,
+  orderBy,
+  limit,
+  writeBatch,
   onSnapshot 
 } from 'firebase/firestore';
 import { 
@@ -23,8 +31,35 @@ import {
   User 
 } from 'firebase/auth';
 import firebaseConfigJson from '../../firebase-applet-config.json';
-import { Hotel, Offer, ContactMessage, SiteSettings, ContactChannel, ContentItem, HotelReview, HeroSlide, District, AdminUser, BranchLocation, DepartmentContact, QuickLinkItem, AboutPageSettings, StoryTeaserSettings, IntegratedServicesSettings, HomeSectionsSettings } from '../types';
-import { DEFAULT_VALUE_PILLARS } from '../components/AdminAboutManager';
+import { 
+  Hotel, 
+  Offer, 
+  ContactMessage, 
+  SiteSettings, 
+  ContactChannel, 
+  ContentItem, 
+  HotelReview, 
+  HeroSlide, 
+  District, 
+  AdminUser, 
+  BranchLocation, 
+  DepartmentContact, 
+  QuickLinkItem, 
+  AboutPageSettings, 
+  StoryTeaserSettings, 
+  IntegratedServicesSettings, 
+  HomeSectionsSettings,
+  AdminRole,
+  AuditLogEntry,
+  SUPER_ADMIN_ROLE_ID,
+  BOOKINGS_STAFF_ROLE_ID,
+  AVAILABILITY_MANAGER_ROLE_ID,
+  DEFAULT_ADMIN_ROLES,
+  PermissionModule
+} from '../types';
+import { DEFAULT_VALUE_PILLARS } from '../data/aboutPillars';
+import { getHotelSlug } from '../utils/routing';
+import { DEFAULT_ACTION_BUTTONS, DEFAULT_CONTACTS_DIRECTORY } from '../utils/actionButtons';
 import { INITIAL_HOTELS, INITIAL_OFFERS, INITIAL_REVIEWS, INITIAL_SITE_SETTINGS } from '../data/mockHotels';
 import {
   fetchHotelsFromSupabase,
@@ -46,8 +81,16 @@ import {
   fetchAdminUsersFromSupabase,
   upsertAdminUserToSupabase,
   deleteAdminUserFromSupabase,
+  fetchAdminRolesFromSupabase,
+  upsertAdminRoleToSupabase,
+  deleteAdminRoleFromSupabase,
+  fetchAuditLogsFromSupabase,
+  insertAuditLogToSupabase,
   fetchSiteSettingsFromSupabase,
   upsertSiteSettingsToSupabase,
+  fetchLiveContentFromSupabase,
+  upsertLiveContentToSupabase,
+  bulkUpsertLiveContentToSupabase,
   getSupabaseConfig
 } from './supabase';
 
@@ -62,10 +105,24 @@ try {
     app = getApp();
   }
   
-  if (firebaseConfigJson.firestoreDatabaseId) {
-    db = getFirestore(app, firebaseConfigJson.firestoreDatabaseId);
+  // Initialize Firestore with multi-tab persistent IndexedDB local cache (instant 0ms loads, automatic offline support)
+  if (typeof window !== 'undefined') {
+    try {
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      }, firebaseConfigJson.firestoreDatabaseId || undefined);
+    } catch {
+      // Fallback if already initialized or if IndexedDB is restricted
+      db = firebaseConfigJson.firestoreDatabaseId 
+        ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId) 
+        : getFirestore(app);
+    }
   } else {
-    db = getFirestore(app);
+    db = firebaseConfigJson.firestoreDatabaseId 
+      ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId) 
+      : getFirestore(app);
   }
   
   auth = getAuth(app);
@@ -229,11 +286,13 @@ const REVIEWS_COLLECTION = 'reviews';
 const DISTRICTS_COLLECTION = 'districts';
 const USERS_COLLECTION = 'admin_users';
 export const CONTENT_COLLECTION = 'content';
+export const ROLES_COLLECTION = 'admin_roles';
+export const AUDIT_LOGS_COLLECTION = 'audit_logs';
 
 // ==========================================
-// In-Memory Fetch Cache (prevents redundant Supabase calls within short windows)
+// In-Memory Fetch Cache & Stale-While-Revalidate Engine
 // ==========================================
-const CACHE_TTL_MS = 2_000; // 2 seconds — keep low for fast freshness after admin edits
+const CACHE_TTL_MS = 5 * 60_000; // 5 minutes in-memory cache — zero network delay for in-session navigations
 
 interface CacheEntry<T> {
   data: T;
@@ -242,7 +301,7 @@ interface CacheEntry<T> {
 
 const fetchCache: Record<string, CacheEntry<any>> = {};
 
-function getCached<T>(key: string, skipCache = false): T | null {
+export function getCached<T>(key: string, skipCache = false): T | null {
   if (skipCache) return null;
   const entry = fetchCache[key];
   if (entry && (Date.now() - entry.timestamp) < CACHE_TTL_MS) {
@@ -251,7 +310,7 @@ function getCached<T>(key: string, skipCache = false): T | null {
   return null;
 }
 
-function setCache<T>(key: string, data: T): void {
+export function setCache<T>(key: string, data: T): void {
   fetchCache[key] = { data, timestamp: Date.now() };
 }
 
@@ -261,6 +320,324 @@ export function invalidateCache(key?: string): void {
   } else {
     Object.keys(fetchCache).forEach(k => delete fetchCache[k]);
   }
+}
+
+export const normalizeHotel = (h: any): Hotel => {
+  if (!h || typeof h !== 'object') return h;
+
+  const rawGallery = Array.isArray(h.galleryImages || h.gallery_images)
+    ? (h.galleryImages || h.gallery_images)
+    : [];
+  const cleanGalleryImages = rawGallery
+    .filter(Boolean)
+    .map((item: any) => {
+      if (typeof item === 'string') return item.trim();
+      if (typeof item === 'object' && item !== null) {
+        return {
+          url: (item.url || '').trim(),
+          category: item.category || 'all',
+          title: item.title || ''
+        };
+      }
+      return null;
+    })
+    .filter((item: any) => typeof item === 'string' ? Boolean(item) : Boolean(item?.url));
+
+  const cleanAmenities = Array.isArray(h.amenities)
+    ? h.amenities.filter((a: any) => typeof a === 'string' && a.trim().length > 0)
+    : [];
+
+  const cleanVideos = Array.isArray(h.additionalVideos)
+    ? h.additionalVideos.filter((v: any) => v && typeof v === 'object' && v.videoUrl)
+    : [];
+
+  return {
+    ...h,
+    stars: typeof h.stars === 'number' && !isNaN(h.stars) ? Math.max(1, Math.min(5, h.stars)) : 5,
+    galleryImages: cleanGalleryImages,
+    amenities: cleanAmenities,
+    additionalVideos: cleanVideos,
+    district: h.district || (h.city === 'مكة المكرمة' ? 'أجياد' : 'المنطقة المركزية الشمالية'),
+    featured: h.featured ?? true,
+    categories: Array.isArray(h.categories) && h.categories.length > 0 ? h.categories : ['فنادق العمرة'],
+    rating: typeof h.rating === 'number' ? h.rating : 4.8,
+    reviewCount: typeof h.reviewCount === 'number' ? h.reviewCount : 0,
+    bookingUrl: h.bookingUrl || '',
+    showBookingUrl: h.showBookingUrl !== false,
+    agodaUrl: h.agodaUrl || '',
+    showAgodaUrl: h.showAgodaUrl !== false,
+    expediaUrl: h.expediaUrl || '',
+    showExpediaUrl: h.showExpediaUrl !== false,
+    googleMapsUrl: h.googleMapsUrl || '',
+    showGoogleMapsUrl: h.showGoogleMapsUrl !== false,
+    hotelWhatsApp: h.hotelWhatsApp || '',
+    showHotelWhatsApp: h.showHotelWhatsApp !== false,
+    hotelEmail: h.hotelEmail || '',
+    showHotelEmail: h.showHotelEmail !== false,
+    isActive: h.isActive !== false,
+    onlineBookingEnabled: typeof h.onlineBookingEnabled === 'boolean'
+      ? h.onlineBookingEnabled
+      : (typeof h.online_booking_enabled === 'boolean' 
+          ? h.online_booking_enabled 
+          : (typeof (h.location as any)?.onlineBookingEnabled === 'boolean' 
+              ? (h.location as any).onlineBookingEnabled 
+              : (h.id === 'hotel_test_1790703048618'))),
+    bookingPolicy: h.bookingPolicy || h.booking_policy || undefined,
+    order: typeof h.order === 'number' 
+      ? h.order 
+      : (typeof (h.location as any)?.order === 'number' ? (h.location as any).order : 0),
+    showDistanceBadge: typeof h.showDistanceBadge === 'boolean'
+      ? h.showDistanceBadge
+      : (typeof (h.location as any)?.showDistanceBadge === 'boolean' ? (h.location as any).showDistanceBadge : true),
+    showStars: typeof h.showStars === 'boolean'
+      ? h.showStars
+      : (typeof (h.location as any)?.showStars === 'boolean' ? (h.location as any).showStars : true),
+    showRating: typeof h.showRating === 'boolean'
+      ? h.showRating
+      : (typeof (h.location as any)?.showRating === 'boolean' ? (h.location as any).showRating : true),
+    showCategories: typeof h.showCategories === 'boolean'
+      ? h.showCategories
+      : (typeof (h.location as any)?.showCategories === 'boolean' ? (h.location as any).showCategories : true),
+    showDistrict: typeof h.showDistrict === 'boolean'
+      ? h.showDistrict
+      : (typeof (h.location as any)?.showDistrict === 'boolean' ? (h.location as any).showDistrict : true),
+    customClassification: h.customClassification || (h.location as any)?.customClassification || ''
+  };
+};
+
+// ==========================================
+// Single Consolidated Site Bundle & Content Versioning (Loaded ONCE per session)
+// ==========================================
+export interface SiteBundle {
+  version: number;
+  updatedAt: number;
+  siteSettings: SiteSettings;
+  hotels: Hotel[];
+  offers: Offer[];
+  districts: District[];
+  slugMap: Record<string, string>;
+}
+
+export function listenToSiteVersion(_callback: (version: number) => void): () => void {
+  // Supabase PostgreSQL Realtime handles live multi-client updates directly without Firestore permission issues
+  return () => {};
+}
+
+export async function bumpSiteVersion(_section?: string): Promise<number> {
+  const newVersion = Date.now();
+  invalidateCache('site_bundle');
+  invalidateCache('site_settings');
+  invalidateCache('hotels');
+  invalidateCache('offers');
+
+  if (db) {
+    try {
+      await setDoc(doc(db, SETTINGS_COLLECTION, 'version'), {
+        version: newVersion,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn('Failed bumping site version in Firestore:', err);
+    }
+
+    // Refresh bundled document asynchronously in background
+    setTimeout(async () => {
+      try {
+        const [siteSettings, hotels, offers, districts] = await Promise.all([
+          getSiteSettingsFromDb(true),
+          getHotelsFromDb(true),
+          getOffersFromDb(true),
+          getDistrictsFromDb()
+        ]);
+        const slugMap: Record<string, string> = {};
+        hotels.forEach(h => {
+          slugMap[h.id] = h.id;
+          const slug = getHotelSlug(h);
+          if (slug) slugMap[slug] = h.id;
+        });
+        const freshBundle: SiteBundle = {
+          version: newVersion,
+          updatedAt: Date.now(),
+          siteSettings,
+          hotels,
+          offers,
+          districts,
+          slugMap
+        };
+        const sanitized = JSON.parse(safeStringify(freshBundle));
+        await setDoc(doc(db, SETTINGS_COLLECTION, 'site_config'), sanitized, { merge: true });
+      } catch (err) {
+        console.warn('Failed background site_config update:', err);
+      }
+    }, 100);
+  }
+
+  return newVersion;
+}
+
+export async function getSiteBundleFromDb(skipCache = false): Promise<SiteBundle> {
+  // 1. Check in-memory cache first (0ms instantaneous)
+  const cached = getCached<SiteBundle>('site_bundle', skipCache);
+  if (cached) return cached;
+
+  // 1.5. Check LocalStorage persistent cache (0ms instantaneous for all visitors)
+  if (!skipCache) {
+    try {
+      const savedBundle = localStorage.getItem('diy_site_bundle');
+      if (savedBundle) {
+        const parsed = JSON.parse(savedBundle) as SiteBundle;
+        if (parsed && Array.isArray(parsed.hotels) && parsed.hotels.length >= INITIAL_HOTELS.length) {
+          parsed.hotels = parsed.hotels.map(normalizeHotel);
+          setCache('site_bundle', parsed);
+          setCache('site_settings', parsed.siteSettings);
+          setCache('hotels', parsed.hotels);
+          setCache('offers', parsed.offers || []);
+          return parsed;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Direct, parallel fetch from Supabase (300ms)
+  try {
+    const [siteSettings, hotels, offers, districts] = await Promise.all([
+      getSiteSettingsFromDb(skipCache),
+      getHotelsFromDb(skipCache),
+      getOffersFromDb(skipCache),
+      getDistrictsFromDb()
+    ]);
+
+    const slugMap: Record<string, string> = {};
+    hotels.forEach(h => {
+      slugMap[h.id] = h.id;
+      const slug = getHotelSlug(h);
+      if (slug) slugMap[slug] = h.id;
+    });
+
+    const bundle: SiteBundle = {
+      version: Date.now(),
+      updatedAt: Date.now(),
+      siteSettings,
+      hotels,
+      offers,
+      districts,
+      slugMap
+    };
+
+    setCache('site_bundle', bundle);
+    safeSetLocalStorage('diy_site_bundle', bundle);
+    safeSetLocalStorage('diy_site_settings', siteSettings);
+    safeSetLocalStorage('diy_hotels', hotels);
+    safeSetLocalStorage('diy_offers', offers);
+    safeSetLocalStorage('diy_slug_map', slugMap);
+
+    return bundle;
+  } catch (err) {
+    console.warn('[SiteBundle] Direct Supabase fetch error, fallback to seed:', err);
+    const slugMap: Record<string, string> = {};
+    INITIAL_HOTELS.forEach(h => {
+      slugMap[h.id] = h.id;
+      const slug = getHotelSlug(h);
+      if (slug) slugMap[slug] = h.id;
+    });
+    return {
+      version: Date.now(),
+      updatedAt: Date.now(),
+      siteSettings: INITIAL_SITE_SETTINGS,
+      hotels: INITIAL_HOTELS,
+      offers: INITIAL_OFFERS,
+      districts: [],
+      slugMap
+    };
+  }
+}
+
+export async function prefetchHotelDetails(hotelIdOrSlug: string): Promise<Hotel | undefined> {
+  if (!hotelIdOrSlug) return undefined;
+  const cleanId = hotelIdOrSlug.trim();
+  const cacheKey = `hotel_detail_${cleanId}`;
+  const cached = getCached<Hotel>(cacheKey);
+  if (cached) return cached;
+
+  const warmImage = (h: Hotel) => {
+    try {
+      if (typeof window !== 'undefined' && h.mainImage) {
+        const img = new Image();
+        img.src = h.mainImage;
+        if (Array.isArray(h.galleryImages) && h.galleryImages[0]) {
+          const first = typeof h.galleryImages[0] === 'string' ? h.galleryImages[0] : (h.galleryImages[0] as any)?.url;
+          if (first) {
+            const g = new Image();
+            g.src = first;
+          }
+        }
+      }
+    } catch {}
+  };
+
+  // Check in-memory hotels cache first (0ms)
+  const memHotels = getCached<Hotel[]>('hotels');
+  if (memHotels && Array.isArray(memHotels)) {
+    const found = memHotels.find(h => h.id === cleanId || h.slug === cleanId || getHotelSlug(h) === cleanId);
+    if (found) {
+      setCache(cacheKey, found);
+      setCache(`hotel_detail_${found.id}`, found);
+      warmImage(found);
+      return found;
+    }
+  }
+
+  // Check localStorage diy_hotels next (0ms)
+  try {
+    const saved = localStorage.getItem('diy_hotels');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        const found = parsed.find((h: any) => h.id === cleanId || h.slug === cleanId || getHotelSlug(h) === cleanId);
+        if (found) {
+          const norm = normalizeHotel(found);
+          setCache(cacheKey, norm);
+          setCache(`hotel_detail_${norm.id}`, norm);
+          warmImage(norm);
+          return norm;
+        }
+      }
+    }
+  } catch {}
+
+  const hotels = await getHotelsFromDb();
+  const found = hotels.find(h => h.id === cleanId || h.slug === cleanId || getHotelSlug(h) === cleanId);
+  if (found) {
+    setCache(cacheKey, found);
+    setCache(`hotel_detail_${found.id}`, found);
+    warmImage(found);
+    return found;
+  }
+  return undefined;
+}
+
+export async function saveBatchToDb(
+  operations: Array<{
+    type: 'set' | 'update' | 'delete';
+    collection: string;
+    docId: string;
+    data?: any;
+    options?: { merge?: boolean };
+  }>
+): Promise<void> {
+  if (!db || operations.length === 0) return;
+  const batch = writeBatch(db);
+  for (const op of operations) {
+    const docRef = doc(db, op.collection, op.docId);
+    if (op.type === 'set') {
+      batch.set(docRef, op.data, op.options || { merge: true });
+    } else if (op.type === 'update') {
+      batch.update(docRef, op.data);
+    } else if (op.type === 'delete') {
+      batch.delete(docRef);
+    }
+  }
+  await batch.commit();
 }
 
 export const DEFAULT_HERO_SLIDES: HeroSlide[] = [];
@@ -320,28 +697,226 @@ export const DEFAULT_BRANCHES: BranchLocation[] = [
   {
     id: 'branch_makkah',
     name: 'فرع مكة المكرمة (المقر الرئيسي)',
+    nameEn: 'Makkah Branch (HQ)',
     city: 'مكة المكرمة',
+    cityEn: 'Makkah',
     address: 'أبراج وقف الملك عبدالعزيز (الصفوة)، شارع أجياد، المنطقة المركزية، مكة المكرمة',
+    addressEn: 'King Abdulaziz Endowment Towers (Al Safwah), Ajyad St, Central Area, Makkah',
     mapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah',
-    phone: '+966501234567',
-    whatsapp: '+966501234567',
+    phone: '+966560580250',
+    whatsapp: '+966560580250',
+    email: 'prestigeksa.umrah@gmail.com',
     workingHours: 'على مدار الساعة 24/7',
+    workingHoursEn: '24/7 Around the Clock',
     isMainBranch: true,
+    showContactInfo: true,
     isActive: true,
-    order: 1
+    order: 1,
+    contacts: [
+      {
+        id: 'cnt_mk_1',
+        label: 'استقبال الفندق والتسكين',
+        labelEn: 'Hotel Reception & Housing',
+        value: '+966560580250',
+        type: 'call',
+        order: 1,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      },
+      {
+        id: 'cnt_mk_2',
+        label: 'واتساب الحجوزات المباشرة',
+        labelEn: 'Direct Bookings WhatsApp',
+        value: '+966560580250',
+        type: 'whatsapp',
+        order: 2,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      },
+      {
+        id: 'cnt_mk_3',
+        label: 'البريد الإلكتروني للإدارة',
+        labelEn: 'HQ Official Email',
+        value: 'prestigeksa.umrah@gmail.com',
+        type: 'email',
+        order: 3,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      }
+    ]
   },
   {
     id: 'branch_madinah',
     name: 'فرع المدينة المنورة',
+    nameEn: 'Madinah Branch',
     city: 'المدينة المنورة',
+    cityEn: 'Madinah',
     address: 'المنطقة المركزية الشمالية، أمام بوابة الملك فهد، طريق الملك فهد، المدينة المنورة',
+    addressEn: 'Northern Central Area, Facing King Fahd Gate, Madinah',
     mapUrl: 'https://maps.google.com/?q=Northern+Central+Area+Madinah',
     phone: '+966501234568',
     whatsapp: '+966501234568',
+    email: 'madinah@prestigehotels.sa',
     workingHours: 'على مدار الساعة 24/7',
+    workingHoursEn: '24/7 Around the Clock',
     isMainBranch: false,
+    showContactInfo: false,
     isActive: true,
-    order: 2
+    order: 2,
+    contacts: [
+      {
+        id: 'cnt_md_1',
+        label: 'هاتف الاستقبال والاستفسارات',
+        labelEn: 'Inquiries & Reception Phone',
+        value: '+966501234568',
+        type: 'call',
+        order: 1,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      },
+      {
+        id: 'cnt_md_2',
+        label: 'واتساب التسكين بالمدينة',
+        labelEn: 'Madinah Housing WhatsApp',
+        value: '+966501234568',
+        type: 'whatsapp',
+        order: 2,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      }
+    ]
+  },
+  {
+    id: 'branch_cairo',
+    name: 'فرع القاهرة (مصر)',
+    nameEn: 'Cairo Branch (Egypt)',
+    city: 'القاهرة',
+    cityEn: 'Cairo',
+    address: 'شارع عباس العقاد، مدينة نصر، القاهرة، جمهورية مصر العربية',
+    addressEn: 'Abbas El-Akkad St, Nasr City, Cairo, Egypt',
+    mapUrl: 'https://maps.google.com/?q=Nasr+City+Cairo+Egypt',
+    phone: '+201012345678',
+    whatsapp: '+201012345678',
+    email: 'cairo@prestigehotels.sa',
+    workingHours: 'السبت - الخميس ٩ ص - ٨ م',
+    workingHoursEn: 'Sat - Thu 9 AM - 8 PM',
+    isMainBranch: false,
+    showContactInfo: false,
+    isActive: true,
+    order: 3,
+    contacts: [
+      {
+        id: 'cnt_cr_1',
+        label: 'هاتف تنسيق وكالات السياحة',
+        labelEn: 'Travel Agencies Phone',
+        value: '+201012345678',
+        type: 'call',
+        order: 1,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      },
+      {
+        id: 'cnt_cr_2',
+        label: 'واتساب مبيعات العمرة بمصر',
+        labelEn: 'Egypt Umrah Sales WhatsApp',
+        value: '+201012345678',
+        type: 'whatsapp',
+        order: 2,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      },
+      {
+        id: 'cnt_cr_3',
+        label: 'البريد الإلكتروني لمكتب مصر',
+        labelEn: 'Cairo Office Email',
+        value: 'cairo@prestigehotels.sa',
+        type: 'email',
+        order: 3,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      }
+    ]
+  },
+  {
+    id: 'branch_indonesia',
+    name: 'فرع إندونيسيا (جاكرتا)',
+    nameEn: 'Indonesia Branch (Jakarta)',
+    city: 'جاكرتا',
+    cityEn: 'Jakarta',
+    address: 'جاكرتا الجنوبية، إندونيسيا',
+    addressEn: 'South Jakarta, Special Capital Region of Jakarta, Indonesia',
+    mapUrl: 'https://maps.google.com/?q=Jakarta+Indonesia',
+    phone: '+6281234567890',
+    whatsapp: '+6281234567890',
+    email: 'indonesia@prestigehotels.sa',
+    workingHours: 'الإثنين - الجمعة ٩ ص - ٦ م',
+    workingHoursEn: 'Mon - Fri 9 AM - 6 PM',
+    isMainBranch: false,
+    showContactInfo: false,
+    isActive: true,
+    order: 4,
+    contacts: [
+      {
+        id: 'cnt_id_1',
+        label: 'هاتف التنسيق الدولي وجاكرتا',
+        labelEn: 'Jakarta International Phone',
+        value: '+6281234567890',
+        type: 'call',
+        order: 1,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      },
+      {
+        id: 'cnt_id_2',
+        label: 'واتساب وكالات الحج والعمرة',
+        labelEn: 'Hajj & Umrah Agencies WhatsApp',
+        value: '+6281234567890',
+        type: 'whatsapp',
+        order: 2,
+        isActive: true,
+        showInAbout: true,
+        showInContact: true,
+        showInFooter: true,
+        showInHotelDetail: true,
+        showInFloating: false
+      }
+    ]
   }
 ];
 
@@ -455,9 +1030,9 @@ export const DEFAULT_ABOUT_US: AboutPageSettings = {
   officeCity: 'مكة المكرمة',
   officeAddress: 'أبراج وقف الملك عبدالعزيز - مجمع أبراج البيت، طريق أجياد، مكة المكرمة',
   officeMapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah',
-  officePhone: '+966501234567',
-  officeWhatsApp: '+966501234567',
-  officeEmail: 'info@prestigehotels.sa',
+  officePhone: '+966560580250',
+  officeWhatsApp: '+966560580250',
+  officeEmail: 'prestigeksa.umrah@gmail.com',
   officeWorkingHours: 'على مدار الساعة 24/7 لخدمة ضيوف الرحمن',
   licenseNumber: '73104928',
   licenseAuthority: 'مرخصون من وزارة الحج والعمرة والهيئة السعودية للسياحة',
@@ -581,10 +1156,13 @@ export const DEFAULT_HOME_SECTIONS: HomeSectionsSettings = {
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   siteTitle: 'برستيج لإدارة وتشغيل الفنادق',
+  siteTitleEn: 'Prestige Hotels Management & Hospitality',
   siteSubtitle: 'إدارة وتشغيل الفنادق والضيافة الفاخرة',
+  siteSubtitleEn: 'Hotel Management, Operations & Luxury Hospitality',
   logoUrl: '',
   showLicense: true,
   channels: DEFAULT_CHANNELS,
+  contactsDirectory: DEFAULT_CONTACTS_DIRECTORY,
   heroSlides: DEFAULT_HERO_SLIDES,
   branches: DEFAULT_BRANCHES,
   departmentContacts: DEFAULT_DEPARTMENT_CONTACTS,
@@ -593,6 +1171,20 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   storyTeaser: DEFAULT_STORY_TEASER,
   integratedServices: DEFAULT_INTEGRATED_SERVICES,
   homeSections: DEFAULT_HOME_SECTIONS,
+  actionButtons: DEFAULT_ACTION_BUTTONS,
+  footerBio: 'شركة برستيج الرائدة والمتخصصة في تقديم حلول إدارة وتشغيل الفنادق والتسكين الفاخر لحجاج بيت الله الحرام وزوار المسجد النبوي الشريف في مكة المكرمة والمدينة المنورة، بخبرة تمتد لأكثر من ١٥ عاماً من التميز والاحترافية.',
+  footerBioEn: 'Leading company dedicated to providing hotel management, operations, and luxury accommodation solutions for pilgrims and visitors to the Two Holy Mosques, with over 15 years of excellence.',
+  customerServiceTitle: 'خدمة العملاء والتواصل المباشر',
+  customerServiceTitleEn: 'Customer Service & Direct Contact',
+  customerServiceDesc: 'فريق الاستقبال والحجوزات متاح على مدار الساعة طوال أيام الأسبوع لخدمتكم واستقبال استفساراتكم.',
+  customerServiceDescEn: 'Our reception and booking team is available 24/7 to assist you and receive all inquiries.',
+  footerWhatsAppButtonText: 'تحدث مع مستشار التسكين واتساب',
+  footerWhatsAppButtonTextEn: 'Chat with Accommodation Consultant',
+  footerWhatsAppNumber: '+966560580250',
+  floatingWhatsAppBubbleText: 'تواصل مباشرة عبر واتساب',
+  floatingWhatsAppBubbleTextEn: 'Chat on WhatsApp',
+  copyrightText: 'لإدارة وتشغيل الفنادق والضيافة. جميع الحقوق محفوظة.',
+  copyrightTextEn: 'Hotel Management & Operations. All rights reserved.',
   bookingModule: {
     enabled: true,
     allowPublicBookingCreation: true,
@@ -601,12 +1193,34 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
     showTrackBookingModal: true,
     showInHero: true,
     showInHotelDetail: true,
-    bookingEmail: 'bookings@prestigeksa.com',
-    bookingWhatsApp: '+966544076726',
+    bookingEmail: 'prestigeksa.umrah@gmail.com',
+    bookingWhatsApp: '+966560580250',
     enableWhatsAppRedirect: true,
     enableEmailNotification: true,
     autoAssignDigitalKey: true,
-    currency: 'ر.س'
+    currency: 'ر.س',
+    invoiceCompanyName: 'شركة برستيج لإدارة وتشغيل الفنادق',
+    invoiceCompanySubtitle: 'للضيافة الفندقية وإدارة الإيواء السياحي بمكة والمدينة',
+    invoiceCompanyAddress: 'مكة المكرمة - المملكة العربية السعودية',
+    invoiceCrNumber: '4031258941',
+    showInvoiceCr: true,
+    invoiceTaxNumber: '310458921400003',
+    showInvoiceTaxNo: true,
+    invoiceSupportTitle: 'مجموعة برستيج الفندقية • المملكة العربية السعودية',
+    invoiceSupportName: 'إدارة الحجوزات والمبيعات',
+    invoiceSupportPhone: '+966544076726',
+    invoiceSupportEmail: 'prestigeksa.umrah@gmail.com',
+    showInvoiceSupportFooter: true,
+    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwfdkkIfLBAg7KsaEA4QEjbMWnqqvwBs0GkjcOy9HQfMG4zKcui3rs-ANsByJ5zztnB/exec',
+    appsScriptSecret: 'prestige1478965236',
+    enableEmailSending: true,
+    companyEmail: 'prestigeksa.umrah@gmail.com'
+  },
+  displaySettings: {
+    headerBehavior: 'scroll_hide',
+    showFooterAdminLink: false,
+    introFrequency: 'session',
+    introEnabled: true
   },
   ...(INITIAL_SITE_SETTINGS || {})
 };
@@ -648,8 +1262,22 @@ export async function getSiteSettingsFromDb(skipCache = false): Promise<SiteSett
         branches: Array.isArray(supabaseSettings.branches) && supabaseSettings.branches.length > 0
           ? supabaseSettings.branches.map((b, idx) => ({
               ...b,
+              isMainBranch: Boolean(b.isMainBranch),
+              showContactInfo: typeof b.showContactInfo === 'boolean' 
+                ? b.showContactInfo 
+                : Boolean(b.isMainBranch),
               isActive: b.isActive !== false,
-              order: typeof b.order === 'number' ? b.order : idx + 1
+              order: typeof b.order === 'number' ? b.order : idx + 1,
+              contacts: Array.isArray(b.contacts) ? b.contacts.map((c, cIdx) => ({
+                ...c,
+                order: typeof c.order === 'number' ? c.order : cIdx + 1,
+                isActive: c.isActive !== false,
+                showInAbout: c.showInAbout !== false,
+                showInContact: c.showInContact !== false,
+                showInFooter: c.showInFooter !== false,
+                showInHotelDetail: c.showInHotelDetail !== false,
+                showInFloating: Boolean(c.showInFloating)
+              })) : []
             })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
           : (INITIAL_SITE_SETTINGS?.branches || DEFAULT_BRANCHES),
         departmentContacts: Array.isArray(supabaseSettings.departmentContacts) && supabaseSettings.departmentContacts.length > 0
@@ -663,6 +1291,12 @@ export async function getSiteSettingsFromDb(skipCache = false): Promise<SiteSett
           ? [...supabaseSettings.quickLinks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
           : (INITIAL_SITE_SETTINGS?.quickLinks || DEFAULT_QUICK_LINKS),
         aboutUs: supabaseSettings.aboutUs || INITIAL_SITE_SETTINGS?.aboutUs || DEFAULT_ABOUT_US,
+        contactsDirectory: Array.isArray(supabaseSettings.contactsDirectory) && supabaseSettings.contactsDirectory.length > 0
+          ? [...supabaseSettings.contactsDirectory].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          : (INITIAL_SITE_SETTINGS?.contactsDirectory || DEFAULT_CONTACTS_DIRECTORY),
+        actionButtons: Array.isArray(supabaseSettings.actionButtons) && supabaseSettings.actionButtons.length > 0
+          ? [...supabaseSettings.actionButtons].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          : (INITIAL_SITE_SETTINGS?.actionButtons || DEFAULT_ACTION_BUTTONS),
       };
       // Write Supabase authoritative data to localStorage (overrides any stale cache)
       safeSetLocalStorage('diy_site_settings', normalized);
@@ -723,6 +1357,9 @@ export async function saveSiteSettingsToDb(settings: SiteSettings): Promise<void
       console.warn('Could not sync site settings to Firestore:', err);
     }
   }
+
+  // Bump site version so all visitor browsers refresh instantly
+  bumpSiteVersion().catch(() => {});
 }
 
 // ==========================================
@@ -734,38 +1371,6 @@ export async function getHotelsFromDb(skipCache = false): Promise<Hotel[]> {
   if (cached) return cached;
 
   const HOTELS_VERSION_KEY = 'prestige_zero_hotels_v1';
-  const normalizeHotel = (h: any): Hotel => ({
-    ...h,
-    district: h.district || (h.city === 'مكة المكرمة' ? 'أجياد' : 'المنطقة المركزية الشمالية'),
-    featured: h.featured ?? true,
-    categories: Array.isArray(h.categories) && h.categories.length > 0 ? h.categories : ['فنادق العمرة'],
-    rating: typeof h.rating === 'number' ? h.rating : 4.8,
-    reviewCount: typeof h.reviewCount === 'number' ? h.reviewCount : 0,
-    bookingUrl: h.bookingUrl || '',
-    showBookingUrl: h.showBookingUrl !== false,
-    agodaUrl: h.agodaUrl || '',
-    showAgodaUrl: h.showAgodaUrl !== false,
-    expediaUrl: h.expediaUrl || '',
-    showExpediaUrl: h.showExpediaUrl !== false,
-    googleMapsUrl: h.googleMapsUrl || '',
-    showGoogleMapsUrl: h.showGoogleMapsUrl !== false,
-    hotelWhatsApp: h.hotelWhatsApp || '',
-    showHotelWhatsApp: h.showHotelWhatsApp !== false,
-    hotelEmail: h.hotelEmail || '',
-    showHotelEmail: h.showHotelEmail !== false,
-    isActive: h.isActive !== false,
-    onlineBookingEnabled: typeof h.onlineBookingEnabled === 'boolean'
-      ? h.onlineBookingEnabled
-      : (typeof h.online_booking_enabled === 'boolean' 
-          ? h.online_booking_enabled 
-          : (typeof (h.location as any)?.onlineBookingEnabled === 'boolean' 
-              ? (h.location as any).onlineBookingEnabled 
-              : true)),
-    bookingPolicy: h.bookingPolicy || h.booking_policy || undefined,
-    order: typeof h.order === 'number' 
-      ? h.order 
-      : (typeof (h.location as any)?.order === 'number' ? (h.location as any).order : 0),
-  });
 
   // 1. Try Supabase first (authoritative cloud database)
   const supabaseHotels = await fetchHotelsFromSupabase();
@@ -791,51 +1396,18 @@ export async function getHotelsFromDb(skipCache = false): Promise<Hotel[]> {
     return INITIAL_HOTELS.map(normalizeHotel);
   }
 
-  // 2. Check local clean version
-  const version = localStorage.getItem(HOTELS_VERSION_KEY);
-  if (!version) {
-    safeSetLocalStorage('diy_hotels', INITIAL_HOTELS);
-    safeSetLocalStorage(HOTELS_VERSION_KEY, '1.0');
-    return INITIAL_HOTELS;
-  }
-
-  if (!db) {
-    return INITIAL_HOTELS;
-  }
-
-  try {
-    const q = query(collection(db, HOTELS_COLLECTION));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
-      const saved = localStorage.getItem('diy_hotels');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            return parsed.map(normalizeHotel);
-          }
-        } catch {}
+  // 2. Fallback to local storage or INITIAL_HOTELS
+  const saved = localStorage.getItem('diy_hotels');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length >= INITIAL_HOTELS.length) {
+        return parsed.map(normalizeHotel);
       }
-      return INITIAL_HOTELS;
-    }
-    const hotels: Hotel[] = [];
-    snapshot.forEach((docSnap) => {
-      hotels.push(normalizeHotel({ id: docSnap.id, ...docSnap.data() }));
-    });
-    return hotels;
-  } catch (err) {
-    console.warn('Failed to fetch hotels from Firestore, reading local cache:', err);
-    const saved = localStorage.getItem('diy_hotels');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.map(normalizeHotel);
-        }
-      } catch {}
-    }
-    return INITIAL_HOTELS;
+    } catch {}
   }
+  safeSetLocalStorage('diy_hotels', INITIAL_HOTELS);
+  return INITIAL_HOTELS.map(normalizeHotel);
 }
 
 export async function saveHotelToDb(hotel: Hotel): Promise<void> {
@@ -870,6 +1442,8 @@ export async function saveHotelToDb(hotel: Hotel): Promise<void> {
       setDoc(hotelRef, sanitized, { merge: true }).catch(() => {});
     } catch {}
   }
+
+  bumpSiteVersion().catch(() => {});
 }
 
 export async function deleteHotelFromDb(hotelId: string): Promise<void> {
@@ -890,6 +1464,8 @@ export async function deleteHotelFromDb(hotelId: string): Promise<void> {
       deleteDoc(doc(db, HOTELS_COLLECTION, hotelId)).catch(() => {});
     } catch {}
   }
+
+  bumpSiteVersion().catch(() => {});
 }
 
 // ==========================================
@@ -947,6 +1523,8 @@ export async function saveOfferToDb(offer: Offer): Promise<void> {
       setDoc(offerRef, sanitized, { merge: true }).catch(() => {});
     } catch {}
   }
+
+  bumpSiteVersion().catch(() => {});
 }
 
 export async function deleteOfferFromDb(offerId: string): Promise<void> {
@@ -967,6 +1545,8 @@ export async function deleteOfferFromDb(offerId: string): Promise<void> {
       deleteDoc(doc(db, OFFERS_COLLECTION, offerId)).catch(() => {});
     } catch {}
   }
+
+  bumpSiteVersion().catch(() => {});
 }
 
 // ==========================================
@@ -1028,6 +1608,45 @@ export async function getReviewsFromDb(): Promise<HotelReview[]> {
     console.warn('Failed to load reviews from Firestore:', err);
     return getStoredReviews();
   }
+}
+
+export async function getApprovedReviewsFromDb(limitCount = 6, hotelId?: string): Promise<HotelReview[]> {
+  const cacheKey = `approved_reviews_${hotelId || 'all'}_${limitCount}`;
+  const cached = getCached<HotelReview[]>(cacheKey);
+  if (cached) return cached;
+
+  if (db) {
+    try {
+      const constraints: any[] = [
+        where('status', '==', 'approved'),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount)
+      ];
+      if (hotelId) {
+        constraints.unshift(where('hotelId', '==', hotelId));
+      }
+      const q = query(collection(db, REVIEWS_COLLECTION), ...constraints);
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const list: HotelReview[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as HotelReview);
+        });
+        setCache(cacheKey, list);
+        return list;
+      }
+    } catch (err) {
+      console.warn('[Firestore] Failed querying approved reviews with index, falling back to local:', err);
+    }
+  }
+
+  // Fallback to local / cached reviews
+  const all = await getReviewsFromDb();
+  const filtered = all
+    .filter(r => r.status === 'approved' && (!hotelId || r.hotelId === hotelId))
+    .slice(0, limitCount);
+  setCache(cacheKey, filtered);
+  return filtered;
 }
 
 export async function approveReview(reviewId: string): Promise<void> {
@@ -1096,6 +1715,8 @@ export async function deleteReviewFromDb(reviewId: string): Promise<void> {
       console.error('Error deleting review from Firestore:', err);
     }
   }
+
+  bumpSiteVersion().catch(() => {});
 }
 
 // ==========================================
@@ -1135,14 +1756,22 @@ export function getStoredContactMessages(): ContactMessage[] {
 }
 
 export async function getContactMessagesFromDb(): Promise<ContactMessage[]> {
+  // تصفية الرسائل بحيث تقتصر فقط على طلبات الخدمة واستفسارات الزوار من "تواصل معنا" دون خلطها بالحجوزات أونلاين
+  const isContactInquiryOnly = (m: ContactMessage) => {
+    const s = (m.subject || '').toLowerCase();
+    const b = (m.message || '').toLowerCase();
+    return !s.includes('حجز أونلاين') && !b.includes('رقم طلب الحجز: #pr-');
+  };
+
   const supabaseMsgs = await fetchMessagesFromSupabase();
   if (supabaseMsgs) {
-    safeSetLocalStorage('diy_messages', supabaseMsgs);
-    return supabaseMsgs;
+    const filtered = supabaseMsgs.filter(isContactInquiryOnly);
+    safeSetLocalStorage('diy_messages', filtered);
+    return filtered;
   }
 
   if (!db) {
-    return getStoredContactMessages();
+    return getStoredContactMessages().filter(isContactInquiryOnly);
   }
   try {
     const q = query(collection(db, MESSAGES_COLLECTION));
@@ -1154,10 +1783,12 @@ export async function getContactMessagesFromDb(): Promise<ContactMessage[]> {
     const local = getStoredContactMessages();
     const map = new Map<string, ContactMessage>();
     [...messages, ...local].forEach(m => map.set(m.id, m));
-    return Array.from(map.values()).sort((a, b) => b.createdAt - a.createdAt);
+    return Array.from(map.values())
+      .filter(isContactInquiryOnly)
+      .sort((a, b) => b.createdAt - a.createdAt);
   } catch (err) {
     console.warn('Failed to load messages from Firestore:', err);
-    return getStoredContactMessages();
+    return getStoredContactMessages().filter(isContactInquiryOnly);
   }
 }
 
@@ -1197,50 +1828,72 @@ export async function deleteMessageFromDb(messageId: string): Promise<void> {
 }
 
 // ==========================================
-// In-Place Live Content Editing CRUD
+// In-Place Live Content Editing CRUD (Bilingual Key+Lang Records)
 // ==========================================
 export function subscribeToLiveContent(callback: (contentMap: Record<string, ContentItem>) => void): () => void {
+  let isSubscribed = true;
+
+  // 1. Instant cache hydration from localStorage
   try {
     const cached = localStorage.getItem('diy_live_content');
     if (cached) {
       const parsed = JSON.parse(cached);
-      const normalized: Record<string, ContentItem> = {};
-      Object.keys(parsed).forEach((k) => {
-        let textVal = '';
-        if (typeof parsed[k] === 'string') {
-          textVal = parsed[k];
-          normalized[k] = { key: k, text: textVal.includes('ضيافة الحرمين') ? textVal.replace(/ضيافة الحرمين/g, 'شركة برستيج') : textVal };
-        } else if (parsed[k] && typeof parsed[k] === 'object') {
-          textVal = parsed[k].text || '';
-          normalized[k] = { 
-            key: k, 
-            ...parsed[k],
-            text: textVal.includes('ضيافة الحرمين') ? textVal.replace(/ضيافة الحرمين/g, 'شركة برستيج') : textVal 
-          };
-        }
-      });
-      callback(normalized);
+      if (isSubscribed) callback(parsed);
     }
   } catch (e) {
     console.warn('Failed reading cached live content:', e);
   }
 
+  // 2. Fetch authoritative live content from Supabase immediately on mount (so every new browser sees all edits!)
+  fetchLiveContentFromSupabase().then((supabaseMap) => {
+    if (!isSubscribed) return;
+    if (supabaseMap && Object.keys(supabaseMap).length > 0) {
+      try {
+        const cached = localStorage.getItem('diy_live_content');
+        const existing = cached ? JSON.parse(cached) : {};
+        const merged = { ...existing, ...supabaseMap };
+        safeSetLocalStorage('diy_live_content', merged);
+        if (isSubscribed) callback(merged);
+      } catch {
+        if (isSubscribed) callback(supabaseMap);
+      }
+    }
+  }).catch((err) => {
+    console.warn('Initial Supabase live content fetch error:', err);
+  });
+
+  // 3. Set up Firestore snapshot listener as well (dual real-time coverage)
   if (!db) {
-    return () => {};
+    return () => {
+      isSubscribed = false;
+    };
   }
 
   try {
     const collRef = collection(db, CONTENT_COLLECTION);
     const unsubscribe = onSnapshot(collRef, (snapshot) => {
+      if (!isSubscribed) return;
       const map: Record<string, ContentItem> = {};
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        if (data && typeof data.text === 'string') {
-          const rawText = data.text;
-          const cleanedText = rawText.includes('ضيافة الحرمين') ? rawText.replace(/ضيافة الحرمين/g, 'شركة برستيج') : rawText;
-          map[docSnap.id] = {
-            key: docSnap.id,
-            text: cleanedText,
+        if (data) {
+          const docId = docSnap.id;
+          // Check if docId has language suffix
+          if (docId.includes(':ar') || docId.includes(':en')) {
+            const parts = docId.split(':');
+            const baseKey = parts.slice(0, -1).join(':');
+            const lang = parts[parts.length - 1] as 'ar' | 'en';
+            if (!map[baseKey]) map[baseKey] = { key: baseKey };
+            map[baseKey][lang] = data.text || '';
+            if (lang === 'ar') map[baseKey].text = data.text || '';
+            return;
+          }
+
+          map[docId] = {
+            key: docId,
+            text: data.text || data.ar || '',
+            ar: data.ar || (data.text || ''),
+            en: data.en || '',
             color: data.color || undefined,
             fontSize: data.fontSize || undefined,
             fontWeight: data.fontWeight || undefined,
@@ -1250,60 +1903,140 @@ export function subscribeToLiveContent(callback: (contentMap: Record<string, Con
         }
       });
 
-      try {
-        const cached = localStorage.getItem('diy_live_content');
-        const existing = cached ? JSON.parse(cached) : {};
-        const merged = { ...existing, ...map };
-        safeSetLocalStorage('diy_live_content', merged);
-        callback(merged);
-      } catch {
-        callback(map);
+      if (Object.keys(map).length > 0 && isSubscribed) {
+        try {
+          const cached = localStorage.getItem('diy_live_content');
+          const existing = cached ? JSON.parse(cached) : {};
+          const merged = { ...existing, ...map };
+          safeSetLocalStorage('diy_live_content', merged);
+          if (isSubscribed) callback(merged);
+        } catch {
+          if (isSubscribed) callback(map);
+        }
       }
     }, (error) => {
       console.warn('Firestore live content listener error:', error);
     });
 
-    return unsubscribe;
+    return () => {
+      isSubscribed = false;
+      unsubscribe();
+    };
   } catch (err) {
     console.error('Error setting up onSnapshot for live content:', err);
-    return () => {};
+    return () => {
+      isSubscribed = false;
+    };
   }
 }
 
 export async function saveContentToDb(
   key: string, 
   content: string | Partial<ContentItem>, 
+  language: 'ar' | 'en' = 'ar',
   updatedBy?: string
 ): Promise<void> {
-  const item: ContentItem = typeof content === 'string'
-    ? { key, text: content }
-    : { key, text: content.text ?? '', ...content };
+  // 1. Get existing record from local cache
+  let existingItem: ContentItem = { key };
+  try {
+    const cached = localStorage.getItem('diy_live_content');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed[key]) existingItem = parsed[key];
+    }
+  } catch {}
+
+  const newText = typeof content === 'string' ? content : (content.text ?? (content[language] || ''));
+  const newAr = language === 'ar' 
+    ? newText 
+    : (typeof content === 'object' && content.ar !== undefined ? content.ar : (existingItem.ar || existingItem.text || ''));
+  const newEn = language === 'en' 
+    ? newText 
+    : (typeof content === 'object' && content.en !== undefined ? content.en : (existingItem.en || ''));
 
   const payload: ContentItem = {
-    ...item,
+    ...existingItem,
+    ...(typeof content === 'object' ? content : {}),
     key,
+    ar: newAr,
+    en: newEn,
+    text: language === 'ar' ? newText : (existingItem.ar || newText),
     updatedAt: Date.now(),
     ...(updatedBy ? { updatedBy } : {})
   };
 
-  const sanitized = JSON.parse(safeStringify(payload));
+  const sanitized: ContentItem = JSON.parse(safeStringify(payload));
 
+  // 2. Optimistic local cache update
   try {
     const cached = localStorage.getItem('diy_live_content');
-    const existing = cached ? JSON.parse(cached) : {};
-    existing[key] = sanitized;
-    safeSetLocalStorage('diy_live_content', existing);
+    const existingMap = cached ? JSON.parse(cached) : {};
+    existingMap[key] = sanitized;
+    safeSetLocalStorage('diy_live_content', existingMap);
   } catch (e) {
     console.warn('Failed to cache live content locally:', e);
   }
 
+  // 3. Save to Supabase (Authoritative primary database)
+  try {
+    await upsertLiveContentToSupabase(key, sanitized);
+  } catch (err) {
+    console.warn('Could not sync content to Supabase:', err);
+  }
+
+  // 4. Save to Firestore (Dual sync)
   if (db) {
     try {
       const docRef = doc(db, CONTENT_COLLECTION, key);
       await setDoc(docRef, sanitized, { merge: true });
+      bumpSiteVersion('content').catch(() => {});
     } catch (err) {
-      console.warn('Could not sync content to Firestore (saved locally):', err);
+      console.warn('Could not sync content to Firestore:', err);
     }
+  }
+}
+
+export async function migrateInitialTextsToDatabase(dictionary: Record<string, { ar: string; en: string }>): Promise<void> {
+  const MIGRATION_FLAG = 'prestige_texts_migrated_v2';
+  try {
+    if (localStorage.getItem(MIGRATION_FLAG) === 'true') {
+      return;
+    }
+  } catch {}
+
+  try {
+    const existingFromDb = await fetchLiveContentFromSupabase();
+    const itemsToUpsert: ContentItem[] = [];
+
+    for (const [key, trans] of Object.entries(dictionary)) {
+      if (!existingFromDb[key] || (!existingFromDb[key].ar && !existingFromDb[key].en)) {
+        itemsToUpsert.push({
+          key,
+          ar: trans.ar,
+          en: trans.en,
+          text: trans.ar,
+          updatedAt: Date.now(),
+          updatedBy: 'initial_migration'
+        });
+      }
+    }
+
+    if (itemsToUpsert.length > 0) {
+      await bulkUpsertLiveContentToSupabase(itemsToUpsert);
+      if (db) {
+        for (const it of itemsToUpsert.slice(0, 40)) {
+          try {
+            await setDoc(doc(db, CONTENT_COLLECTION, it.key), it, { merge: true });
+          } catch {}
+        }
+      }
+    }
+
+    try {
+      localStorage.setItem(MIGRATION_FLAG, 'true');
+    } catch {}
+  } catch (err) {
+    console.warn('Initial texts migration error:', err);
   }
 }
 
@@ -1341,30 +2074,8 @@ export async function getDistrictsFromDb(): Promise<District[]> {
     } catch {}
   }
 
-  if (!db) {
-    safeSetLocalStorage('diy_districts', DEFAULT_DISTRICTS);
-    return DEFAULT_DISTRICTS;
-  }
-
-  try {
-    const q = query(collection(db, DISTRICTS_COLLECTION));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
-      safeSetLocalStorage('diy_districts', DEFAULT_DISTRICTS);
-      return DEFAULT_DISTRICTS;
-    }
-    const list: District[] = [];
-    snapshot.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as District);
-    });
-    const sorted = list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    safeSetLocalStorage('diy_districts', sorted);
-    return sorted;
-  } catch (err) {
-    console.warn('Failed to load districts from Firestore, using cache/defaults:', err);
-    safeSetLocalStorage('diy_districts', DEFAULT_DISTRICTS);
-    return DEFAULT_DISTRICTS;
-  }
+  safeSetLocalStorage('diy_districts', DEFAULT_DISTRICTS);
+  return DEFAULT_DISTRICTS;
 }
 
 export async function saveDistrictToDb(district: District): Promise<void> {
@@ -1425,6 +2136,115 @@ export async function syncDistrictRenameToHotels(oldName: string, newName: strin
 }
 
 // ==========================================
+// Admin Roles CRUD (RBAC System)
+// ==========================================
+export async function getAdminRolesFromDb(): Promise<AdminRole[]> {
+  // 1. Try Supabase first
+  const supabaseRoles = await fetchAdminRolesFromSupabase();
+  if (supabaseRoles && supabaseRoles.length > 0) {
+    safeSetLocalStorage('diy_admin_roles', supabaseRoles);
+    return supabaseRoles;
+  }
+
+  // 2. Try localStorage
+  const local = localStorage.getItem('diy_admin_roles');
+  if (local) {
+    try {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Ensure Super Admin role is always included and protected
+        const hasSuper = parsed.some((r: AdminRole) => r.id === SUPER_ADMIN_ROLE_ID || r.isSystem);
+        if (!hasSuper) {
+          const merged = [DEFAULT_ADMIN_ROLES[0], ...parsed];
+          safeSetLocalStorage('diy_admin_roles', merged);
+          return merged;
+        }
+        return parsed;
+      }
+    } catch {}
+  }
+
+  // 3. Try Firestore
+  if (db) {
+    try {
+      const q = query(collection(db, ROLES_COLLECTION));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const list: AdminRole[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as AdminRole);
+        });
+        if (list.length > 0) {
+          safeSetLocalStorage('diy_admin_roles', list);
+          return list;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch roles from Firestore:', err);
+    }
+  }
+
+  // 4. Default Seed Roles
+  safeSetLocalStorage('diy_admin_roles', DEFAULT_ADMIN_ROLES);
+  return DEFAULT_ADMIN_ROLES;
+}
+
+export async function saveAdminRoleToDb(role: AdminRole): Promise<void> {
+  // Super Admin cannot be edited into non-system role or have permissions stripped
+  if (role.id === SUPER_ADMIN_ROLE_ID && !role.isSystem) {
+    role.isSystem = true;
+  }
+
+  const list = await getAdminRolesFromDb();
+  const existingIdx = list.findIndex(r => r.id === role.id);
+  let updatedList: AdminRole[];
+  if (existingIdx >= 0) {
+    updatedList = [...list];
+    updatedList[existingIdx] = { ...role, updatedAt: Date.now() };
+  } else {
+    updatedList = [role, ...list];
+  }
+  safeSetLocalStorage('diy_admin_roles', updatedList);
+
+  await upsertAdminRoleToSupabase(role);
+
+  if (db) {
+    try {
+      const docRef = doc(db, ROLES_COLLECTION, role.id);
+      const sanitized = JSON.parse(safeStringify(role));
+      await setDoc(docRef, sanitized, { merge: true });
+    } catch (err) {
+      console.warn('Could not sync role to Firestore:', err);
+    }
+  }
+}
+
+export async function deleteAdminRoleFromDb(roleId: string): Promise<void> {
+  if (roleId === SUPER_ADMIN_ROLE_ID) {
+    throw new Error('لا يمكن حذف دور المدير العام (Super Admin) الثابت');
+  }
+
+  const list = await getAdminRolesFromDb();
+  const target = list.find(r => r.id === roleId);
+  if (target?.isSystem) {
+    throw new Error('لا يمكن حذف الأدوار النظامية الأساسية');
+  }
+
+  const filtered = list.filter(r => r.id !== roleId);
+  safeSetLocalStorage('diy_admin_roles', filtered);
+
+  await deleteAdminRoleFromSupabase(roleId);
+
+  if (db) {
+    try {
+      await deleteDoc(doc(db, ROLES_COLLECTION, roleId));
+    } catch (err) {
+      console.warn('Could not delete role from Firestore:', err);
+    }
+  }
+}
+
+// ==========================================
 // Admin Users & Controllers Management (RBAC)
 // ==========================================
 export const DEFAULT_ADMIN_USERS: AdminUser[] = [
@@ -1434,10 +2254,35 @@ export const DEFAULT_ADMIN_USERS: AdminUser[] = [
     username: 'A.hesham',
     email: 'a.hesham@prestigehotels.sa',
     role: 'admin',
+    roleIds: [SUPER_ADMIN_ROLE_ID],
     password: '199991',
     status: 'active',
-    notes: 'حساب المدير العام الرئيسي الثابت ولا يمكن تعديله أو حذفه',
-    createdAt: Date.now() - 30 * 24 * 60 * 60 * 1000,
+    notes: 'حساب المدير العام الرئيسي الثابت ولا يمكن تعديله أو حذفه لمنع قفل النظام',
+    createdAt: 1704067200000,
+  },
+  {
+    id: 'usr_bookings_staff_1',
+    name: 'موظف الحجوزات (تجريبي)',
+    username: 'staff.booking',
+    email: 'booking@prestigehotels.sa',
+    role: 'controller',
+    roleIds: [BOOKINGS_STAFF_ROLE_ID],
+    password: 'staff1234',
+    status: 'active',
+    notes: 'حساب موظف حجوزات تجريبي (صلاحية سجل الحجوزات والفواتير فقط)',
+    createdAt: 1704067200000,
+  },
+  {
+    id: 'usr_availability_mgr_1',
+    name: 'مدير الأسعار والتوفر (تجريبي)',
+    username: 'pricing.mgr',
+    email: 'pricing@prestigehotels.sa',
+    role: 'controller',
+    roleIds: [AVAILABILITY_MANAGER_ROLE_ID],
+    password: 'pricing1234',
+    status: 'active',
+    notes: 'حساب مدير توفر وأسعار تجريبي (صلاحية التوفر والأسعار والغرف فقط)',
+    createdAt: 1704067200000,
   }
 ];
 
@@ -1453,7 +2298,14 @@ export async function getAdminUsersFromDb(): Promise<AdminUser[]> {
     try {
       const parsed = JSON.parse(local);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Ensure roleIds array exists on all user records
+        const normalized = parsed.map((u: AdminUser) => ({
+          ...u,
+          roleIds: Array.isArray(u.roleIds) && u.roleIds.length > 0 
+            ? u.roleIds 
+            : (u.role === 'admin' || u.username?.toLowerCase() === 'a.hesham' ? [SUPER_ADMIN_ROLE_ID] : [BOOKINGS_STAFF_ROLE_ID])
+        }));
+        return normalized;
       }
     } catch {}
   }
@@ -1472,7 +2324,11 @@ export async function getAdminUsersFromDb(): Promise<AdminUser[]> {
     }
     const list: AdminUser[] = [];
     snapshot.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as AdminUser);
+      const data = docSnap.data();
+      const roleIds = Array.isArray(data.roleIds) && data.roleIds.length > 0
+        ? data.roleIds
+        : (data.role === 'admin' ? [SUPER_ADMIN_ROLE_ID] : [BOOKINGS_STAFF_ROLE_ID]);
+      list.push({ id: docSnap.id, ...data, roleIds } as AdminUser);
     });
     safeSetLocalStorage('diy_admin_users', list);
     return list;
@@ -1485,6 +2341,23 @@ export async function getAdminUsersFromDb(): Promise<AdminUser[]> {
 
 export async function saveAdminUserToDb(user: AdminUser): Promise<void> {
   const list = await getAdminUsersFromDb();
+
+  // Protect against demoting or deactivating the last Super Admin
+  const isSuper = user.role === 'admin' || (user.roleIds && user.roleIds.includes(SUPER_ADMIN_ROLE_ID)) || user.id === 'usr_super_admin_hesham';
+  const existingUser = list.find(u => u.id === user.id);
+  const wasSuper = existingUser?.role === 'admin' || (existingUser?.roleIds && existingUser.roleIds.includes(SUPER_ADMIN_ROLE_ID));
+
+  if (wasSuper && (!isSuper || user.status === 'inactive')) {
+    const otherActiveSuperAdmins = list.filter(u => 
+      u.id !== user.id && 
+      u.status === 'active' && 
+      (u.role === 'admin' || (u.roleIds && u.roleIds.includes(SUPER_ADMIN_ROLE_ID)))
+    );
+    if (otherActiveSuperAdmins.length === 0) {
+      throw new Error('لا يمكن إلغاء صلاحية أو تعطيل المدير العام الأخير في النظام لمنع قفل لوحة التحكم');
+    }
+  }
+
   const existingIdx = list.findIndex(u => u.id === user.id);
   let updatedList: AdminUser[];
   if (existingIdx >= 0) {
@@ -1510,6 +2383,23 @@ export async function saveAdminUserToDb(user: AdminUser): Promise<void> {
 
 export async function deleteAdminUserFromDb(userId: string): Promise<void> {
   const list = await getAdminUsersFromDb();
+  const target = list.find(u => u.id === userId);
+
+  // Protect against deleting the last Super Admin
+  if (target) {
+    const isSuper = target.role === 'admin' || (target.roleIds && target.roleIds.includes(SUPER_ADMIN_ROLE_ID)) || target.id === 'usr_super_admin_hesham';
+    if (isSuper) {
+      const otherActiveSuperAdmins = list.filter(u => 
+        u.id !== userId && 
+        u.status === 'active' && 
+        (u.role === 'admin' || (u.roleIds && u.roleIds.includes(SUPER_ADMIN_ROLE_ID)))
+      );
+      if (otherActiveSuperAdmins.length === 0) {
+        throw new Error('لا يمكن حذف حساب المدير العام الأخير في النظام لمنع قفل لوحة التحكم');
+      }
+    }
+  }
+
   const filtered = list.filter(u => u.id !== userId);
   safeSetLocalStorage('diy_admin_users', filtered);
 
@@ -1523,6 +2413,79 @@ export async function deleteAdminUserFromDb(userId: string): Promise<void> {
     }
   }
 }
+
+// ==========================================
+// Audit Logs Persistence
+// ==========================================
+export async function getAuditLogsFromDb(limitCount = 200): Promise<AuditLogEntry[]> {
+  // 1. Try Supabase
+  const supabaseLogs = await fetchAuditLogsFromSupabase(limitCount);
+  if (supabaseLogs && supabaseLogs.length > 0) {
+    safeSetLocalStorage('diy_audit_logs', supabaseLogs);
+    return supabaseLogs;
+  }
+
+  // 2. Try localStorage
+  const local = localStorage.getItem('diy_audit_logs');
+  if (local) {
+    try {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.slice(0, limitCount);
+      }
+    } catch {}
+  }
+
+  // 3. Try Firestore
+  if (db) {
+    try {
+      const q = query(collection(db, AUDIT_LOGS_COLLECTION));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const list: AuditLogEntry[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as AuditLogEntry);
+        });
+        list.sort((a, b) => b.timestamp - a.timestamp);
+        const trimmed = list.slice(0, limitCount);
+        safeSetLocalStorage('diy_audit_logs', trimmed);
+        return trimmed;
+      }
+    } catch (err) {
+      console.warn('Could not fetch audit logs from Firestore:', err);
+    }
+  }
+
+  return [];
+}
+
+export async function recordAuditLog(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): Promise<void> {
+  const fullLog: AuditLogEntry = {
+    id: 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+    timestamp: Date.now(),
+    ...entry
+  };
+
+  // 1. Save to local storage
+  try {
+    const currentLogs = await getAuditLogsFromDb(100);
+    const updated = [fullLog, ...currentLogs].slice(0, 300);
+    safeSetLocalStorage('diy_audit_logs', updated);
+  } catch {}
+
+  // 2. Sync to Supabase
+  insertAuditLogToSupabase(fullLog).catch(() => {});
+
+  // 3. Sync to Firestore
+  if (db) {
+    try {
+      const docRef = doc(db, AUDIT_LOGS_COLLECTION, fullLog.id);
+      const sanitized = JSON.parse(safeStringify(fullLog));
+      setDoc(docRef, sanitized).catch(() => {});
+    } catch {}
+  }
+}
+
 
 export function getCurrentAdminUser(): AdminUser | null {
   try {

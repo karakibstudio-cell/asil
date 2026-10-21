@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Building2, Bus, Utensils, FileCheck, ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Building2, Bus, Utensils, FileCheck, ArrowLeft, Sparkles, CheckCircle2, Phone, Mail, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { EditableText } from './EditableText';
 import { ActivePage, IntegratedServicesSettings, IntegratedServiceItem } from '../types';
@@ -173,12 +173,48 @@ export const IntegratedServices: React.FC<IntegratedServicesProps> = ({
                   )}
                 </div>
 
-                {/* Footer Link Button */}
-                {onNavigate && serviceSettings.showCardButtons !== false && srv.showButton !== false && (
+                {/* Footer Link / Contact Button */}
+                {serviceSettings.showCardButtons !== false && srv.showButton !== false && (
                   <div className="pt-2 border-t border-stone-100">
                     <button
                       type="button"
-                      onClick={() => onNavigate((buttonAction as string) === 'whatsapp' ? 'contact' : buttonAction)}
+                      onClick={() => {
+                        const btnType = srv.contactButtonType || (
+                          (buttonAction as unknown as string) === 'whatsapp' ? 'whatsapp' :
+                          (buttonAction as unknown as string) === 'phone' ? 'phone' :
+                          (buttonAction as unknown as string) === 'email' ? 'email' : 'page'
+                        );
+                        const target = srv.contactButtonTarget?.trim();
+
+                        if (btnType === 'whatsapp') {
+                          const phone = target || '966560580250';
+                          const cleanPhone = phone.replace(/[^0-9]/g, '');
+                          const defaultMsg = `مرحباً، أود الاستفسار بخصوص خدمة: ${srv.title}`;
+                          const msg = encodeURIComponent(srv.contactButtonWhatsappMessage || defaultMsg);
+                          window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank', 'noopener,noreferrer');
+                          return;
+                        }
+
+                        if (btnType === 'phone') {
+                          const phone = target || '+966560580250';
+                          window.location.href = `tel:${phone.replace(/\s+/g, '')}`;
+                          return;
+                        }
+
+                        if (btnType === 'email') {
+                          const email = target || 'info@prestigehotels.sa';
+                          const subject = encodeURIComponent(`استفسار بخصوص: ${srv.title}`);
+                          window.location.href = `mailto:${email}?subject=${subject}`;
+                          return;
+                        }
+
+                        if (onNavigate) {
+                          const pageTarget = (srv.buttonAction === 'whatsapp' || srv.buttonAction === 'phone' || srv.buttonAction === 'email')
+                            ? 'contact'
+                            : (srv.buttonAction as ActivePage || 'contact');
+                          onNavigate(pageTarget);
+                        }
+                      }}
                       className="w-full py-2.5 rounded-xl bg-stone-50 group-hover:bg-[#C9A24B] text-stone-700 group-hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <span>
@@ -188,7 +224,23 @@ export const IntegratedServices: React.FC<IntegratedServicesProps> = ({
                           inline={true}
                         />
                       </span>
-                      <ArrowLeft className={`w-3.5 h-3.5 ${isRtl ? 'group-hover:-translate-x-1' : 'rotate-180 group-hover:translate-x-1'} transition-transform`} />
+                      {(() => {
+                        const effectiveType = srv.contactButtonType || (
+                          (buttonAction as unknown as string) === 'whatsapp' ? 'whatsapp' :
+                          (buttonAction as unknown as string) === 'phone' ? 'phone' :
+                          (buttonAction as unknown as string) === 'email' ? 'email' : 'page'
+                        );
+                        if (effectiveType === 'whatsapp') {
+                          return <MessageCircle className="w-3.5 h-3.5 text-emerald-600 group-hover:text-white transition-colors" />;
+                        }
+                        if (effectiveType === 'phone') {
+                          return <Phone className="w-3.5 h-3.5 text-blue-600 group-hover:text-white transition-colors" />;
+                        }
+                        if (effectiveType === 'email') {
+                          return <Mail className="w-3.5 h-3.5 text-amber-600 group-hover:text-white transition-colors" />;
+                        }
+                        return <ArrowLeft className={`w-3.5 h-3.5 ${isRtl ? 'group-hover:-translate-x-1' : 'rotate-180 group-hover:translate-x-1'} transition-transform`} />;
+                      })()}
                     </button>
                   </div>
                 )}

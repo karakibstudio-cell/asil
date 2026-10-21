@@ -12,7 +12,10 @@ import {
   Save, 
   RotateCcw, 
   Tag, 
-  MousePointerClick
+  MousePointerClick,
+  Phone,
+  Mail,
+  MessageCircle
 } from 'lucide-react';
 
 interface AdminStoryTeaserManagerProps {
@@ -298,21 +301,90 @@ export const AdminStoryTeaserManager: React.FC<AdminStoryTeaserManagerProps> = (
             />
           </div>
 
-          {/* Button 2 */}
-          <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+          {/* Button 2 (زر التواصل والإجراء) */}
+          <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-stone-700">زر التواصل ("عروض الشركات والمجموعات"):</label>
+              <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                <MousePointerClick className="w-4 h-4 text-[#C9A24B]" />
+                <span>زر التواصل ("عروض الشركات والمجموعات"):</span>
+              </label>
               <VisibilityToggle
                 active={form.showContactButton !== false}
                 onToggle={() => setForm({ ...form, showContactButton: form.showContactButton === false })}
               />
             </div>
-            <input
-              type="text"
-              value={form.contactButtonText || 'عروض الشركات والمجموعات'}
-              onChange={(e) => setForm({ ...form, contactButtonText: e.target.value })}
-              className="w-full px-3 py-2 bg-white rounded-xl border border-stone-300 text-sm focus:border-[#C9A24B] focus:outline-none font-bold"
-            />
+            
+            <div>
+              <span className="text-[11px] text-stone-500 font-semibold mb-1 block">نص الزر:</span>
+              <input
+                type="text"
+                value={form.contactButtonText || 'عروض الشركات والمجموعات'}
+                onChange={(e) => setForm({ ...form, contactButtonText: e.target.value })}
+                className="w-full px-3 py-2 bg-white rounded-xl border border-stone-300 text-sm focus:border-[#C9A24B] focus:outline-none font-bold"
+              />
+            </div>
+
+            {/* Action Type */}
+            <div className="pt-2 border-t border-stone-200">
+              <span className="text-[11px] text-stone-500 font-semibold mb-1.5 block">نوع الإجراء عند النقر:</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { id: 'whatsapp', label: 'واتساب مباشر', icon: MessageCircle, color: 'text-emerald-600' },
+                  { id: 'call', label: 'اتصال هاتفي', icon: Phone, color: 'text-blue-600' },
+                  { id: 'email', label: 'بريد إلكتروني', icon: Mail, color: 'text-amber-600' },
+                  { id: 'contact', label: 'صفحة تواصل', icon: MousePointerClick, color: 'text-stone-600' },
+                ].map((act) => {
+                  const Icon = act.icon;
+                  const isSelected = (form.contactButtonAction || 'contact') === act.id;
+                  return (
+                    <button
+                      key={act.id}
+                      type="button"
+                      onClick={() => setForm({ ...form, contactButtonAction: act.id as any })}
+                      className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'bg-[#C9A24B]/15 border-[#C9A24B] text-stone-900 shadow-2xs'
+                          : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-100'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 ${act.color}`} />
+                      <span>{act.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Target Phone or Email */}
+            {(form.contactButtonAction === 'whatsapp' || form.contactButtonAction === 'call' || form.contactButtonAction === 'email') && (
+              <div>
+                <span className="text-[11px] text-stone-500 font-semibold mb-1 block">
+                  {form.contactButtonAction === 'email' ? 'البريد الإلكتروني المستهدف:' : 'رقم الهاتف / الواتساب:'}
+                </span>
+                <input
+                  type="text"
+                  value={form.contactButtonTarget || ''}
+                  onChange={(e) => setForm({ ...form, contactButtonTarget: e.target.value })}
+                  placeholder={form.contactButtonAction === 'email' ? 'info@prestigehotels.sa' : '+966560580250'}
+                  className="w-full px-3 py-2 bg-white rounded-xl border border-stone-300 text-xs font-mono focus:border-[#C9A24B] focus:outline-none"
+                  dir="ltr"
+                />
+              </div>
+            )}
+
+            {/* WhatsApp message */}
+            {form.contactButtonAction === 'whatsapp' && (
+              <div>
+                <span className="text-[11px] text-stone-500 font-semibold mb-1 block">نص رسالة الواتساب التلقائية:</span>
+                <input
+                  type="text"
+                  value={form.contactButtonWhatsappMessage || ''}
+                  onChange={(e) => setForm({ ...form, contactButtonWhatsappMessage: e.target.value })}
+                  placeholder="مرحباً، أود الاستفسار بخصوص عروض الشركات والمجموعات وفنادق برستيج."
+                  className="w-full px-3 py-2 bg-white rounded-xl border border-stone-300 text-xs focus:border-[#C9A24B] focus:outline-none"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -351,9 +423,9 @@ export const AdminStoryTeaserManager: React.FC<AdminStoryTeaserManagerProps> = (
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
-          {(form.locationTags || []).map((tag) => (
+          {(form.locationTags || []).map((tag, tIdx) => (
             <div
-              key={tag.id}
+              key={tag.id || `teaser-tag-${tIdx}`}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                 tag.isActive !== false
                   ? 'bg-stone-100 border-stone-300 text-stone-800'

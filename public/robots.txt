@@ -1,9 +1,22 @@
 User-agent: *
 Allow: /
+Allow: /assets/
+Allow: /images/
+Allow: /fonts/
 
-# Exclude Admin Panel from crawling
+# Exclude Admin Panel completely from crawling
 Disallow: /admin
-Disallow: /#/admin
+Disallow: /admin/*
+Disallow: /ar/admin*
+Disallow: /en/admin*
+Disallow: /#/admin*
+
+# Exclude private customer invoices and backend APIs
+Disallow: /invoice
+Disallow: /invoice/*
+Disallow: /ar/invoice*
+Disallow: /en/invoice*
+Disallow: /api/
 
 Sitemap: https://prestige-ksa.web.app/sitemap.xml
 Sitemap: https://prestige-ksa.web.app/sitemap.txt

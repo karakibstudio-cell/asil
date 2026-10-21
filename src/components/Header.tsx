@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { useLanguage } from '../context/LanguageContext';
+import { prefetchRoute } from '../utils/prefetch';
 
 interface HeaderProps {
   currentPage: ActivePage;
@@ -118,29 +119,36 @@ export const Header: React.FC<HeaderProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Header Behavior: 'fixed' | 'scroll_hide' | 'static' (default: 'scroll_hide')
+  const headerBehavior = siteSettings?.displaySettings?.headerBehavior || 'scroll_hide';
+  const isStatic = headerBehavior === 'static';
+  const isAlwaysFixed = headerBehavior === 'fixed';
+
   // Header Visibility Logic:
-  // Shows whenever:
-  // 1. Initial peek right after loading
-  // 2. Cursor is near top zone (isMouseNearTop)
-  // 3. User is actively hovering the header (isHovered)
-  // 4. Mobile navigation drawer is open (mobileMenuOpen)
-  // 5. Scrolled down and user scrolls upwards (isScrolled && scrollDirection === 'up')
+  // - fixed: always visible
+  // - static: always visible at page top, scrolls away naturally with the page
+  // - scroll_hide: visible at top, hides when scrolling down, shows when scrolling up or cursor near top
   const isVisible =
+    isAlwaysFixed ||
+    isStatic ||
     initialPeek ||
     isMouseNearTop ||
     isHovered ||
     mobileMenuOpen ||
-    (isScrolled && scrollDirection === 'up');
+    !isScrolled ||
+    scrollDirection === 'up';
 
   return (
     <>
-      {/* Invisible Top Proximity Sensor for instant cursor approach detection */}
-      <div
-        id="header-top-sensor-zone"
-        aria-hidden="true"
-        onMouseEnter={() => setIsMouseNearTop(true)}
-        className="fixed top-0 inset-x-0 h-20 sm:h-24 z-40 pointer-events-auto"
-      />
+      {/* Invisible Top Proximity Sensor (only for scroll_hide mode) */}
+      {headerBehavior === 'scroll_hide' && (
+        <div
+          id="header-top-sensor-zone"
+          aria-hidden="true"
+          onMouseEnter={() => setIsMouseNearTop(true)}
+          className="fixed top-0 inset-x-0 h-20 sm:h-24 z-40 pointer-events-auto"
+        />
+      )}
 
       <div
         id="floating-header-wrapper"
@@ -152,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
           setIsHovered(false);
           setIsMouseNearTop(false);
         }}
-        className={`fixed top-3 sm:top-5 inset-x-3 sm:inset-x-6 md:inset-x-8 max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] mx-auto z-50 transition-all duration-500 ease-out transform ${
+        className={`${isStatic ? 'absolute' : 'fixed'} top-3 sm:top-5 inset-x-3 sm:inset-x-6 md:inset-x-8 max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] mx-auto z-50 transition-all duration-500 ease-out transform ${
           isVisible
             ? 'translate-y-0 opacity-100 pointer-events-auto scale-100'
             : '-translate-y-28 opacity-0 pointer-events-none scale-[0.98]'
@@ -219,6 +227,8 @@ export const Header: React.FC<HeaderProps> = ({
                     key={item.id}
                     id={`nav-link-${item.id}`}
                     onClick={() => handleNavClick(item.id)}
+                    onMouseEnter={() => prefetchRoute(item.id)}
+                    onTouchStart={() => prefetchRoute(item.id)}
                     className={`px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold transition-all duration-200 whitespace-nowrap cursor-pointer ${
                       isActive
                         ? 'bg-white/95 text-[#98752B] shadow-xs border border-white/80'
@@ -276,6 +286,8 @@ export const Header: React.FC<HeaderProps> = ({
                       key={item.id}
                       id={`mobile-nav-link-${item.id}`}
                       onClick={() => handleNavClick(item.id)}
+                      onTouchStart={() => prefetchRoute(item.id)}
+                      onMouseEnter={() => prefetchRoute(item.id)}
                       className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl ${isRtl ? 'text-right' : 'text-left'} text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
                         isActive
                           ? 'bg-[#C9A24B]/20 text-[#98752B] font-bold border-r-4 border-[#C9A24B]'

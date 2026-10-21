@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { SafeVideoPlayer } from './SafeVideoPlayer';
 import { optimizeImageFile } from '../utils/imageOptimizer';
+import { uploadMediaToSupabase, uploadBase64ToSupabase } from '../services/supabase';
 import { HotelGalleryItem, HotelImageCategory } from '../types';
 
 export const HOTEL_IMAGE_CATEGORIES: { key: HotelImageCategory; label: string }[] = [
@@ -79,15 +80,15 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
   const tourVideoFileInputRef = useRef<HTMLInputElement>(null);
   const videoThumbnailInputRef = useRef<HTMLInputElement>(null);
 
-  // Normalize gallery items into clean structure
-  const normalizedGallery = galleryImages.map((item) => {
+  // Normalize gallery items into clean structure (100% null-safe)
+  const normalizedGallery = (galleryImages || []).filter(Boolean).map((item) => {
     if (typeof item === 'string') {
-      return { url: item, category: 'all' as HotelImageCategory, title: '' };
+      return { url: item.trim(), category: 'all' as HotelImageCategory, title: '' };
     }
     return {
-      url: item.url,
-      category: (item.category || 'all') as HotelImageCategory,
-      title: item.title || ''
+      url: (item?.url || '').trim(),
+      category: (item?.category || 'all') as HotelImageCategory,
+      title: item?.title || ''
     };
   });
 
@@ -107,30 +108,42 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
-    const newBase64Images: string[] = [];
+    const newUploadedUrls: string[] = [];
 
     const fileList = Array.from(files) as File[];
 
     for (const file of fileList) {
-      if (file.size > 10 * 1024 * 1024) {
-        onShowToast?.(`تم تخطي الملف "${file.name}" لأن حجمه يتجاوز 10 ميجابايت`, 'error');
+      if (file.size > 25 * 1024 * 1024) {
+        onShowToast?.(`تم تخطي الملف "${file.name}" لأن حجمه يتجاوز 25 ميجابايت`, 'error');
         continue;
       }
 
       try {
         const isPng = file.type === 'image/png' || file.name.toLowerCase().endsWith('.png');
+        // Optimize first for light fast loading
         const optimized = await optimizeImageFile(file, {
-          maxWidth: 1200,
-          maxHeight: 1000,
+          maxWidth: 1600,
+          maxHeight: 1200,
           forcePng: isPng
         });
-        newBase64Images.push(optimized);
+
+        // Directly upload optimized image to Supabase Storage CDN
+        const cdnUrl = await uploadBase64ToSupabase(optimized, 'hotels');
+        if (cdnUrl) {
+          newUploadedUrls.push(cdnUrl);
+        } else {
+          // Fallback direct file upload
+          const res = await uploadMediaToSupabase(file, 'images');
+          if (res?.url) {
+            newUploadedUrls.push(res.url);
+          }
+        }
       } catch (err) {
-        console.warn('Failed to optimize image file:', file.name, err);
+        console.warn('Failed to process and upload image:', file.name, err);
       }
     }
 
-    finalizeUpload(newBase64Images);
+    finalizeUpload(newUploadedUrls);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -221,13 +234,15 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
     onShowToast?.(`تم تغيير تصنيف الصورة إلى: ${categoryTitle}`, 'info');
   };
 
+  const getItemUrl = (img: any) => (typeof img === 'string' ? img : (img?.url || '')).trim();
+
   const handleSetAsMainImage = (targetUrl: string) => {
     if (targetUrl === mainImage) return;
 
     // Move old mainImage to gallery, and set targetUrl as main
-    const filteredGallery = galleryImages.filter((img) => (typeof img === 'string' ? img : img.url) !== targetUrl);
+    const filteredGallery = (galleryImages || []).filter(Boolean).filter((img) => getItemUrl(img) !== targetUrl);
     if (mainImage) {
-      const exists = filteredGallery.some((img) => (typeof img === 'string' ? img : img.url) === mainImage);
+      const exists = filteredGallery.some((img) => getItemUrl(img) === mainImage);
       if (!exists) {
         filteredGallery.unshift({
           url: mainImage,
@@ -250,9 +265,9 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
   const handleDeleteImage = (targetUrl: string) => {
     if (targetUrl === mainImage) {
       // If deleting main image, pick next from gallery if available
-      const remainingGallery = galleryImages.filter((img) => (typeof img === 'string' ? img : img.url) !== targetUrl);
+      const remainingGallery = (galleryImages || []).filter(Boolean).filter((img) => getItemUrl(img) !== targetUrl);
       const nextItem = remainingGallery[0];
-      const nextMain = nextItem ? (typeof nextItem === 'string' ? nextItem : nextItem.url) : '';
+      const nextMain = nextItem ? getItemUrl(nextItem) : '';
       const updatedGallery = remainingGallery.slice(1);
 
       onChange({
@@ -263,7 +278,7 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
       });
       onShowToast?.('تم حذف الصورة الرئيسية وتحديث الألبوم', 'info');
     } else {
-      const updatedGallery = galleryImages.filter((img) => (typeof img === 'string' ? img : img.url) !== targetUrl);
+      const updatedGallery = (galleryImages || []).filter(Boolean).filter((img) => getItemUrl(img) !== targetUrl);
       onChange({
         mainImage,
         galleryImages: updatedGallery,
@@ -295,63 +310,61 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
   // ==========================================
   // Video Handlers
   // ==========================================
-  const handleMainVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMainVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 30 * 1024 * 1024) {
-      onShowToast?.('حجم الفيديو يتجاوز 30 ميجابايت، يرجى اختيار ملف فيديو أصغر حجماً', 'error');
+    if (file.size > 100 * 1024 * 1024) {
+      onShowToast?.('حجم الفيديو يتجاوز 100 ميجابايت، يرجى اختيار ملف فيديو أصغر حجماً', 'error');
       return;
     }
 
     setIsVideoUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (typeof event.target?.result === 'string') {
+    try {
+      const res = await uploadMediaToSupabase(file, 'videos');
+      if (res.success && res.url) {
         onChange({
           mainImage,
           galleryImages,
-          videoUrl: event.target.result,
+          videoUrl: res.url,
           additionalVideos
         });
-        onShowToast?.('تم رفع الفيديو التعريفي للفندق من جهازك بنجاح 🎬', 'success');
+        onShowToast?.('تم رفع الفيديو التعريفي للفندق إلى التخزين السحابي بنجاح 🎬', 'success');
+      } else {
+        onShowToast?.(res.error || 'تعذر رفع الفيديو، يرجى المحاولة مرة أخرى أو استخدام رابط مباشر', 'error');
       }
+    } catch (err: any) {
+      onShowToast?.('حدث خطأ أثناء رفع الفيديو: ' + (err?.message || ''), 'error');
+    } finally {
       setIsVideoUploading(false);
-    };
-    reader.onerror = () => {
-      setIsVideoUploading(false);
-      onShowToast?.('حدث خطأ أثناء قراءة ملف الفيديو', 'error');
-    };
-    reader.readAsDataURL(file);
-
-    if (mainVideoFileInputRef.current) mainVideoFileInputRef.current.value = '';
+      if (mainVideoFileInputRef.current) mainVideoFileInputRef.current.value = '';
+    }
   };
 
-  const handleTourVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTourVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 30 * 1024 * 1024) {
-      onShowToast?.('حجم الفيديو يتجاوز 30 ميجابايت، يرجى اختيار ملف فيديو أصغر حجماً', 'error');
+    if (file.size > 100 * 1024 * 1024) {
+      onShowToast?.('حجم الفيديو يتجاوز 100 ميجابايت، يرجى اختيار ملف فيديو أصغر حجماً', 'error');
       return;
     }
 
     setIsVideoUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (typeof event.target?.result === 'string') {
-        setVideoForm((prev) => ({ ...prev, videoUrl: event.target!.result as string }));
-        onShowToast?.('تم رفع مقطع جولة الفيديو من جهازك بنجاح', 'success');
+    try {
+      const res = await uploadMediaToSupabase(file, 'videos');
+      if (res.success && res.url) {
+        setVideoForm((prev) => ({ ...prev, videoUrl: res.url }));
+        onShowToast?.('تم رفع مقطع جولة الفيديو إلى التخزين السحابي بنجاح', 'success');
+      } else {
+        onShowToast?.(res.error || 'تعذر رفع الفيديو السحابي', 'error');
       }
+    } catch (err: any) {
+      onShowToast?.('حدث خطأ أثناء رفع ملف الفيديو', 'error');
+    } finally {
       setIsVideoUploading(false);
-    };
-    reader.onerror = () => {
-      setIsVideoUploading(false);
-      onShowToast?.('حدث خطأ أثناء قراءة ملف الفيديو', 'error');
-    };
-    reader.readAsDataURL(file);
-
-    if (tourVideoFileInputRef.current) tourVideoFileInputRef.current.value = '';
+      if (tourVideoFileInputRef.current) tourVideoFileInputRef.current.value = '';
+    }
   };
 
   const handleOpenAddVideo = () => {
@@ -417,9 +430,11 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
           maxHeight: 500,
           forcePng: isPng
         });
-        setVideoForm((prev) => ({ ...prev, thumbnail: optimized }));
+        const cdnUrl = await uploadBase64ToSupabase(optimized, 'hotels');
+        setVideoForm((prev) => ({ ...prev, thumbnail: cdnUrl || optimized }));
+        onShowToast?.('تم رفع صورة غلاف الفيديو بنجاح', 'success');
       } catch (err) {
-        console.warn('Failed to optimize thumbnail:', err);
+        console.warn('Failed to upload thumbnail:', err);
       }
     }
   };
@@ -491,8 +506,8 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
                   onChange={(e) => setDefaultUploadCategory(e.target.value as HotelImageCategory)}
                   className="text-xs font-bold bg-transparent text-[#B38A34] focus:outline-none cursor-pointer"
                 >
-                  {HOTEL_IMAGE_CATEGORIES.map(c => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
+                  {HOTEL_IMAGE_CATEGORIES.map((c, cIdx) => (
+                    <option key={`${c.key}-${cIdx}`} value={c.key}>{c.label}</option>
                   ))}
                 </select>
               </div>
@@ -635,8 +650,8 @@ export const HotelMediaAlbumManager: React.FC<HotelMediaAlbumManagerProps> = ({
                             onChange={(e) => handleUpdateImageCategory(img.url, e.target.value as HotelImageCategory)}
                             className="w-full text-[11px] font-bold py-1 px-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-white text-stone-800 focus:outline-none focus:border-[#C9A24B] cursor-pointer"
                           >
-                            {HOTEL_IMAGE_CATEGORIES.map((cat) => (
-                              <option key={cat.key} value={cat.key}>
+                            {HOTEL_IMAGE_CATEGORIES.map((cat, catIdx) => (
+                              <option key={`${cat.key}-${catIdx}`} value={cat.key}>
                                 {cat.label}
                               </option>
                             ))}

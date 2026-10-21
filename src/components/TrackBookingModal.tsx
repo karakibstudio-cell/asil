@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Search, 
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { RoomBooking, SiteSettings } from '../types';
 import { getBookingByCodeOrPhone, buildGuestWhatsAppShareLink } from '../services/bookingService';
+const BookingVoucherModal = React.lazy(() => import('./BookingVoucherModal').then(m => ({ default: m.BookingVoucherModal })));
 import { useLanguage } from '../context/LanguageContext';
 
 interface TrackBookingModalProps {
@@ -42,6 +43,9 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
   const [searched, setSearched] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [showVoucher, setShowVoucher] = useState(false);
+  const trackModalRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (initialCode) {
@@ -55,8 +59,58 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
       setQuery('');
       setBooking(null);
       setSearched(false);
+    } else {
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+        } else if (trackModalRef.current) {
+          trackModalRef.current.focus();
+        }
+      }, 50);
     }
   }, [isOpen]);
+
+  // Keyboard Navigation: Esc to close, Tab to navigate inside modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showVoucher) {
+          setShowVoucher(false);
+          return;
+        }
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && trackModalRef.current) {
+        const focusableElements = trackModalRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const focusable = Array.from(focusableElements).filter((el): el is HTMLElement => (el as HTMLElement).offsetParent !== null);
+        if (focusable.length > 0) {
+          const firstElement = focusable[0];
+          const lastElement = focusable[focusable.length - 1];
+          if (e.shiftKey) {
+            if (document.activeElement === firstElement || document.activeElement === trackModalRef.current) {
+              e.preventDefault();
+              lastElement.focus();
+            }
+          } else {
+            if (document.activeElement === lastElement) {
+              e.preventDefault();
+              firstElement.focus();
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, showVoucher, onClose]);
 
   const handleSearch = async (targetQuery?: string) => {
     const q = (targetQuery !== undefined ? targetQuery : query).trim();
@@ -137,7 +191,9 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
       }}
     >
       <div 
-        className="bg-[#FCFBFA] w-full max-w-2xl max-h-[92vh] rounded-[32px] shadow-2xl border border-white/60 flex flex-col overflow-hidden relative"
+        ref={trackModalRef}
+        tabIndex={-1}
+        className="bg-[#FCFBFA] w-full max-w-2xl max-h-[92vh] rounded-[32px] shadow-2xl border border-white/60 flex flex-col overflow-hidden relative focus:outline-none"
         dir={isRtl ? 'rtl' : 'ltr'}
       >
         {/* Header */}
@@ -156,12 +212,20 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
             </div>
           </div>
 
-          <button 
-            onClick={onClose}
-            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-stone-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-1.5 text-[10px] text-stone-300 bg-white/5 border border-white/10 px-2.5 py-1 rounded-xl font-mono">
+              <span className="text-[#E6C673] font-bold">Tab</span> تنقل • <span className="text-[#E6C673] font-bold">Enter</span> استعلام • <span className="text-[#E6C673] font-bold">Esc</span> إغلاق
+            </div>
+
+            <button 
+              onClick={onClose}
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-stone-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#C9A24B]"
+              aria-label="إغلاق النافذة (Esc)"
+              title="إغلاق (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}
@@ -176,6 +240,7 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
           >
             <div className="relative flex-1">
               <input 
+                ref={searchInputRef}
                 type="text" 
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -340,11 +405,11 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
 
                 <button 
                   type="button"
-                  onClick={() => window.print()}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  onClick={() => setShowVoucher(true)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
                 >
                   <Printer className="w-4 h-4" />
-                  <span>طباعة الإيصال</span>
+                  <span>طباعة سند وتفاصيل الحجز (PDF)</span>
                 </button>
               </div>
             </div>
@@ -366,6 +431,17 @@ export const TrackBookingModal: React.FC<TrackBookingModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Luxury Printable Voucher Modal */}
+      {showVoucher && booking && (
+        <React.Suspense fallback={null}>
+          <BookingVoucherModal
+            booking={booking}
+            siteSettings={siteSettings}
+            onClose={() => setShowVoucher(false)}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 };

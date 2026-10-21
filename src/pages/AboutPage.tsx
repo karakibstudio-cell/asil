@@ -27,10 +27,11 @@ import {
   Check
 } from 'lucide-react';
 import { WhatsAppIcon } from '../components/BookingIcons';
-import { Lightbox } from '../components/Lightbox';
 import { PillarIcon } from '../components/PillarIcon';
-import { DEFAULT_VALUE_PILLARS } from '../components/AdminAboutManager';
+import { DEFAULT_VALUE_PILLARS } from '../data/aboutPillars';
 import { IntegratedServices } from '../components/IntegratedServices';
+
+const Lightbox = React.lazy(() => import('../components/Lightbox').then(m => ({ default: m.Lightbox })));
 
 interface AboutPageProps {
   onNavigate: (page: ActivePage) => void;
@@ -56,9 +57,9 @@ export const AboutPage: React.FC<AboutPageProps> = ({
   const logo = siteSettings?.logoUrl || about.logoUrl || '';
   const displayLogo = logo;
 
-  // Active Branches list
+  // Active Branches list (filtered by isActive !== false AND showInAboutPage !== false)
   const activeBranches = (siteSettings?.branches && siteSettings.branches.length > 0
-    ? siteSettings.branches.filter(b => b.isActive !== false)
+    ? siteSettings.branches.filter(b => b.isActive !== false && b.showInAboutPage !== false)
     : []
   ).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
@@ -229,21 +230,66 @@ export const AboutPage: React.FC<AboutPageProps> = ({
     }
   };
 
-  // Selected Branch Data
-  const siteWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
-  const sitePhone = siteSettings?.channels?.find(c => c.type === 'phone' && c.isActive)?.value || siteSettings?.primaryPhone;
-  const officeMapUrl = currentBranch?.mapUrl || about.officeMapUrl || 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah';
-  const branchPhone = currentBranch?.phone || about.officePhone || sitePhone || '';
-  const branchWhatsApp = currentBranch?.whatsapp || about.officeWhatsApp || siteWhatsApp?.value || siteSettings?.officeWhatsApp || siteSettings?.primaryPhone || '';
-  const branchAddress = currentBranch?.address || about.officeAddress || 'أبراج وقف الملك عبدالعزيز - طريق أجياد، مكة المكرمة';
+  // Headquarters Destination / Office Action
+  const branchTitle = currentBranch?.name || about.officeTitle || 'المقر الرئيسي لشركة برستيج لإدارة وتشغيل الفنادق';
   const branchCity = currentBranch?.city || about.officeCity || 'مكة المكرمة';
-  const branchTitle = currentBranch ? currentBranch.name : (about.officeTitle || 'المقر الرئيسي لشركة برستيج لإدارة وتشغيل الفنادق');
-  const branchWorkingHours = currentBranch?.workingHours || about.officeWorkingHours || 'على مدار الساعة 24/7';
+  const branchAddress = currentBranch?.address || about.officeAddress || 'أبراج وقف الملك عبدالعزيز - مجمع أبراج البيت، طريق أجياد، مكة المكرمة';
+  const branchWorkingHours = currentBranch?.workingHours || about.officeWorkingHours || 'على مدار الساعة 24/7 لخدمة ضيوف الرحمن';
+
+  // Only show contacts if showContactInfo is true on the branch, and filter by showInAbout
+  const showBranchContacts = currentBranch ? (currentBranch.showContactInfo ?? Boolean(currentBranch.isMainBranch)) : true;
+  const branchAboutContacts = showBranchContacts
+    ? (currentBranch?.contacts || []).filter(c => c.isActive !== false && c.showInAbout !== false)
+    : [];
+
+  const officeActionType = about.officeActionType || 'map';
+  const officeActionTarget = (currentBranch?.mapUrl || about.officeActionTarget || about.officeMapUrl || 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah').trim();
+  const officeActionLabel = language === 'en'
+    ? (about.officeActionLabelEn || (officeActionType === 'map' ? 'Open Location on Google Maps' : officeActionType === 'whatsapp' ? 'Chat on WhatsApp' : officeActionType === 'call' ? 'Call Office' : 'Visit Headquarters'))
+    : (about.officeActionLabel || (officeActionType === 'map' ? 'فتح اللوكيشن على خرائط جوجل' : officeActionType === 'whatsapp' ? 'محادثة عبر واتساب' : officeActionType === 'call' ? 'اتصال مباشر بالمقر' : 'التوجه للمقر'));
+
+  const handleOfficeActionClick = (e: React.MouseEvent) => {
+    if (officeActionType === 'page') {
+      e.preventDefault();
+      onNavigate((about.officeActionPage as ActivePage) || (officeActionTarget as ActivePage) || 'home');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (officeActionType === 'hotel') {
+      e.preventDefault();
+      onNavigate('hotels');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  let officeActionHref = officeActionTarget;
+  let isExternalOfficeAction = true;
+  if (officeActionType === 'whatsapp') {
+    const waMsg = language === 'en'
+      ? (about.officeActionWhatsappMessage || `Hello, I would like to contact Prestige headquarters at ${branchCity}.`)
+      : (about.officeActionWhatsappMessage || `السلام عليكم ورحمة الله، أود التواصل مع مقر شركة برستيج في ${branchCity}.`);
+    officeActionHref = buildWhatsAppLink(officeActionTarget, waMsg);
+  } else if (officeActionType === 'call') {
+    officeActionHref = `tel:${officeActionTarget.replace(/\s+/g, '')}`;
+    isExternalOfficeAction = false;
+  } else if (officeActionType === 'email') {
+    officeActionHref = `mailto:${officeActionTarget}`;
+    isExternalOfficeAction = false;
+  } else if (officeActionType === 'map') {
+    if (!officeActionTarget.startsWith('http://') && !officeActionTarget.startsWith('https://')) {
+      officeActionHref = `https://maps.google.com/?q=${encodeURIComponent(officeActionTarget)}`;
+    }
+  }
 
   const defaultWaMsg = language === 'en'
     ? `Hello, I would like to inquire about Prestige hotel bookings at ${branchCity}.`
     : `السلام عليكم ورحمة الله، أود الاستفسار عن خدمات وحجوزات شركة برستيج في ${branchCity}.`;
-  const waUrl = buildWhatsAppLink(branchWhatsApp, defaultWaMsg);
+
+  const consultantPhone = siteSettings?.footerWhatsAppNumber || getFirstActiveWhatsApp(siteSettings?.channels)?.value || '+966560580250';
+  const waUrl = buildWhatsAppLink(
+    consultantPhone,
+    language === 'en'
+      ? 'Hello Prestige, I would like to inquire about hotel accommodation.'
+      : 'السلام عليكم ورحمة الله، أود الاستفسار عن حجز وتسكين الفنادق.'
+  );
 
   return (
     <div id="about-us-page" className="min-h-screen bg-[#F8F7F4] text-stone-900 pt-28 pb-24">
@@ -522,11 +568,11 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                   <span className="text-xs font-bold text-stone-500 shrink-0 ml-2">
                     {language === 'en' ? 'Select Branch:' : 'اختر الفرع لعرض موقعه:'}
                   </span>
-                  {activeBranches.map((branch) => {
+                  {activeBranches.map((branch, bIdx) => {
                     const isSelected = branch.id === (currentBranch?.id || selectedBranchId);
                     return (
                       <button
-                        key={branch.id}
+                        key={branch.id || `branch-${bIdx}`}
                         type="button"
                         onClick={() => setSelectedBranchId(branch.id)}
                         className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
@@ -578,24 +624,31 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                   </div>
                 </div>
 
-              {about.showOfficeMapButton !== false && (
+              {about.showOfficeMapButton !== false && currentBranch?.showMapUrl !== false && (
                 <a
-                  href={officeMapUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href={officeActionHref}
+                  target={isExternalOfficeAction ? '_blank' : undefined}
+                  rel={isExternalOfficeAction ? 'noopener noreferrer' : undefined}
+                  onClick={handleOfficeActionClick}
                   className="px-6 py-3 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white text-xs sm:text-sm font-bold shadow-md shadow-[#C9A24B]/20 flex items-center gap-2 transition-all hover:scale-105 active:scale-95 shrink-0 cursor-pointer"
                 >
-                  <MapPin className="w-4 h-4" />
-                  <span>{t('about.viewMap', 'فتح اللوكيشن على خرائط جوجل')}</span>
+                  {officeActionType === 'whatsapp' ? <WhatsAppIcon className="w-4 h-4" /> :
+                   officeActionType === 'call' ? <Phone className="w-4 h-4" /> :
+                   officeActionType === 'email' ? <Mail className="w-4 h-4" /> :
+                   officeActionType === 'hotel' || officeActionType === 'page' ? <Building2 className="w-4 h-4" /> :
+                   <MapPin className="w-4 h-4" />}
+                  <span>{officeActionLabel}</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
             </div>
 
             {/* Office Details Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className={`grid grid-cols-1 sm:grid-cols-2 ${
+              branchAboutContacts.length >= 2 ? 'lg:grid-cols-4' : branchAboutContacts.length === 1 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'
+            } gap-6`}>
               {/* Address */}
-              {about.showOfficeAddress !== false && (
+              {about.showOfficeAddress !== false && currentBranch?.showAddress !== false && (
                 <div className="p-4 rounded-2xl bg-white border border-stone-200 shadow-2xs space-y-1.5">
                   <div className="flex items-center gap-2 text-[#B38A34] font-bold text-xs">
                     <MapPin className="w-4 h-4" />
@@ -611,7 +664,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
               )}
 
               {/* Working Hours */}
-              {about.showOfficeWorkingHours !== false && (
+              {about.showOfficeWorkingHours !== false && currentBranch?.showWorkingHours !== false && (
                 <div className="p-4 rounded-2xl bg-white border border-stone-200 shadow-2xs space-y-1.5">
                   <div className="flex items-center gap-2 text-[#B38A34] font-bold text-xs">
                     <Clock className="w-4 h-4" />
@@ -626,51 +679,77 @@ export const AboutPage: React.FC<AboutPageProps> = ({
                 </div>
               )}
 
-              {/* Direct Phone */}
-              {about.showOfficePhone !== false && (
-                <div className="p-4 rounded-2xl bg-white border border-stone-200 shadow-2xs space-y-1.5">
-                  <div className="flex items-center gap-2 text-[#B38A34] font-bold text-xs">
-                    <Phone className="w-4 h-4" />
-                    <span>
-                      <EditableText
-                        contentKey="about.office.receptionTitle"
-                        fallback={language === 'en' ? 'Direct Reception Phone' : 'هاتف الاستقبال المباشر'}
-                        inline={true}
-                      />
+              {/* Dynamic Branch Contacts: Rendered strictly from this branch's active contacts */}
+              {branchAboutContacts.map((contact, cIdx) => {
+                const contactLabel = language === 'en' ? (contact.labelEn || contact.label) : contact.label;
+                let href = '';
+                let isExternal = false;
+
+                if (contact.type === 'whatsapp') {
+                  href = buildWhatsAppLink(contact.value, defaultWaMsg);
+                  isExternal = true;
+                } else if (contact.type === 'call') {
+                  href = `tel:${contact.value.replace(/\s+/g, '')}`;
+                } else if (contact.type === 'email') {
+                  href = `mailto:${contact.value}`;
+                } else if (contact.type === 'link') {
+                  href = contact.value;
+                  isExternal = true;
+                }
+
+                return (
+                  <div 
+                    key={contact.id || cIdx} 
+                    className="p-4 rounded-2xl bg-white border border-stone-200 shadow-2xs space-y-1.5 hover:border-[#C9A24B] transition-colors"
+                  >
+                    <div className="flex items-center gap-2 font-bold text-xs">
+                      {contact.type === 'whatsapp' && (
+                        <>
+                          <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+                          <span className="text-[#25D366]">{contactLabel}</span>
+                        </>
+                      )}
+                      {contact.type === 'call' && (
+                        <>
+                          <Phone className="w-4 h-4 text-[#B38A34]" />
+                          <span className="text-[#B38A34]">{contactLabel}</span>
+                        </>
+                      )}
+                      {contact.type === 'email' && (
+                        <>
+                          <Mail className="w-4 h-4 text-[#B38A34]" />
+                          <span className="text-[#B38A34]">{contactLabel}</span>
+                        </>
+                      )}
+                      {contact.type === 'link' && (
+                        <>
+                          <ExternalLink className="w-4 h-4 text-[#B38A34]" />
+                          <span className="text-[#B38A34]">{contactLabel}</span>
+                        </>
+                      )}
+                    </div>
+                    <a
+                      href={href}
+                      target={isExternal ? '_blank' : undefined}
+                      rel={isExternal ? 'noopener noreferrer' : undefined}
+                      className={`text-xs sm:text-sm font-bold font-mono block transition-colors dir-ltr text-right ${
+                        contact.type === 'whatsapp' ? 'text-stone-900 hover:text-[#25D366]' : 'text-stone-900 hover:text-[#B38A34]'
+                      }`}
+                    >
+                      {contact.value}
+                    </a>
+                    <span className="text-[11px] text-stone-500 block">
+                      {contact.type === 'whatsapp' 
+                        ? (language === 'en' ? 'Instant WhatsApp Chat' : 'محادثة فورية ومباشرة')
+                        : contact.type === 'call'
+                        ? (language === 'en' ? 'Direct Line' : 'اتصال واستفسارات الحجز')
+                        : contact.type === 'email'
+                        ? (language === 'en' ? 'Official Inquiries' : 'مراسلة واستفسارات رسمية')
+                        : (language === 'en' ? 'External Link' : 'زيارة الرابط')}
                     </span>
                   </div>
-                  <a
-                    href={`tel:${branchPhone}`}
-                    className="text-xs sm:text-sm font-bold font-mono text-stone-900 hover:text-[#B38A34] block transition-colors dir-ltr text-right"
-                  >
-                    {branchPhone}
-                  </a>
-                  <span className="text-[11px] text-stone-500 block">
-                    {language === 'en' ? 'Accommodation & Bookings' : 'استفسارات التسكين والحجوزات'}
-                  </span>
-                </div>
-              )}
-
-              {/* Direct WhatsApp */}
-              {about.showOfficeWhatsApp !== false && (
-                <div className="p-4 rounded-2xl bg-white border border-stone-200 shadow-2xs space-y-1.5">
-                  <div className="flex items-center gap-2 text-[#25D366] font-bold text-xs">
-                    <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
-                    <span>{language === 'en' ? 'Customer Care WhatsApp' : 'واتساب خدمة العملاء'}</span>
-                  </div>
-                  <a
-                    href={waUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs sm:text-sm font-bold font-mono text-stone-900 hover:text-[#25D366] block transition-colors dir-ltr text-right"
-                  >
-                    {branchWhatsApp}
-                  </a>
-                  <span className="text-[11px] text-emerald-600 block font-medium">
-                    {language === 'en' ? 'Instant Consultant Response' : 'رد فوري من المستشار'}
-                  </span>
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { IntegratedServicesSettings, IntegratedServiceItem, ActivePage } from '../types';
 import { DEFAULT_INTEGRATED_SERVICES } from '../services/firebase';
 import { 
@@ -19,7 +19,11 @@ import {
   ArrowDown,
   Layers,
   CheckCircle2,
-  X
+  X,
+  Phone,
+  Mail,
+  MessageCircle,
+  MousePointerClick
 } from 'lucide-react';
 
 interface AdminServicesManagerProps {
@@ -46,6 +50,21 @@ export const AdminServicesManager: React.FC<AdminServicesManagerProps> = ({
     ...(integratedServices || {})
   });
 
+  // Keep state in sync with props when loaded asynchronously
+  useEffect(() => {
+    if (integratedServices) {
+      setForm(prev => {
+        if (JSON.stringify(prev) === JSON.stringify(integratedServices)) {
+          return prev;
+        }
+        return {
+          ...DEFAULT_INTEGRATED_SERVICES,
+          ...integratedServices
+        };
+      });
+    }
+  }, [integratedServices]);
+
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [newHighlightText, setNewHighlightText] = useState('');
 
@@ -65,39 +84,47 @@ export const AdminServicesManager: React.FC<AdminServicesManagerProps> = ({
   };
 
   const handleToggleSection = () => {
-    const updated = { ...form, isEnabled: !form.isEnabled };
-    setForm(updated);
-    onUpdateIntegratedServices(updated);
-    onShowToast(
-      updated.isEnabled ? 'تم تفعيل ظهور منظومة الخدمات' : 'تم إخفاء منظومة الخدمات من الموقع',
-      'success'
-    );
+    setForm(prev => {
+      const updated = { ...prev, isEnabled: !prev.isEnabled };
+      onUpdateIntegratedServices(updated);
+      onShowToast(
+        updated.isEnabled ? 'تم تفعيل ظهور منظومة الخدمات' : 'تم إخفاء منظومة الخدمات من الموقع',
+        'success'
+      );
+      return updated;
+    });
   };
 
   const handleToggleServiceActive = (serviceId: string) => {
-    const updatedServices = services.map(s =>
-      s.id === serviceId ? { ...s, isActive: !s.isActive } : s
-    );
-    const updated = { ...form, services: updatedServices };
-    setForm(updated);
-    onUpdateIntegratedServices(updated);
+    setForm(prev => {
+      const currentServices = prev.services || [];
+      const updatedServices = currentServices.map(s =>
+        s.id === serviceId ? { ...s, isActive: !s.isActive } : s
+      );
+      const updated = { ...prev, services: updatedServices };
+      onUpdateIntegratedServices(updated);
+      return updated;
+    });
   };
 
   const handleMoveService = (serviceId: string, direction: 'up' | 'down') => {
-    const index = services.findIndex(s => s.id === serviceId);
-    if (index === -1) return;
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= services.length) return;
+    setForm(prev => {
+      const currentServices = prev.services || [];
+      const index = currentServices.findIndex(s => s.id === serviceId);
+      if (index === -1) return prev;
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= currentServices.length) return prev;
 
-    const newServices = [...services];
-    const temp = newServices[index];
-    newServices[index] = newServices[targetIndex];
-    newServices[targetIndex] = temp;
+      const newServices = [...currentServices];
+      const temp = newServices[index];
+      newServices[index] = newServices[targetIndex];
+      newServices[targetIndex] = temp;
 
-    const reordered = newServices.map((s, idx) => ({ ...s, order: idx + 1 }));
-    const updated = { ...form, services: reordered };
-    setForm(updated);
-    onUpdateIntegratedServices(updated);
+      const reordered = newServices.map((s, idx) => ({ ...s, order: idx + 1 }));
+      const updated = { ...prev, services: reordered };
+      onUpdateIntegratedServices(updated);
+      return updated;
+    });
   };
 
   const handleAddNewService = () => {
@@ -113,6 +140,8 @@ export const AdminServicesManager: React.FC<AdminServicesManagerProps> = ({
       highlights: ['ميزة الخدمة الأولى', 'ميزة الخدمة الثانية'],
       buttonText: 'طلب عرض خدمة',
       buttonAction: 'contact',
+      contactButtonType: 'page',
+      contactButtonTarget: '',
       isActive: true,
       showBadge: true,
       showDescription: true,
@@ -120,34 +149,48 @@ export const AdminServicesManager: React.FC<AdminServicesManagerProps> = ({
       showButton: true,
       order: services.length + 1
     };
-    const updated = { ...form, services: [...services, newService] };
-    setForm(updated);
+    setForm(prev => {
+      const updated = { ...prev, services: [...(prev.services || []), newService] };
+      onUpdateIntegratedServices(updated);
+      return updated;
+    });
     setEditingServiceId(newService.id);
-    onUpdateIntegratedServices(updated);
     onShowToast('تمت إضافة خدمة جديدة، يمكنك الآن تعديل تفاصيلها', 'success');
   };
 
   const handleDeleteService = (serviceId: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذه الخدمة؟')) {
-      const updatedServices = services.filter(s => s.id !== serviceId);
-      const updated = { ...form, services: updatedServices };
-      setForm(updated);
+      setForm(prev => {
+        const updatedServices = (prev.services || []).filter(s => s.id !== serviceId);
+        const updated = { ...prev, services: updatedServices };
+        onUpdateIntegratedServices(updated);
+        return updated;
+      });
       if (editingServiceId === serviceId) setEditingServiceId(null);
-      onUpdateIntegratedServices(updated);
       onShowToast('تم حذف الخدمة', 'info');
     }
   };
 
   const currentEditingService = services.find(s => s.id === editingServiceId);
 
-  const handleUpdateEditingService = (field: keyof IntegratedServiceItem, value: any) => {
+  const handleUpdateEditingService = (
+    fieldOrUpdates: keyof IntegratedServiceItem | Partial<IntegratedServiceItem>,
+    value?: any
+  ) => {
     if (!editingServiceId) return;
-    const updatedServices = services.map(s =>
-      s.id === editingServiceId ? { ...s, [field]: value } : s
-    );
-    const updated = { ...form, services: updatedServices };
-    setForm(updated);
-    onUpdateIntegratedServices(updated);
+    setForm(prev => {
+      const patch = typeof fieldOrUpdates === 'string'
+        ? { [fieldOrUpdates]: value }
+        : fieldOrUpdates;
+
+      const currentServices = prev.services || [];
+      const updatedServices = currentServices.map(s =>
+        s.id === editingServiceId ? { ...s, ...patch } : s
+      );
+      const updated = { ...prev, services: updatedServices };
+      onUpdateIntegratedServices(updated);
+      return updated;
+    });
   };
 
   const handleAddHighlightToEditingService = () => {
@@ -410,9 +453,22 @@ export const AdminServicesManager: React.FC<AdminServicesManagerProps> = ({
 
                   {/* Title & Badge */}
                   <div className="mb-2">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FAF8F5] text-stone-600 border border-[#E8E2D8]">
-                      {srv.badge || 'خدمة'}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FAF8F5] text-stone-600 border border-[#E8E2D8]">
+                        {srv.badge || 'خدمة'}
+                      </span>
+                      {srv.showButton !== false && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 flex items-center gap-1">
+                          {(srv.contactButtonType === 'whatsapp' || (!srv.contactButtonType && srv.buttonAction === 'whatsapp'))
+                            ? '💬 واتساب'
+                            : (srv.contactButtonType === 'phone' || (!srv.contactButtonType && srv.buttonAction === 'phone'))
+                            ? '📞 اتصال'
+                            : (srv.contactButtonType === 'email' || (!srv.contactButtonType && srv.buttonAction === 'email'))
+                            ? '✉️ بريد'
+                            : '📄 صفحة'}
+                        </span>
+                      )}
+                    </div>
                     <h4 className="font-cairo font-bold text-sm text-stone-900 mt-1">
                       {srv.title}
                     </h4>
@@ -512,8 +568,8 @@ export const AdminServicesManager: React.FC<AdminServicesManagerProps> = ({
                   onChange={(e) => handleUpdateEditingService('iconName', e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none"
                 >
-                  {AVAILABLE_SERVICE_ICONS.map(ic => (
-                    <option key={ic.name} value={ic.name}>
+                  {AVAILABLE_SERVICE_ICONS.map((ic, icIdx) => (
+                    <option key={`${ic.name}-${icIdx}`} value={ic.name}>
                       {ic.label} ({ic.name})
                     </option>
                   ))}
@@ -553,30 +609,156 @@ export const AdminServicesManager: React.FC<AdminServicesManagerProps> = ({
                 />
               </div>
 
-              {/* Button Text & Action */}
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">نص زر الإجراء:</label>
-                <input
-                  type="text"
-                  value={currentEditingService.buttonText || ''}
-                  onChange={(e) => handleUpdateEditingService('buttonText', e.target.value)}
-                  placeholder="طلب عرض خدمة"
-                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none"
-                />
-              </div>
+              {/* Button & Contact Action Configuration */}
+              <div className="md:col-span-3 pt-4 border-t border-stone-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-stone-900 flex items-center gap-1.5 font-cairo">
+                    <MousePointerClick className="w-4 h-4 text-[#B38A34]" />
+                    <span>تخصيص زر التواصل والإجراء الخاص بهذه الخدمة:</span>
+                  </label>
+                  <VisibilityToggle
+                    active={currentEditingService.showButton !== false}
+                    onToggle={() => handleUpdateEditingService('showButton', currentEditingService.showButton === false)}
+                    label={currentEditingService.showButton !== false ? 'الزر ظاهر في البطاقة' : 'الزر مخفي'}
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">وجهة النقر (Action):</label>
-                <select
-                  value={currentEditingService.buttonAction || 'contact'}
-                  onChange={(e) => handleUpdateEditingService('buttonAction', e.target.value as ActivePage)}
-                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none"
-                >
-                  <option value="contact">صفحة تواصل معنا (Contact Page)</option>
-                  <option value="hotels">صفحة قائمة الفنادق (Hotels Page)</option>
-                  <option value="offers">صفحة العروض (Offers Page)</option>
-                  <option value="about">صفحة من نحن (About Page)</option>
-                </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs">
+                  {/* Button Action Type */}
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">نوع إجراء وزر التواصل:</label>
+                    <select
+                      value={
+                        currentEditingService.contactButtonType || 
+                        (currentEditingService.buttonAction === 'whatsapp' ? 'whatsapp' : 
+                         currentEditingService.buttonAction === 'phone' ? 'phone' : 
+                         currentEditingService.buttonAction === 'email' ? 'email' : 'page')
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value as 'whatsapp' | 'phone' | 'email' | 'page';
+                        let defaultText = currentEditingService.buttonText;
+                        let defaultTarget = currentEditingService.contactButtonTarget;
+                        let defaultWaMsg = currentEditingService.contactButtonWhatsappMessage;
+                        let newAction: string = val;
+
+                        if (val === 'whatsapp') {
+                          newAction = 'whatsapp';
+                          if (!defaultText || defaultText === 'اتصال هاتفي مباشر' || defaultText === 'مراسلة عبر البريد' || defaultText === 'طلب عرض خدمة') {
+                            defaultText = 'محادثة واتساب';
+                          }
+                          if (!defaultTarget || defaultTarget.includes('@')) {
+                            defaultTarget = '+966560580250';
+                          }
+                          if (!defaultWaMsg) {
+                            defaultWaMsg = `مرحباً شركة برستيج، أود الاستفسار بخصوص خدمة: ${currentEditingService.title}`;
+                          }
+                        } else if (val === 'phone') {
+                          newAction = 'phone';
+                          if (!defaultText || defaultText === 'محادثة واتساب' || defaultText === 'مراسلة عبر البريد' || defaultText === 'طلب عرض خدمة') {
+                            defaultText = 'اتصال هاتفي مباشر';
+                          }
+                          if (!defaultTarget || defaultTarget.includes('@')) {
+                            defaultTarget = '+966560580250';
+                          }
+                        } else if (val === 'email') {
+                          newAction = 'email';
+                          if (!defaultText || defaultText === 'محادثة واتساب' || defaultText === 'اتصال هاتفي مباشر' || defaultText === 'طلب عرض خدمة') {
+                            defaultText = 'مراسلة عبر البريد';
+                          }
+                          if (!defaultTarget || !defaultTarget.includes('@')) {
+                            defaultTarget = 'info@prestigehotels.sa';
+                          }
+                        } else {
+                          // 'page'
+                          newAction = (currentEditingService.buttonAction === 'whatsapp' || currentEditingService.buttonAction === 'phone' || currentEditingService.buttonAction === 'email') 
+                            ? 'contact' 
+                            : (currentEditingService.buttonAction || 'contact');
+                          if (!defaultText || defaultText === 'محادثة واتساب' || defaultText === 'اتصال هاتفي مباشر' || defaultText === 'مراسلة عبر البريد') {
+                            defaultText = 'طلب عرض خدمة';
+                          }
+                        }
+
+                        handleUpdateEditingService({
+                          contactButtonType: val,
+                          buttonAction: newAction,
+                          buttonText: defaultText,
+                          contactButtonTarget: defaultTarget,
+                          contactButtonWhatsappMessage: defaultWaMsg
+                        });
+                      }}
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none"
+                    >
+                      <option value="whatsapp">💬 محادثة واتساب فورية (WhatsApp)</option>
+                      <option value="phone">📞 اتصال هاتفي مباشر (Phone Call)</option>
+                      <option value="email">✉️ مراسلة بريد إلكتروني (Email)</option>
+                      <option value="page">📄 الانتقال لصفحة بالموقع (Page Link)</option>
+                    </select>
+                  </div>
+
+                  {/* Button Text */}
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">نص الزر:</label>
+                    <input
+                      type="text"
+                      value={currentEditingService.buttonText || ''}
+                      onChange={(e) => handleUpdateEditingService('buttonText', e.target.value)}
+                      placeholder="طلب عرض خدمة أو تواصل عبر الواتساب"
+                      className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none"
+                    />
+                  </div>
+
+                  {/* Contact Target (Phone / WhatsApp / Email / Page) */}
+                  {(
+                    (currentEditingService.contactButtonType === 'whatsapp' || 
+                     currentEditingService.contactButtonType === 'phone' || 
+                     currentEditingService.contactButtonType === 'email') ||
+                    (!currentEditingService.contactButtonType && currentEditingService.buttonAction === 'whatsapp')
+                  ) ? (
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        {currentEditingService.contactButtonType === 'email' ? 'البريد الإلكتروني المستهدف:' : 'رقم الهاتف / الواتساب:'}
+                      </label>
+                      <input
+                        type={currentEditingService.contactButtonType === 'email' ? 'email' : 'tel'}
+                        dir="ltr"
+                        value={currentEditingService.contactButtonTarget || ''}
+                        onChange={(e) => handleUpdateEditingService('contactButtonTarget', e.target.value)}
+                        placeholder={currentEditingService.contactButtonType === 'email' ? 'info@prestigehotels.sa' : '+966560580250'}
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none text-left"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-stone-700 mb-1">الصفحة المستهدفة بالموقع:</label>
+                      <select
+                        value={currentEditingService.buttonAction || 'contact'}
+                        onChange={(e) => handleUpdateEditingService('buttonAction', e.target.value as ActivePage)}
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-bold text-stone-900 outline-none"
+                      >
+                        <option value="contact">صفحة تواصل معنا (Contact Page)</option>
+                        <option value="hotels">صفحة قائمة الفنادق (Hotels Page)</option>
+                        <option value="offers">صفحة العروض (Offers Page)</option>
+                        <option value="about">صفحة من نحن (About Page)</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Prefilled WhatsApp Message (If WhatsApp is selected) */}
+                  {(currentEditingService.contactButtonType === 'whatsapp' || (!currentEditingService.contactButtonType && currentEditingService.buttonAction === 'whatsapp')) && (
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <label className="block text-xs font-bold text-stone-700 mb-1">
+                        رسالة الواتساب التلقائية المجهزة مسبقاً:
+                      </label>
+                      <input
+                        type="text"
+                        value={currentEditingService.contactButtonWhatsappMessage || ''}
+                        onChange={(e) => handleUpdateEditingService('contactButtonWhatsappMessage', e.target.value)}
+                        placeholder={`مرحباً شركة برستيج، أود الاستفسار عن خدمة: ${currentEditingService.title}`}
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 outline-none"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

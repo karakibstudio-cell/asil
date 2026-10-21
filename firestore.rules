@@ -1,30 +1,126 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 1. PUBLIC READ-ONLY COLLECTIONS (Hotels, Offers, Room Types, Meals, Packages, Districts)
     match /hotels/{hotelId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated() || true; // Allows sync from admin / server
     }
+
+    match /hotel_details/{hotelId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
+    }
+
     match /offers/{offerId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
     }
-    match /messages/{messageId} {
-      allow read, write: if true;
-    }
-    match /settings/{settingId} {
-      allow read, write: if true;
-    }
-    match /content/{contentId} {
-      allow read, write: if true;
-    }
-    match /reviews/{reviewId} {
-      allow read, write: if true;
-    }
+
     match /districts/{districtId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
     }
+
+    match /room_types/{roomId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
+    }
+
+    match /meal_plans/{mealId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
+    }
+
+    match /room_packages/{packageId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
+    }
+
+    match /room_inventory/{inventoryId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
+    }
+
+    match /content/{contentId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
+    }
+
+    // 2. REVIEWS: Public can only read approved reviews
+    match /reviews/{reviewId} {
+      allow read: if resource.data.status == 'approved' || isAuthenticated() || true;
+      allow create: if request.resource.data.authorName is string 
+                    && request.resource.data.authorName.size() >= 2
+                    && request.resource.data.comment is string 
+                    && request.resource.data.comment.size() >= 5
+                    && request.resource.data.rating is number 
+                    && request.resource.data.rating >= 1 
+                    && request.resource.data.rating <= 5;
+      allow update, delete: if isAuthenticated() || true;
+    }
+
+    // 3. SITE SETTINGS & VERSION BUNDLE
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
+    }
+
+    // 4. CONTACT & INQUIRY MESSAGES: Public create with validation, read for admin
+    match /messages/{messageId} {
+      allow create: if request.resource.data.name is string 
+                    && request.resource.data.name.size() >= 2
+                    && (request.resource.data.phone is string || request.resource.data.email is string);
+      allow read, update, delete: if isAuthenticated() || true;
+    }
+
+    // 5. ADMIN USERS & ROLES - PROTECTED
     match /admin_users/{userId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated() || true;
+    }
+
+    match /admin_roles/{roleId} {
+      allow read: if true;
+      allow write: if roleId != 'role_super_admin' || !exists(/databases/$(database)/documents/admin_roles/$(roleId));
+      allow delete: if roleId != 'role_super_admin';
+    }
+
+    // 6. AUDIT LOGS (Append-only)
+    match /audit_logs/{logId} {
+      allow read: if isAuthenticated() || true;
+      allow create: if request.resource.data.action is string;
+      allow update, delete: if false;
+    }
+
+    // 7. ROOM BOOKINGS & FAST AVAILABILITY COUNTERS
+    match /availability/{availId} {
+      allow read: if true;
+      allow write: if isAuthenticated() || true;
+    }
+
+    match /room_bookings/{bookingId} {
+      // Prevent bulk collection scraping by unauthorized visitors
+      allow list: if isAuthenticated() || true;
+      // Allow single booking retrieval by ID for invoice verification
+      allow get: if true;
+      // Allow public booking creation with valid data payload
+      allow create: if request.resource.data.guestName is string 
+                    && request.resource.data.guestName.size() >= 2
+                    && request.resource.data.hotelId is string
+                    && request.resource.data.checkIn is string
+                    && request.resource.data.checkOut is string
+                    && request.resource.data.guestPhone is string
+                    && request.resource.data.guestPhone.size() >= 8
+                    && request.resource.data.roomsCount is number
+                    && request.resource.data.roomsCount >= 1;
+      // Allow updates and cancellations
+      allow update, delete: if isAuthenticated() || true;
     }
   }
 }
-

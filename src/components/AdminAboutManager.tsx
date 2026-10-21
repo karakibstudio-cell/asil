@@ -31,39 +31,10 @@ import {
 import { AboutPageSettings, SiteSettings, ValuePillar, StoryTeaserSettings, StoryLocationTag, StoryShowcasePoint, IntegratedServicesSettings } from '../types';
 import { DEFAULT_STORY_TEASER, DEFAULT_INTEGRATED_SERVICES } from '../services/firebase';
 import { AdminServicesManager } from './AdminServicesManager';
-import { Lightbox } from './Lightbox';
 import { optimizeImageFile } from '../utils/imageOptimizer';
 import { PillarIcon, ICON_OPTIONS } from './PillarIcon';
-
-export const DEFAULT_VALUE_PILLARS: ValuePillar[] = [
-  {
-    id: 'pillar_1',
-    title: 'المصداقية المطلقة',
-    titleEn: 'Absolute Integrity',
-    description: 'ما تراه وتتفق عليه هو ما تجده تماماً، دون مفاجآت في المسافة أو مستوى الغرفة أو الخدمات المتفق عليها.',
-    descriptionEn: 'What you see and agree upon is exactly what you receive, with no surprises in distances, room standards, or agreed services.',
-    iconName: 'ShieldCheck',
-    order: 1
-  },
-  {
-    id: 'pillar_2',
-    title: 'رعاية وتواجد ميداني',
-    titleEn: 'On-Ground Field Support',
-    description: 'فريقنا الميداني في مكة المكرمة والمدينة المنورة على أهبة الاستعداد على مدار الساعة لاستقبالكم وتلبية كافة متطلباتكم.',
-    descriptionEn: 'Our field representatives in Makkah and Madinah are on standby 24/7 to welcome you and assist with all your requirements.',
-    iconName: 'HeartHandshake',
-    order: 2
-  },
-  {
-    id: 'pillar_3',
-    title: 'عقود مباشرة وأفضل الأسعار',
-    titleEn: 'Direct Contracts & Best Rates',
-    description: 'عقود موسمية وسنوية مباشرة مع كبرى فنادق الحرمين تتيح لنا تقديم أسعار حصرية ومنافسة تلبي كافة الميزانيات.',
-    descriptionEn: 'Direct seasonal and annual contracts with premier Haramain hotels enable us to offer exclusive, competitive rates for all budgets.',
-    iconName: 'Award',
-    order: 3
-  }
-];
+import { DEFAULT_VALUE_PILLARS } from '../data/aboutPillars';
+import { Lightbox } from './Lightbox';
 
 interface AdminAboutManagerProps {
   aboutUs?: AboutPageSettings;
@@ -726,9 +697,9 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
             </div>
 
             <div className="flex flex-wrap gap-2 pt-1">
-              {(storyForm.locationTags || []).map((tag) => (
+              {(storyForm.locationTags || []).map((tag, tagIdx) => (
                 <div
-                  key={tag.id}
+                  key={tag.id || `tag-${tagIdx}`}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                     tag.isActive !== false
                       ? 'bg-stone-100 border-stone-300 text-stone-800'
@@ -1252,8 +1223,8 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
                         onChange={(e) => handleUpdatePillar(pillar.id, { iconName: e.target.value })}
                         className="w-full px-2.5 py-1.5 bg-stone-50 border border-stone-300 rounded-lg text-xs font-medium text-stone-900 outline-none"
                       >
-                        {ICON_OPTIONS.map((opt) => (
-                          <option key={opt.name} value={opt.name}>
+                        {ICON_OPTIONS.map((opt, optIdx) => (
+                          <option key={`${opt.name}-${optIdx}`} value={opt.name}>
                             {opt.label}
                           </option>
                         ))}
@@ -1437,23 +1408,99 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
               />
             </div>
 
-            {/* Google Maps Link */}
-            <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-2">
+            {/* Headquarters Destination / Action (وجهة المقر واللوكيشن) */}
+            <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-stone-700">رابط الموقع على خرائط Google (Maps URL):</label>
+                <div>
+                  <label className="text-xs font-bold text-stone-900 block">وجهة وإجراء زر المقر الرئيسي (Headquarters Action):</label>
+                  <span className="text-[10px] text-stone-500">اختر نوع الإجراء (خريطة، اتصال، واتساب، فندق، صفحة، رابط)</span>
+                </div>
                 <VisibilityToggle
                   active={form.showOfficeMapButton !== false}
                   onToggle={() => setForm({ ...form, showOfficeMapButton: form.showOfficeMapButton === false })}
-                  label={form.showOfficeMapButton !== false ? 'زر الخريطة ظاهر' : 'زر الخريطة مخفي'}
+                  label={form.showOfficeMapButton !== false ? 'زر الوجهة ظاهر' : 'زر الوجهة مخفي'}
                 />
               </div>
-              <input
-                type="url"
-                value={form.officeMapUrl || ''}
-                onChange={(e) => setForm({ ...form, officeMapUrl: e.target.value })}
-                placeholder="https://maps.google.com/..."
-                className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-mono focus:outline-none focus:border-[#C9A24B]"
-              />
+
+              {/* Action Type */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                {[
+                  { id: 'map', label: '📍 موقع / خريطة' },
+                  { id: 'whatsapp', label: '💬 واتساب المقر' },
+                  { id: 'call', label: '📞 هاتف مباشر' },
+                  { id: 'email', label: '✉️ بريد المقر' },
+                  { id: 'page', label: '📄 صفحة بالموقع' },
+                  { id: 'hotel', label: '🏨 فندق محدد' },
+                  { id: 'url', label: '🔗 رابط ويب' },
+                ].map(act => (
+                  <button
+                    key={act.id}
+                    type="button"
+                    onClick={() => {
+                      const newType = act.id as any;
+                      let newTarget = form.officeActionTarget || form.officeMapUrl || '';
+                      if (newType === 'whatsapp' || newType === 'call') {
+                        newTarget = form.officeWhatsApp || form.officePhone || '+966560580250';
+                      } else if (newType === 'map' && (!newTarget || !newTarget.includes('maps'))) {
+                        newTarget = form.officeMapUrl || `https://maps.google.com/?q=${encodeURIComponent(`${form.officeTitle || 'Prestige'} ${form.officeAddress || ''}`)}`;
+                      }
+                      setForm(prev => ({ 
+                        ...prev, 
+                        officeActionType: newType,
+                        officeActionTarget: newTarget,
+                        officeMapUrl: newType === 'map' ? newTarget : prev.officeMapUrl 
+                      }));
+                    }}
+                    className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      (form.officeActionType || 'map') === act.id
+                        ? 'bg-[#C9A24B] text-white border-[#B38A34]'
+                        : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
+                    }`}
+                  >
+                    <span>{act.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Action Labels */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-stone-700 block mb-1">المسمى على الزر (عربي):</label>
+                  <input
+                    type="text"
+                    value={form.officeActionLabel || ''}
+                    onChange={(e) => setForm({ ...form, officeActionLabel: e.target.value })}
+                    placeholder="مثال: فتح اللوكيشن على خرائط جوجل أو التوجه للمقر"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-stone-700 block mb-1">المسمى (English):</label>
+                  <input
+                    type="text"
+                    value={form.officeActionLabelEn || ''}
+                    onChange={(e) => setForm({ ...form, officeActionLabelEn: e.target.value })}
+                    placeholder="e.g. Open Location on Google Maps / Visit HQ"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 dir-ltr text-left focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+              </div>
+
+              {/* Action Target Input */}
+              <div>
+                <label className="text-[11px] font-bold text-stone-700 block mb-1">قيمة الوجهة / الرابط / الرقم: *</label>
+                <input
+                  type="text"
+                  value={form.officeActionTarget || form.officeMapUrl || ''}
+                  onChange={(e) => setForm({ 
+                    ...form, 
+                    officeActionTarget: e.target.value,
+                    officeMapUrl: (form.officeActionType || 'map') === 'map' ? e.target.value : form.officeMapUrl 
+                  })}
+                  placeholder="https://maps.google.com/?q=... أو رقم هاتف أو رابط"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-mono dir-ltr text-left focus:outline-none focus:border-[#C9A24B]"
+                />
+              </div>
             </div>
 
             {/* Contact Channels for Office */}

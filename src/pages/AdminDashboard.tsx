@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Hotel, Offer, ContactMessage, ActivePage, SiteSettings, ContactChannel, HotelCategory, ALL_HOTEL_CATEGORIES, HotelReview, District, AdminUser, UserRole, BranchLocation, DepartmentContact, QuickLinkItem, StoryTeaserSettings, IntegratedServicesSettings, HomeSectionsSettings } from '../types';
+import { Hotel, Offer, ContactMessage, ActivePage, SiteSettings, ContactChannel, HotelCategory, ALL_HOTEL_CATEGORIES, HotelReview, District, AdminUser, UserRole, BranchLocation, DepartmentContact, QuickLinkItem, StoryTeaserSettings, IntegratedServicesSettings, HomeSectionsSettings, ActionButtonItem, ContactDirectoryItem } from '../types';
 import { AdminChannelsManager } from '../components/AdminChannelsManager';
 import { AdminHeroSlidesManager } from '../components/AdminHeroSlidesManager';
 import { AdminDistrictsManager } from '../components/AdminDistrictsManager';
@@ -12,9 +12,15 @@ import { AdminAboutManager } from '../components/AdminAboutManager';
 import { AdminStoryTeaserManager } from '../components/AdminStoryTeaserManager';
 import { AdminServicesManager } from '../components/AdminServicesManager';
 import { AdminHomeSectionsManager } from '../components/AdminHomeSectionsManager';
+import { AdminActionButtonsManager } from '../components/AdminActionButtonsManager';
+import { AdminContactsDirectoryManager } from '../components/AdminContactsDirectoryManager';
 import { AdminBookingsManager } from '../components/AdminBookingsManager';
 import { AdminRoomsManager } from '../components/AdminRoomsManager';
+import { AdminOnlineAvailabilityManager } from '../components/AdminOnlineAvailabilityManager';
+import { AdminHotelsManager } from '../components/AdminHotelsManager';
+import { AdminSEOEditor } from '../components/AdminSEOEditor';
 import { getBookingsFromDb } from '../services/bookingService';
+import { sendOnlineBookingNotification, resolveBookingEmail } from '../services/bookingNotificationService';
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from '../components/BookingIcons';
 import { optimizeImageFile } from '../utils/imageOptimizer';
 import { buildWhatsAppLink } from '../utils/channels';
@@ -37,8 +43,23 @@ import {
   getDistrictsFromDb,
   getAdminUsersFromDb,
   getCurrentAdminUser,
-  setCurrentAdminUser
+  setCurrentAdminUser,
+  getAdminRolesFromDb,
+  saveAdminRoleToDb,
+  deleteAdminRoleFromDb,
+  getAuditLogsFromDb,
+  recordAuditLog
 } from '../services/firebase';
+import { 
+  AdminRole, 
+  AuditLogEntry, 
+  PermissionModule, 
+  DEFAULT_ADMIN_ROLES, 
+  SUPER_ADMIN_ROLE_ID 
+} from '../types/rbac';
+import { canAccessTab, hasPermission, isSuperAdminUser } from '../utils/rbac';
+import { AccessDeniedScreen } from '../components/AccessDeniedScreen';
+import { AuditLogViewer } from '../components/AuditLogViewer';
 import { 
   ShieldCheck, 
   Shield,
@@ -88,7 +109,14 @@ import {
   Sliders,
   Layers,
   LayoutGrid,
-  BedDouble
+  BedDouble,
+  Bus,
+  Monitor,
+  Layout,
+  MousePointerClick,
+  Utensils,
+  CalendarRange,
+  Search
 } from 'lucide-react';
 import { 
   getSupabaseConfig, 
@@ -97,9 +125,42 @@ import {
   isSupabaseConfigured,
   uploadMediaToSupabase
 } from '../services/supabase';
+import { 
+  parseDistanceInput, 
+  formatDistanceDisplay, 
+  isBusTransportation, 
+  formatTransportText, 
+  HOTEL_VIEW_OPTIONS 
+} from '../utils/hotelTransport';
 import { SafeVideoPlayer } from '../components/SafeVideoPlayer';
 
-export type AdminDashboardTab = 'hotels' | 'bookings' | 'rooms-inventory' | 'districts' | 'users' | 'intro-video' | 'slides' | 'offers' | 'home-sections' | 'story-teaser' | 'services' | 'about' | 'reviews' | 'messages' | 'settings';
+export type AdminDashboardTab = 
+  | 'hotels' 
+  | 'bookings'
+  | 'online-control'
+  | 'calendar-grid'
+  | 'rooms-inventory'
+  | 'rooms-list'
+  | 'meals-list'
+  | 'packages-list'
+  | 'periods-pricing'
+  | 'booking-rules'
+  | 'booking-settings'
+  | 'districts' 
+  | 'users' 
+  | 'intro-video' 
+  | 'slides' 
+  | 'buttons'
+  | 'contacts'
+  | 'offers' 
+  | 'about' 
+  | 'reviews' 
+  | 'messages' 
+  | 'settings'
+  | 'home-sections'
+  | 'story-teaser'
+  | 'services'
+  | 'audit-log';
 
 interface AdminDashboardProps {
   hotels: Hotel[];
@@ -151,14 +212,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Local optimistic state for instant 0ms response on reorder and toggle
   const [localHotels, setLocalHotels] = useState<Hotel[]>(hotels);
+  const [localOffers, setLocalOffers] = useState<Offer[]>(offers);
 
   useEffect(() => {
     setLocalHotels(hotels);
   }, [hotels]);
 
-  // Districts & Admin Users State
+  useEffect(() => {
+    setLocalOffers(offers);
+  }, [offers]);
+
+  // Districts, Admin Users & RBAC Roles State
   const [districts, setDistricts] = useState<District[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [adminRoles, setAdminRoles] = useState<AdminRole[]>(DEFAULT_ADMIN_ROLES);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [currentUser, setCurrentUser] = useState<AdminUser | null>(() => getCurrentAdminUser());
   const [customDistrictInput, setCustomDistrictInput] = useState(false);
 
@@ -181,6 +249,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setTotalBookingsCount(b.length);
       setPendingBookingsCount(b.filter(x => x.status === 'pending').length);
     }).catch(() => {});
+  }, [activeTab]);
+
+  // Hierarchical Collapsible Menus State (Apple-grade Accordion)
+  const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({
+    'online-booking': true,
+    'hotels-locations': true,
+    'site-content': false,
+    'inbox-reviews': false,
+    'system-security': false
+  });
+
+  const toggleMenu = (menuId: string) => {
+    setExpandedMenus(prev => ({
+      ...prev,
+      [menuId]: !prev[menuId]
+    }));
+  };
+
+  // Auto-expand parent menu when activeTab changes
+  useEffect(() => {
+    if (['bookings', 'online-control', 'calendar-grid', 'rooms-inventory', 'rooms-list', 'meals-list', 'packages-list', 'periods-pricing', 'booking-rules', 'booking-settings'].includes(activeTab)) {
+      setExpandedMenus(prev => ({ ...prev, 'online-booking': true }));
+    } else if (['hotels', 'districts'].includes(activeTab)) {
+      setExpandedMenus(prev => ({ ...prev, 'hotels-locations': true }));
+    } else if (['slides', 'intro-video', 'offers', 'contacts', 'about', 'story-teaser', 'services', 'buttons', 'home-sections'].includes(activeTab)) {
+      setExpandedMenus(prev => ({ ...prev, 'site-content': true }));
+    } else if (['messages', 'reviews'].includes(activeTab)) {
+      setExpandedMenus(prev => ({ ...prev, 'inbox-reviews': true }));
+    } else if (['settings', 'users', 'audit-log'].includes(activeTab)) {
+      setExpandedMenus(prev => ({ ...prev, 'system-security': true }));
+    }
   }, [activeTab]);
 
   // Delete Confirmation Modal State
@@ -224,16 +323,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       lat: 21.4225,
       lng: 39.8262,
       address: 'أجياد، المنطقة المركزية، مكة المكرمة',
-      viewType: 'إطلالة مباشرة على الكعبة'
+      viewType: 'إطلالة حرم',
+      transportType: 'walking'
     },
     keywords: 'فنادق مكة, فندق قريب من الحرم, إطلالة الكعبة, حجز فنادق العمرة',
     metaDescription: 'احجز إقامتك الفاخرة في أفضل فنادق مكة المكرمة بالقرب من الحرم المكي مع خدمات تسكين متكاملة وبوفيه إفطار متميز.'
   });
 
+  // Smart distance input string state (e.g. "1.5" for 1500m or "350")
+  const [distanceInputStr, setDistanceInputStr] = useState<string>('120');
+
   // Drag and drop / file upload simulation state for Hotel
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [newAmenityInput, setNewAmenityInput] = useState('');
+  const [newCategoryInput, setNewCategoryInput] = useState('');
 
   // Offer Modal State
   const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
@@ -268,6 +372,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [albumModalHotel, setAlbumModalHotel] = useState<Hotel | null>(null);
   const [savingAlbum, setSavingAlbum] = useState(false);
 
+  // Centralized Auto-Save & Cloud Synchronization State & Executor
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+
+  // Listen for global auto-save events from child components (Rooms, Bookings, etc.)
+  useEffect(() => {
+    let savedTimeout: any = null;
+    const handleCustomAutoSave = (e: any) => {
+      const status = e.detail?.status;
+      if (status === 'saving') {
+        if (savedTimeout) clearTimeout(savedTimeout);
+        setAutoSaveStatus('saving');
+      } else if (status === 'saved') {
+        setAutoSaveStatus('saved');
+        savedTimeout = setTimeout(() => {
+          setAutoSaveStatus('idle');
+        }, 2500);
+      } else if (status === 'idle') {
+        setAutoSaveStatus('idle');
+      }
+    };
+    window.addEventListener('prestige:autosave', handleCustomAutoSave);
+    return () => {
+      window.removeEventListener('prestige:autosave', handleCustomAutoSave);
+      if (savedTimeout) clearTimeout(savedTimeout);
+    };
+  }, []);
+
+  // Centralized Auto-Save & Cloud Synchronization Executor
+  const executeAutoSave = async <T,>(saveFn: () => Promise<T>): Promise<T> => {
+    setAutoSaveStatus('saving');
+    try {
+      const result = await saveFn();
+      setAutoSaveStatus('saved');
+      setTimeout(() => {
+        setAutoSaveStatus('idle');
+      }, 2500);
+      return result;
+    } catch (err) {
+      console.error('Auto-save error:', err);
+      setAutoSaveStatus('idle');
+      throw err;
+    }
+  };
+
   const handleSaveAlbumModal = async (updatedData: {
     mainImage: string;
     galleryImages: any[];
@@ -285,8 +433,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAlbumModalHotel(updatedHotel);
     setSavingAlbum(true);
     try {
-      await saveHotelToDb(updatedHotel);
-      await onRefreshData();
+      await executeAutoSave(async () => {
+        await saveHotelToDb(updatedHotel);
+        await onRefreshData();
+      });
       onShowToast('تم حفظ وتحديث ألبوم صور وفيديوهات الفندق في قاعدة البيانات بنجاح', 'success');
     } catch (err) {
       console.error('Failed saving hotel album:', err);
@@ -298,9 +448,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Site Settings Form State & Debounced Auto-Save
   const [settingsForm, setSettingsForm] = useState<SiteSettings>(siteSettings);
-  const [settingsSubTab, setSettingsSubTab] = useState<'brand' | 'booking-module' | 'visibility' | 'contact-data' | 'hotel-detail' | 'database'>('brand');
+  const [settingsSubTab, setSettingsSubTab] = useState<'brand' | 'display' | 'booking-module' | 'visibility' | 'contact-data' | 'hotel-detail' | 'database' | 'seo'>('brand');
   const [savingSettings, setSavingSettings] = useState(false);
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const initialSettingsLoadedRef = React.useRef(false);
   const settingsTimerRef = React.useRef<any>(null);
 
@@ -466,7 +615,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       };
 
       setSettingsForm(updated);
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
       onShowToast('تم رفع وتحديث شعار الموقع وأيقونة علامة التبويب (Favicon) بنجاح', 'success');
     } catch (err) {
       console.error('Error uploading logo:', err);
@@ -481,7 +632,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     setSavingSettings(true);
     try {
-      await onUpdateSiteSettings(settingsForm);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(settingsForm);
+        await handleRecordAudit({
+          module: 'system_settings',
+          action: 'تحديث إعدادات المنصة',
+          details: `تحديث إعدادات وهوية الموقع العامة: "${settingsForm.siteTitle}"`,
+          oldValue: { siteTitle: siteSettings.siteTitle, siteSubtitle: siteSettings.siteSubtitle },
+          newValue: { siteTitle: settingsForm.siteTitle, siteSubtitle: settingsForm.siteSubtitle },
+          recordId: 'site_settings',
+          recordTitle: settingsForm.siteTitle
+        });
+      });
       onShowToast('تم حفظ وتحديث إعدادات الموقع والشعار في قاعدة البيانات بنجاح', 'success');
     } catch (err) {
       console.error(err);
@@ -508,7 +670,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       };
 
       setSettingsForm(updated);
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
       onShowToast('تم تحديث أيقونة علامة التبويب (Favicon) بنجاح', 'success');
     } catch (err) {
       console.error('Error uploading favicon:', err);
@@ -523,7 +687,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     setSettingsForm(updated);
     try {
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
     } catch (err) {
       console.error('Failed to auto-save channels:', err);
     }
@@ -536,7 +702,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     setSettingsForm(updated);
     try {
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
     } catch (err) {
       console.error('Failed to auto-save branches:', err);
     }
@@ -549,7 +717,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     setSettingsForm(updated);
     try {
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
     } catch (err) {
       console.error('Failed to auto-save department contacts:', err);
     }
@@ -562,7 +732,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     setSettingsForm(updated);
     try {
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
     } catch (err) {
       console.error('Failed to auto-save quick links:', err);
     }
@@ -575,7 +747,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     setSettingsForm(updated);
     try {
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
     } catch (err) {
       console.error('Failed to auto-save story teaser:', err);
     }
@@ -588,7 +762,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     setSettingsForm(updated);
     try {
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
     } catch (err) {
       console.error('Failed to auto-save services:', err);
     }
@@ -601,9 +777,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
     setSettingsForm(updated);
     try {
-      await onUpdateSiteSettings(updated);
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
     } catch (err) {
       console.error('Failed to auto-save home sections:', err);
+    }
+  };
+
+  const handleActionButtonsChange = async (updatedButtons: ActionButtonItem[]) => {
+    const updated: SiteSettings = {
+      ...settingsForm,
+      actionButtons: updatedButtons,
+    };
+    setSettingsForm(updated);
+    try {
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
+    } catch (err) {
+      console.error('Failed to auto-save action buttons:', err);
+    }
+  };
+
+  const handleContactsDirectoryChange = async (updatedContacts: ContactDirectoryItem[]) => {
+    const updated: SiteSettings = {
+      ...settingsForm,
+      contactsDirectory: updatedContacts,
+    };
+    setSettingsForm(updated);
+    try {
+      await executeAutoSave(async () => {
+        await onUpdateSiteSettings(updated);
+      });
+    } catch (err) {
+      console.error('Failed to auto-save contacts directory:', err);
     }
   };
 
@@ -638,20 +846,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const loadRoles = async () => {
+    try {
+      const list = await getAdminRolesFromDb();
+      setAdminRoles(list);
+    } catch (err) {
+      console.error('Failed to load admin roles:', err);
+    }
+  };
+
+  const loadAuditLogs = async () => {
+    try {
+      const list = await getAuditLogsFromDb();
+      setAuditLogs(list);
+    } catch (err) {
+      console.error('Failed to load audit logs:', err);
+    }
+  };
+
+  const handleRecordAudit = async (entry: {
+    module: PermissionModule;
+    action: string;
+    details: string;
+    oldValue?: any;
+    newValue?: any;
+    recordId?: string;
+    recordTitle?: string;
+  }) => {
+    try {
+      const user = currentUser || getCurrentAdminUser();
+      await recordAuditLog({
+        userId: user?.id || 'admin_user',
+        userName: user?.name || user?.username || 'مدير النظام',
+        userEmail: user?.email,
+        module: entry.module,
+        action: entry.action,
+        actionLabelAr: entry.action,
+        details: entry.details,
+        recordId: entry.recordId,
+        recordTitle: entry.recordTitle,
+        oldValue: entry.oldValue,
+        newValue: entry.newValue
+      });
+      const updated = await getAuditLogsFromDb();
+      setAuditLogs(updated);
+    } catch (err) {
+      console.warn('Failed recording audit log:', err);
+    }
+  };
+
   useEffect(() => {
     loadDistricts();
     loadUsers();
+    loadRoles();
+    loadAuditLogs();
   }, []);
 
-  // Load messages & reviews when respective tab is active
+  // Load messages, reviews, roles & audit logs when respective tab is active
   useEffect(() => {
     if (isAdminLoggedIn) {
       loadDistricts();
       loadUsers();
+      loadRoles();
+      loadAuditLogs();
       if (activeTab === 'messages') {
         loadMessages();
       } else if (activeTab === 'reviews') {
         loadReviews();
+      } else if (activeTab === 'audit-log') {
+        loadAuditLogs();
       }
     }
   }, [isAdminLoggedIn, activeTab]);
@@ -685,10 +948,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setReviews(prev => prev.map(r => r.id === review.id ? { ...r, status: 'approved' } : r));
     onShowToast(`تم اعتماد تقييم "${review.authorName}" وإضافته للفندق بنجاح`, 'success');
 
-    // 2. Background async sync to Supabase / Database (non-blocking)
+    // 2. Background async sync to Supabase / Database with real-time saving status
     try {
-      await approveReview(review.id);
-      onRefreshData();
+      await executeAutoSave(async () => {
+        await approveReview(review.id);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error('Error approving review:', err);
       // Revert if error
@@ -712,18 +977,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setLoginLoading(true);
     setLoginError('');
 
+    // Security Rate Limiting Protection (Max 5 failed attempts, then 15 minutes lockout)
+    const lockUntilStr = localStorage.getItem('prestige_admin_locked_until');
+    if (lockUntilStr) {
+      const lockUntil = parseInt(lockUntilStr, 10);
+      if (!isNaN(lockUntil) && Date.now() < lockUntil) {
+        const remainingMinutes = Math.ceil((lockUntil - Date.now()) / (60 * 1000));
+        setLoginError(`تم حظر محاولات الدخول مؤقتاً لحماية الحساب نظراً لتكرار المحاولات الخاطئة. يرجى الانتظار ${remainingMinutes} دقيقة والمحاولة لاحقاً.`);
+        setLoginLoading(false);
+        return;
+      } else {
+        localStorage.removeItem('prestige_admin_locked_until');
+        localStorage.removeItem('prestige_admin_failed_attempts');
+      }
+    }
+
     try {
       const input = email.trim();
       const inputLower = input.toLowerCase();
 
       // 1. Direct Fixed Super Admin Verification (A.hesham / 199991)
       if ((inputLower === 'a.hesham' || inputLower === 'admin') && password === '199991') {
+        localStorage.removeItem('prestige_admin_failed_attempts');
+        localStorage.removeItem('prestige_admin_locked_until');
         const superAdmin: AdminUser = {
           id: 'usr_super_admin_hesham',
           name: 'المدير العام (أحمد هشام)',
           username: 'A.hesham',
           email: 'a.hesham@prestigehotels.sa',
           role: 'admin',
+          roleIds: [SUPER_ADMIN_ROLE_ID],
           status: 'active',
           createdAt: Date.now()
         };
@@ -748,15 +1031,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           return;
         }
         if (matched.password === password) {
-          const isSuper = matched.username?.toLowerCase() === 'a.hesham' || matched.id === 'usr_super_admin_hesham';
+          localStorage.removeItem('prestige_admin_failed_attempts');
+          localStorage.removeItem('prestige_admin_locked_until');
+          const isSuper = matched.role === 'admin' || matched.username?.toLowerCase() === 'a.hesham' || matched.id === 'usr_super_admin_hesham' || (matched.roleIds && matched.roleIds.includes(SUPER_ADMIN_ROLE_ID));
           const verifiedUser: AdminUser = {
             ...matched,
-            role: isSuper ? 'admin' : 'controller'
+            role: isSuper ? 'admin' : 'controller',
+            roleIds: matched.roleIds && matched.roleIds.length > 0 ? matched.roleIds : (isSuper ? [SUPER_ADMIN_ROLE_ID] : [])
           };
           setCurrentUser(verifiedUser);
           setCurrentAdminUser(verifiedUser);
           setIsAdminLoggedIn(true);
-          onShowToast(`مرحباً بكم ${verifiedUser.name} (${verifiedUser.role === 'admin' ? 'المدير العام' : 'مشرف'})`, 'success');
+
+          // If current tab is not accessible, auto-navigate to first permitted tab
+          if (!canAccessTab(verifiedUser, adminRoles, activeTab)) {
+            const allTabs: AdminTab[] = [
+              'bookings', 'rooms-inventory', 'hotels', 'offers', 'districts',
+              'home-sections', 'slides', 'intro-video', 'story-teaser', 'services',
+              'about', 'messages', 'reviews', 'users', 'audit-log', 'settings'
+            ];
+            const firstAllowed = allTabs.find(t => canAccessTab(verifiedUser, adminRoles, t));
+            if (firstAllowed) {
+              handleSelectTab(firstAllowed);
+            }
+          }
+
+          onShowToast(`مرحباً بكم ${verifiedUser.name} (${isSuper ? 'المدير العام' : 'مشرف'})`, 'success');
           setLoginLoading(false);
           return;
         }
@@ -767,6 +1067,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         try {
           const res = await signInWithEmailAndPassword(auth, input, password);
           if (res.user) {
+            localStorage.removeItem('prestige_admin_failed_attempts');
+            localStorage.removeItem('prestige_admin_locked_until');
             const isSuper = inputLower === 'a.hesham@prestigehotels.sa';
             const adminProfile: AdminUser = matched || {
               id: res.user.uid,
@@ -788,7 +1090,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
-      setLoginError('اسم المستخدم أو كلمة المرور غير صحيحة');
+      // Record failed attempt for rate limiting
+      const failedCount = parseInt(localStorage.getItem('prestige_admin_failed_attempts') || '0', 10) + 1;
+      localStorage.setItem('prestige_admin_failed_attempts', String(failedCount));
+      if (failedCount >= 5) {
+        const lockUntil = Date.now() + 15 * 60 * 1000;
+        localStorage.setItem('prestige_admin_locked_until', String(lockUntil));
+        setLoginError('تم تجاوز الحد الأقصى للمحاولات (5 محاولات). تم قفل تسجيل الدخول لمدة 15 دقيقة لدواعي الأمان.');
+      } else {
+        setLoginError(`اسم المستخدم أو كلمة المرور غير صحيحة (المحاولات المتبقية: ${5 - failedCount})`);
+      }
     } catch (err: any) {
       setLoginError(err.message || 'حدث خطأ أثناء تسجيل الدخول');
     } finally {
@@ -824,6 +1135,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleOpenAddHotel = () => {
     setEditingHotelId(null);
     setHotelFormStep(1);
+    setDistanceInputStr('120');
     setHotelForm({
       id: 'hotel_' + Date.now(),
       name: '',
@@ -834,9 +1146,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       distanceToHaram: 120,
       distanceText: '١٢٠ متراً عن ساحة الحرم',
       walkingTimeMinutes: 2,
+      transportType: 'walking',
+      viewType: 'إطلالة حرم',
       featured: true,
       isActive: true,
       onlineBookingEnabled: true,
+      showDistanceBadge: true,
+      showStars: true,
+      showRating: true,
+      showCategories: true,
+      showDistrict: true,
+      customClassification: '',
       bookingPolicy: 'flexible',
       order: hotels.length + 1,
       categories: ['فنادق العمرة'],
@@ -847,7 +1167,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       videoUrl: '',
       overview: 'فندق راقٍ يوفر إقامة هادئة بالقرب من الحرم الشريف مع بوفيه إفطار وخدمات متميزة.',
       detailedDescription: 'يتميز الفندق بموقعه الاستراتيجي وقربه من بوابات الحرم مع غرف وأجنحة مجهزة بأعلى المقاييس الفندقية العالمية لخدمة الحجاج والمعتمرين.',
-      amenities: ['إطلالة على الحرم', 'واي فاي مجاني', 'بوفيه إفطار', 'مصاعد سريعة', 'خدمة غرف 24/7'],
+      amenities: ['إطلالة حرم', 'واي فاي مجاني', 'بوفيه إفطار', 'مصاعد سريعة', 'خدمة غرف 24/7'],
       bookingUrl: '',
       showBookingUrl: true,
       agodaUrl: '',
@@ -866,10 +1186,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         lat: 21.4225,
         lng: 39.8262,
         address: 'أجياد، المنطقة المركزية، مكة المكرمة',
-        viewType: 'إطلالة على ساحات الحرم'
+        viewType: 'إطلالة حرم',
+        transportType: 'walking',
+        showDistanceBadge: true
       },
       keywords: '',
-      metaDescription: ''
+      metaTitle: '',
+      metaTitleEn: '',
+      metaDescription: '',
+      metaDescriptionEn: ''
     });
     setIsHotelModalOpen(true);
   };
@@ -877,15 +1202,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleEditHotel = (hotel: Hotel) => {
     setEditingHotelId(hotel.id);
     setHotelFormStep(1);
+
+    const distMeters = hotel.distanceToHaram || 0;
+    // Format distance input nicely: if 1500m show 1.5, if 350m show 350
+    const initialInput = distMeters >= 1000 && distMeters % 100 === 0
+      ? (distMeters / 1000).toString()
+      : (distMeters > 0 ? distMeters.toString() : '0');
+    setDistanceInputStr(initialInput);
+
+    const rawView = hotel.viewType || hotel.location?.viewType || 'إطلالة حرم';
+    const resolvedView = rawView.includes('مدينة') || rawView.includes('مدينه')
+      ? 'إطلالة على المدينة'
+      : (rawView.includes('ساحة') || rawView.includes('ساحات') ? 'ساحة الحرم' : 'إطلالة حرم');
+
+    const isBus = isBusTransportation({
+      viewType: resolvedView,
+      transportType: hotel.transportType || hotel.location?.transportType,
+      distanceToHaram: distMeters
+    });
+    const transportType = hotel.transportType || (isBus ? 'bus' : 'walking');
+
     setHotelForm({
       ...hotel,
+      viewType: resolvedView,
+      transportType,
       district: hotel.district || (hotel.city === 'مكة المكرمة' ? 'المنطقة المركزية' : 'المنطقة المركزية الشمالية'),
       featured: hotel.featured ?? true,
       isActive: hotel.isActive !== false,
       onlineBookingEnabled: hotel.onlineBookingEnabled !== false,
+      showDistanceBadge: hotel.showDistanceBadge !== false,
+      showStars: hotel.showStars !== false,
+      showRating: hotel.showRating !== false,
+      showCategories: hotel.showCategories !== false,
+      showDistrict: hotel.showDistrict !== false,
+      customClassification: hotel.customClassification || '',
       bookingPolicy: hotel.bookingPolicy || 'flexible',
       order: typeof hotel.order === 'number' && hotel.order > 0 ? hotel.order : (sortedHotels.findIndex(h => h.id === hotel.id) + 1),
-      categories: hotel.categories && hotel.categories.length > 0 ? hotel.categories : ['فنادق العمرة'],
+      categories: (Array.isArray(hotel.categories) && hotel.categories.length > 0)
+        ? hotel.categories
+        : (typeof hotel.categories === 'string'
+            ? (hotel.categories as string).split(',').map(s => s.trim()).filter(Boolean)
+            : ['فنادق العمرة']),
       bookingUrl: hotel.bookingUrl || '',
       showBookingUrl: hotel.showBookingUrl !== false,
       agodaUrl: hotel.agodaUrl || '',
@@ -900,15 +1257,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showHotelEmail: hotel.showHotelEmail !== false,
       customBookingUrl: hotel.customBookingUrl || '',
       customBookingTitle: hotel.customBookingTitle || '',
+      location: {
+        ...hotel.location,
+        viewType: resolvedView,
+        transportType
+      },
       keywords: hotel.keywords || '',
-      metaDescription: hotel.metaDescription || ''
+      metaTitle: hotel.metaTitle || '',
+      metaTitleEn: hotel.metaTitleEn || '',
+      metaDescription: hotel.metaDescription || '',
+      metaDescriptionEn: hotel.metaDescriptionEn || ''
     });
+    setNewCategoryInput('');
     setIsHotelModalOpen(true);
   };
 
-  const toggleFormCategory = (category: HotelCategory) => {
+  const toggleFormCategory = (category: string) => {
     setHotelForm(prev => {
-      const current = prev.categories || [];
+      const current = Array.isArray(prev.categories) ? prev.categories : [];
       const exists = current.includes(category);
       const updated = exists ? current.filter(c => c !== category) : [...current, category];
       return {
@@ -916,6 +1282,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         categories: updated
       };
     });
+  };
+
+  const handleAddCustomCategory = () => {
+    const trimmed = newCategoryInput.trim();
+    if (!trimmed) return;
+    setHotelForm(prev => {
+      const current = Array.isArray(prev.categories) ? prev.categories : [];
+      if (current.includes(trimmed)) return prev;
+      return {
+        ...prev,
+        categories: [...current, trimmed]
+      };
+    });
+    setNewCategoryInput('');
+  };
+
+  const handleRemoveCategory = (cat: string) => {
+    setHotelForm(prev => ({
+      ...prev,
+      categories: (Array.isArray(prev.categories) ? prev.categories : []).filter(c => c !== cat)
+    }));
   };
 
   // Toggle Hotel Active / Hidden (تفعيل أو إخفاء الفندق من الموقع) - Instant 0ms Optimistic Update
@@ -933,10 +1320,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       'success'
     );
 
-    // 2. Background async sync to Supabase (non-blocking)
+    // 2. Background async sync to Supabase with real-time saving status
     try {
-      await saveHotelToDb(updated);
-      onRefreshData();
+      await executeAutoSave(async () => {
+        await saveHotelToDb(updated);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error('Error toggling hotel active:', err);
       // Revert if error
@@ -947,7 +1336,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Toggle Hotel Online Booking (تفعيل أو تعطيل الحجز أونلاين) - Instant 0ms Optimistic Update
   const handleToggleHotelOnlineBooking = async (hotel: Hotel) => {
-    const newOnline = hotel.onlineBookingEnabled === false ? true : false;
+    const newOnline = hotel.onlineBookingEnabled === true ? false : true;
     const updated: Hotel = { ...hotel, onlineBookingEnabled: newOnline };
 
     setLocalHotels(prev => prev.map(h => h.id === hotel.id ? updated : h));
@@ -960,8 +1349,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
 
     try {
-      await saveHotelToDb(updated);
-      onRefreshData();
+      await executeAutoSave(async () => {
+        await saveHotelToDb(updated);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error('Error toggling hotel online booking:', err);
       setLocalHotels(hotels);
@@ -992,13 +1383,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     onShowToast(`تم تعديل ترتيب ظهور فندق "${currentHotel.name}" بنجاح`, 'success');
 
-    // 2. Background async sync to Supabase (non-blocking)
+    // 2. Background async sync to Supabase with real-time saving status
     try {
-      await Promise.all([
-        saveHotelToDb(updatedCurrent),
-        saveHotelToDb(updatedTarget)
-      ]);
-      onRefreshData();
+      await executeAutoSave(async () => {
+        await Promise.all([
+          saveHotelToDb(updatedCurrent),
+          saveHotelToDb(updatedTarget)
+        ]);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error('Error moving hotel order:', err);
       // Revert if error
@@ -1022,12 +1415,173 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
 
     try {
-      await saveHotelToDb(updated);
-      onRefreshData();
+      await executeAutoSave(async () => {
+        await saveHotelToDb(updated);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error('Error toggling hotel featured:', err);
       setLocalHotels(hotels);
       onShowToast('حدث خطأ أثناء تعديل حالة التمييز', 'error');
+    }
+  };
+
+  // Toggle Hotel Distance Badge (إظهار أو إخفاء شارة دقائق السير على البطاقة) - Instant 0ms Optimistic Update
+  const handleToggleHotelDistanceBadge = async (hotel: Hotel) => {
+    const newShow = hotel.showDistanceBadge === false ? true : false;
+    const updated: Hotel = { 
+      ...hotel, 
+      showDistanceBadge: newShow,
+      showTransportInfo: newShow,
+      location: { 
+        address: hotel.location?.address || '',
+        viewType: hotel.location?.viewType || 'إطلالة على المدينة',
+        ...(hotel.location || {}), 
+        showDistanceBadge: newShow,
+        showTransportInfo: newShow
+      }
+    };
+
+    setLocalHotels(prev => prev.map(h => h.id === hotel.id ? updated : h));
+
+    onShowToast(
+      newShow
+        ? `تم إظهار شارة وعداد دقائق السير لفندق "${hotel.name}"`
+        : `تم إخفاء شارة وعداد دقائق السير تماماً لفندق "${hotel.name}"`,
+      'success'
+    );
+
+    try {
+      await executeAutoSave(async () => {
+        await saveHotelToDb(updated);
+        await onRefreshData();
+      });
+    } catch (err) {
+      console.error('Error toggling hotel distance badge:', err);
+      setLocalHotels(hotels);
+      onShowToast('حدث خطأ أثناء تعديل إعدادات شارة المسافة', 'error');
+    }
+  };
+
+  // Toggle Hotel Stars Badge (إظهار أو إخفاء النجوم على البطاقة) - Instant 0ms Optimistic Update
+  const handleToggleHotelStarsBadge = async (hotel: Hotel) => {
+    const newShow = hotel.showStars === false ? true : false;
+    const updated: Hotel = { 
+      ...hotel, 
+      showStars: newShow,
+      location: {
+        address: hotel.location?.address || '',
+        viewType: hotel.location?.viewType || '',
+        ...(hotel.location || {}),
+        showStars: newShow
+      }
+    };
+
+    setLocalHotels(prev => prev.map(h => h.id === hotel.id ? updated : h));
+
+    onShowToast(
+      newShow
+        ? `تم إظهار تصنيف النجوم لفندق "${hotel.name}"`
+        : `تم إخفاء تصنيف النجوم لفندق "${hotel.name}"`,
+      'success'
+    );
+
+    try {
+      await executeAutoSave(async () => {
+        await saveHotelToDb(updated);
+        await onRefreshData();
+      });
+    } catch (err) {
+      console.error('Error toggling hotel stars badge:', err);
+      setLocalHotels(hotels);
+      onShowToast('حدث خطأ أثناء تعديل ظهور النجوم', 'error');
+    }
+  };
+
+  // Toggle Hotel Categories Badge (إظهار أو إخفاء تصنيفات الفندق رمضان/عمرة/حج) - Instant 0ms Optimistic Update
+  const handleToggleHotelCategoriesBadge = async (hotel: Hotel) => {
+    const newShow = hotel.showCategories === false ? true : false;
+    const updated: Hotel = { 
+      ...hotel, 
+      showCategories: newShow,
+      location: {
+        address: hotel.location?.address || '',
+        viewType: hotel.location?.viewType || '',
+        ...(hotel.location || {}),
+        showCategories: newShow
+      }
+    };
+
+    setLocalHotels(prev => prev.map(h => h.id === hotel.id ? updated : h));
+
+    onShowToast(
+      newShow
+        ? `تم إظهار تصنيفات الفندق لفندق "${hotel.name}"`
+        : `تم إخفاء تصنيفات الفندق لفندق "${hotel.name}"`,
+      'success'
+    );
+
+    try {
+      await executeAutoSave(async () => {
+        await saveHotelToDb(updated);
+        await onRefreshData();
+      });
+    } catch (err) {
+      console.error('Error toggling hotel categories badge:', err);
+      setLocalHotels(hotels);
+      onShowToast('حدث خطأ أثناء تعديل ظهور تصنيفات الفندق', 'error');
+    }
+  };
+
+  // Bulk Toggle Distance Badge for all hotels or filtered by city (أداة التحكم الشامل بعداد ودقائق السير)
+  const handleBulkToggleDistanceBadge = async (newShow: boolean, filterCity?: string) => {
+    const targetHotels = localHotels.filter(h => !filterCity || filterCity === 'all' || h.city === filterCity);
+    if (targetHotels.length === 0) {
+      onShowToast('لا توجد فنادق مطابقة لتحديثها', 'warning');
+      return;
+    }
+
+    const updatedList = localHotels.map(h => {
+      if (!filterCity || filterCity === 'all' || h.city === filterCity) {
+        return {
+          ...h,
+          showDistanceBadge: newShow,
+          showTransportInfo: newShow,
+          location: {
+            address: h.location?.address || '',
+            viewType: h.location?.viewType || 'إطلالة على المدينة',
+            ...(h.location || {}),
+            showDistanceBadge: newShow,
+            showTransportInfo: newShow
+          }
+        };
+      }
+      return h;
+    });
+
+    // 1. INSTANT OPTIMISTIC UPDATE
+    setLocalHotels(updatedList);
+
+    const count = targetHotels.length;
+    const cityText = filterCity === 'مكة المكرمة' ? 'بمكة المكرمة' : filterCity === 'المدينة المنورة' ? 'بالمدينة المنورة' : '';
+    onShowToast(
+      newShow
+        ? `تم إظهار وتفعيل عداد السير لـ ${count} فندق ${cityText} بنجاح`
+        : `تم إخفاء عداد السير تماماً عن ${count} فندق ${cityText} بنجاح`,
+      'success'
+    );
+
+    // 2. Persist to DB in parallel
+    try {
+      await executeAutoSave(async () => {
+        const toSave = updatedList.filter(h => targetHotels.some(th => th.id === h.id));
+        await Promise.all(toSave.map(h => saveHotelToDb(h)));
+        await onRefreshData();
+      });
+    } catch (err) {
+      console.error('Error bulk toggling distance badge:', err);
+      setLocalHotels(hotels);
+      onShowToast('حدث خطأ أثناء حفظ التحديث الجماعي', 'error');
     }
   };
 
@@ -1045,14 +1599,68 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     try {
+      const distMeters = parseDistanceInput(distanceInputStr || hotelForm.distanceToHaram);
+      const rawView = hotelForm.viewType || hotelForm.location?.viewType || 'إطلالة حرم';
+      const resolvedView = rawView.includes('مدينة') || rawView.includes('مدينه')
+        ? 'إطلالة على المدينة'
+        : (rawView.includes('ساحة') || rawView.includes('ساحات') ? 'ساحة الحرم' : 'إطلالة حرم');
+
+      const isBus = isBusTransportation({
+        viewType: resolvedView,
+        transportType: hotelForm.transportType || hotelForm.location?.transportType,
+        distanceToHaram: distMeters
+      });
+      const transportMode = hotelForm.transportType || (isBus ? 'bus' : 'walking');
+      const transportInfo = formatTransportText({
+        distanceToHaram: distMeters,
+        viewType: resolvedView,
+        transportType: transportMode,
+        walkingTimeMinutes: hotelForm.walkingTimeMinutes
+      }, 'ar');
+
+      const finalizedHotel: Hotel = {
+        ...hotelForm,
+        distanceToHaram: distMeters,
+        distanceText: transportInfo.text,
+        showDistanceBadge: hotelForm.showDistanceBadge !== false,
+        showStars: hotelForm.showStars !== false,
+        showRating: hotelForm.showRating !== false,
+        showCategories: hotelForm.showCategories !== false,
+        showDistrict: hotelForm.showDistrict !== false,
+        customClassification: hotelForm.customClassification?.trim() || undefined,
+        viewType: resolvedView,
+        transportType: transportMode,
+        location: {
+          ...hotelForm.location,
+          viewType: resolvedView,
+          transportType: transportMode,
+          showDistanceBadge: hotelForm.showDistanceBadge !== false,
+          showStars: hotelForm.showStars !== false,
+          showRating: hotelForm.showRating !== false,
+          showCategories: hotelForm.showCategories !== false,
+          showDistrict: hotelForm.showDistrict !== false,
+          customClassification: hotelForm.customClassification?.trim() || undefined
+        }
+      };
+
       // Optimistic update
       const isEdit = Boolean(editingHotelId);
-      setLocalHotels(prev => isEdit ? prev.map(h => h.id === hotelForm.id ? hotelForm : h) : [hotelForm, ...prev]);
+      setLocalHotels(prev => isEdit ? prev.map(h => h.id === finalizedHotel.id ? finalizedHotel : h) : [finalizedHotel, ...prev]);
       setIsHotelModalOpen(false);
       onShowToast(editingHotelId ? 'تم تحديث بيانات الفندق بنجاح' : 'تمت إضافة الفندق الجديد بنجاح', 'success');
 
-      await saveHotelToDb(hotelForm);
-      onRefreshData();
+      await executeAutoSave(async () => {
+        await saveHotelToDb(finalizedHotel);
+        await handleRecordAudit({
+          module: 'hotels',
+          action: isEdit ? 'تعديل فندق' : 'إضافة فندق',
+          details: `${isEdit ? 'تعديل بيانات الفندق' : 'إضافة فندق جديد'}: "${finalizedHotel.name}" (${finalizedHotel.city})`,
+          recordId: finalizedHotel.id,
+          recordTitle: finalizedHotel.name,
+          newValue: { name: finalizedHotel.name, city: finalizedHotel.city, district: finalizedHotel.district, stars: finalizedHotel.stars }
+        });
+        await onRefreshData();
+      });
     } catch (err) {
       console.error(err);
       setLocalHotels(hotels);
@@ -1206,10 +1814,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     try {
-      await saveOfferToDb(offerForm);
-      await onRefreshData();
       setIsOfferModalOpen(false);
       onShowToast(editingOfferId ? 'تم تحديث الإعلان وحفظه تلقائياً بنجاح' : 'تمت إضافة الإعلان الجديد بنجاح', 'success');
+
+      await executeAutoSave(async () => {
+        await saveOfferToDb(offerForm);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error(err);
       onShowToast('حدث خطأ أثناء حفظ الإعلان', 'error');
@@ -1220,9 +1831,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleToggleOfferActive = async (offer: Offer) => {
     try {
       const updated = { ...offer, isActive: !offer.isActive };
-      await saveOfferToDb(updated);
-      await onRefreshData();
       onShowToast(updated.isActive ? 'تم تفعيل الإعلان وإظهاره للزوار' : 'تم إخفاء الإعلان عن الزوار', 'info');
+
+      await executeAutoSave(async () => {
+        await saveOfferToDb(updated);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error(err);
       onShowToast('حدث خطأ أثناء تحديث حالة الإعلان', 'error');
@@ -1232,14 +1846,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleToggleOfferHeroSlides = async (offer: Offer) => {
     try {
       const updated = { ...offer, showInHeroSlides: !offer.showInHeroSlides };
-      await saveOfferToDb(updated);
-      await onRefreshData();
       onShowToast(
         updated.showInHeroSlides 
           ? 'تم إدراج الإعلان في شرائح الترحيب (الهيرو) بالأعلى بنجاح ✓' 
           : 'تم إلغاء ظهور الإعلان من شرائح الترحيب', 
         'info'
       );
+
+      await executeAutoSave(async () => {
+        await saveOfferToDb(updated);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error(err);
       onShowToast('حدث خطأ أثناء تحديث ظهور الإعلان في الهيرو', 'error');
@@ -1249,9 +1866,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleToggleOfferCountdown = async (offer: Offer) => {
     try {
       const updated = { ...offer, showCountdown: offer.showCountdown === false ? true : false };
-      await saveOfferToDb(updated);
-      await onRefreshData();
       onShowToast(updated.showCountdown ? 'تم تفعيل مؤقت العد التنازلي' : 'تم إخفاء مؤقت العد التنازلي', 'info');
+
+      await executeAutoSave(async () => {
+        await saveOfferToDb(updated);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error(err);
       onShowToast('حدث خطأ أثناء تحديث العد التنازلي', 'error');
@@ -1261,9 +1881,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleToggleOfferDiscount = async (offer: Offer) => {
     try {
       const updated = { ...offer, showDiscount: offer.showDiscount === false ? true : false };
-      await saveOfferToDb(updated);
-      await onRefreshData();
       onShowToast(updated.showDiscount ? 'تم تفعيل شارة ونسبة الخصم' : 'تم إخفاء شارة الخصم', 'info');
+
+      await executeAutoSave(async () => {
+        await saveOfferToDb(updated);
+        await onRefreshData();
+      });
     } catch (err) {
       console.error(err);
       onShowToast('حدث خطأ أثناء تحديث شارة الخصم', 'error');
@@ -1291,46 +1914,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (type === 'hotel') {
       setLocalHotels(prev => prev.filter(h => h.id !== id));
       onShowToast(`تم حذف الفندق "${title}" نهائياً`, 'success');
-      try {
-        await deleteHotelFromDb(id);
-        onRefreshData();
-      } catch (err) {
+      deleteHotelFromDb(id).catch(err => {
         console.error('Error deleting hotel:', err);
         setLocalHotels(hotels);
-        onShowToast('حدث خطأ أثناء حذف الفندق من قاعدة البيانات', 'error');
-      }
+        onShowToast('حدث خطأ أثناء حذف الفندق من الخادم', 'error');
+      });
+      handleRecordAudit({
+        module: 'hotels',
+        action: 'حذف فندق',
+        details: `حذف الفندق "${title}" نهائياً من النظام`,
+        recordId: id,
+        recordTitle: title
+      }).catch(() => {});
     } else if (type === 'offer') {
+      setLocalOffers(prev => prev.filter(o => o.id !== id));
       onShowToast(`تم حذف العرض "${title}" نهائياً`, 'success');
-      try {
-        await deleteOfferFromDb(id);
-        onRefreshData();
-      } catch (err) {
+      deleteOfferFromDb(id).catch(err => {
         console.error('Error deleting offer:', err);
-        onRefreshData();
-        onShowToast('حدث خطأ أثناء حذف العرض من قاعدة البيانات', 'error');
-      }
+        setLocalOffers(offers);
+        onShowToast('حدث خطأ أثناء حذف العرض من الخادم', 'error');
+      });
     } else if (type === 'review') {
       setReviews(prev => prev.filter(r => r.id !== id));
       onShowToast('تم حذف التقييم بنجاح', 'success');
-      try {
-        await deleteReviewFromDb(id);
-        onRefreshData();
-      } catch (err) {
+      deleteReviewFromDb(id).catch(err => {
         console.error('Error deleting review:', err);
-        await loadReviews();
-        onShowToast('حدث خطأ أثناء حذف التقييم من قاعدة البيانات', 'error');
-      }
+        loadReviews();
+        onShowToast('حدث خطأ أثناء حذف التقييم من الخادم', 'error');
+      });
     } else if (type === 'message') {
       setMessages(prev => prev.filter(m => m.id !== id));
       onShowToast('تم حذف الرسالة بنجاح', 'success');
-      try {
-        await deleteMessageFromDb(id);
-        onRefreshData();
-      } catch (err) {
+      deleteMessageFromDb(id).catch(err => {
         console.error('Error deleting message:', err);
-        await loadMessages();
-        onShowToast('حدث خطأ أثناء حذف الرسالة من قاعدة البيانات', 'error');
-      }
+        loadMessages();
+        onShowToast('حدث خطأ أثناء حذف الرسالة من الخادم', 'error');
+      });
     }
   };
 
@@ -1342,7 +1961,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     // 2. Background Sync
     try {
-      await markMessageAsReadInDb(msg.id, newStatus);
+      await executeAutoSave(async () => {
+        await markMessageAsReadInDb(msg.id, newStatus);
+      });
     } catch (e) {
       console.error('Error toggling message read status:', e);
       setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, read: !newStatus } : m));
@@ -1482,7 +2103,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Real-time Auto-save & Cloud Sync Indicator Badge */}
+            {autoSaveStatus === 'saving' && (
+              <div id="admin-header-autosave-saving" className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 text-xs font-bold animate-pulse shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                <RotateCcw className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                <span>جاري الحفظ تلقائياً...</span>
+              </div>
+            )}
+            {autoSaveStatus === 'saved' && (
+              <div id="admin-header-autosave-saved" className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 text-xs font-bold shadow-xs transition-all">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>تم الحفظ والمزامنة بنجاح ✓</span>
+              </div>
+            )}
+            {autoSaveStatus === 'idle' && (
+              <div id="admin-header-autosave-idle" className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-stone-100/80 border border-stone-200 text-stone-600 text-xs font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>الحفظ التلقائي مفعّل ☁️</span>
+              </div>
+            )}
+
             <button
               onClick={onNavigateHome}
               className="px-4 py-2 rounded-xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
@@ -1501,123 +2143,236 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
-        {/* Dashboard Grid Layout: Compact 2-cols sidebar on desktop gives 10-cols spacious width for main tables */}
+        {/* Dashboard Grid Layout: 3-cols for Hierarchical Sidebar on desktop, 9-cols for Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-          {/* Sidebar Tabs (Organized in 4 Visual Categories) */}
-          <div className="lg:col-span-3 xl:col-span-2 flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 gap-3 no-scrollbar">
+          {/* Hierarchical Sidebar Navigation (القوائم الرئيسية والمنسدلة الفرعية) */}
+          <div className="lg:col-span-4 xl:col-span-3 flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 gap-3 no-scrollbar">
             {[
               {
-                categoryTitle: 'حجوزات الغرف والتسكين',
+                id: 'online-booking',
+                categoryTitle: 'منظومة الحجوزات والتسكين أونلاين',
                 categoryIcon: Calendar,
+                badgeCount: pendingBookingsCount > 0 ? pendingBookingsCount : undefined,
+                badgeAlert: pendingBookingsCount > 0,
                 items: [
                   { 
                     id: 'bookings' as AdminTab, 
-                    label: 'سجل الحجوزات', 
+                    label: 'سجل الحجوزات والمتابعة', 
                     icon: Calendar, 
                     count: pendingBookingsCount > 0 ? pendingBookingsCount : (totalBookingsCount || undefined),
                     badgeAlert: pendingBookingsCount > 0 
                   },
-                  { id: 'rooms-inventory' as AdminTab, label: 'إدارة الغرف والمفاتيح والوجبات', icon: Key }
+                  { 
+                    id: 'online-control' as AdminTab, 
+                    label: 'إتاحة الفنادق والمواسم للزوار', 
+                    icon: Sliders,
+                    badgeAlert: true
+                  },
+                  { 
+                    id: 'calendar-grid' as AdminTab, 
+                    label: 'مصفوفة التقويم والتوفر اليومي', 
+                    icon: LayoutGrid 
+                  },
+                  { 
+                    id: 'rooms-list' as AdminTab, 
+                    label: 'فئات الغرف والمفاتيح الرقمية', 
+                    icon: BedDouble 
+                  },
+                  { 
+                    id: 'meals-list' as AdminTab, 
+                    label: 'خطط وباقات الوجبات', 
+                    icon: Utensils 
+                  },
+                  { 
+                    id: 'packages-list' as AdminTab, 
+                    label: 'باقات الإقامة الخاصة', 
+                    icon: Sparkles 
+                  },
+                  { 
+                    id: 'periods-pricing' as AdminTab, 
+                    label: 'المواسم والفترات التسعيرية', 
+                    icon: CalendarRange 
+                  },
+                  { 
+                    id: 'booking-rules' as AdminTab, 
+                    label: 'قواعد الحجز والسياسات والشروط', 
+                    icon: ShieldCheck 
+                  }
                 ]
               },
               {
-                categoryTitle: 'الفنادق والمحتوى',
+                id: 'hotels-locations',
+                categoryTitle: 'الفنادق والمواقع الجغرافية',
                 categoryIcon: Building2,
+                badgeCount: hotels.length,
                 items: [
                   { id: 'hotels' as AdminTab, label: 'الفنادق المعتمدة', icon: Building2, count: hotels.length },
-                  { id: 'offers' as AdminTab, label: 'عروض وإعلانات', icon: Tag, count: offers.length },
-                  { id: 'districts' as AdminTab, label: 'المناطق والأحياء', icon: MapPin, count: districts.length || undefined }
+                  { id: 'districts' as AdminTab, label: 'المناطق والأحياء والمواقع', icon: MapPin, count: districts.length || undefined }
                 ]
               },
               {
-                categoryTitle: 'الواجهة والعرض',
-                categoryIcon: LayoutGrid,
+                id: 'site-content',
+                categoryTitle: 'صفحات الموقع والمحتوى المرئي',
+                categoryIcon: Layout,
                 items: [
-                  { id: 'home-sections' as AdminTab, label: 'أقسام الرئيسية', icon: Sliders },
-                  { id: 'slides' as AdminTab, label: 'شرائح الترحيب (الهيرو)', icon: ImageIcon, count: siteSettings?.heroSlides?.length || undefined },
-                  { id: 'intro-video' as AdminTab, label: 'فيديو الإنترو', icon: Film },
-                  { id: 'story-teaser' as AdminTab, label: 'نبذة وقصة الشركة', icon: Sparkles },
-                  { id: 'services' as AdminTab, label: 'منظومة الخدمات', icon: Layers }
+                  { id: 'slides' as AdminTab, label: 'الشرائح الترحيبية (الهيرو)', icon: ImageIcon, count: siteSettings?.heroSlides?.length || undefined },
+                  { id: 'intro-video' as AdminTab, label: 'فيديو الإنترو الترحيبي', icon: Film },
+                  { id: 'offers' as AdminTab, label: 'الإعلانات وبوسترات العروض', icon: Tag, count: offers.length },
+                  { 
+                    id: 'contacts' as AdminTab, 
+                    label: 'صفحة تواصل معنا والدليل', 
+                    icon: Phone, 
+                    count: settingsForm?.contactsDirectory?.length || siteSettings?.contactsDirectory?.length || undefined 
+                  },
+                  { id: 'about' as AdminTab, label: 'صفحة من نحن وفروع الشركة', icon: Info },
+                  { id: 'story-teaser' as AdminTab, label: 'قصة ونبذة الشركة التفاعلية', icon: Sparkles },
+                  { id: 'services' as AdminTab, label: 'منظومة الخدمات المتكاملة', icon: Layers },
+                  { id: 'buttons' as AdminTab, label: 'أزرار وبطاقات الإجراءات', icon: MousePointerClick, count: settingsForm?.actionButtons?.length || siteSettings?.actionButtons?.length || undefined },
+                  { id: 'home-sections' as AdminTab, label: 'ترتيب وتخصيص أقسام الرئيسية', icon: Sliders }
                 ]
               },
               {
-                categoryTitle: 'الشركة والتواصل',
-                categoryIcon: Info,
+                id: 'inbox-reviews',
+                categoryTitle: 'التواصل والرسائل والتقييمات',
+                categoryIcon: MessageSquare,
+                badgeCount: (unreadMessagesCount > 0 ? unreadMessagesCount : 0) + (pendingReviewsCount > 0 ? pendingReviewsCount : 0) || undefined,
+                badgeAlert: unreadMessagesCount > 0 || pendingReviewsCount > 0,
                 items: [
-                  { id: 'about' as AdminTab, label: 'من نحن والمقر الرئيسي', icon: Info }
+                  { id: 'messages' as AdminTab, label: 'الرسائل والاستفسارات الواردة', icon: Mail, count: unreadMessagesCount > 0 ? unreadMessagesCount : (messages.length || undefined), badgeAlert: unreadMessagesCount > 0 },
+                  { id: 'reviews' as AdminTab, label: 'تقييمات وآراء النزلاء', icon: MessageSquare, count: pendingReviewsCount > 0 ? pendingReviewsCount : (reviews.length || undefined), badgeAlert: pendingReviewsCount > 0 }
                 ]
               },
               {
-                categoryTitle: 'الإدارة والعملاء',
+                id: 'system-security',
+                categoryTitle: 'إعدادات المنصة والأمان والمشرفين',
                 categoryIcon: Settings,
                 items: [
-                  { id: 'messages' as AdminTab, label: 'الرسائل الواردة', icon: Mail, count: unreadMessagesCount > 0 ? unreadMessagesCount : (messages.length || undefined), badgeAlert: unreadMessagesCount > 0 },
-                  { id: 'reviews' as AdminTab, label: 'إدارة التقييمات', icon: MessageSquare, count: pendingReviewsCount > 0 ? pendingReviewsCount : (reviews.length || undefined), badgeAlert: pendingReviewsCount > 0 },
-                  { id: 'users' as AdminTab, label: 'المستخدمين والصلاحيات', icon: Users, count: adminUsers.length || undefined, restricted: currentUser?.role === 'controller' },
-                  { id: 'settings' as AdminTab, label: 'الإعدادات والهوية', icon: Settings, restricted: currentUser?.role === 'controller' }
+                  { id: 'settings' as AdminTab, label: 'الهوية البصرية والإعدادات العامة', icon: Settings },
+                  { id: 'users' as AdminTab, label: 'المشرفين والصلاحيات (RBAC)', icon: Users, count: adminUsers.length || undefined },
+                  { id: 'audit-log' as AdminTab, label: 'سجل تدقيق العمليات', icon: Clock, count: auditLogs.length || undefined }
                 ]
               }
-            ].map((group, gIdx) => (
-              <div key={gIdx} className="space-y-1.5 shrink-0 lg:w-full">
-                <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold text-stone-500 bg-stone-100/70 rounded-lg">
-                  <group.categoryIcon className="w-3.5 h-3.5 text-[#B38A34]" />
-                  <span>{group.categoryTitle}</span>
+            ].map((group) => {
+              const visibleItems = group.items.filter(item => canAccessTab(currentUser, adminRoles, item.id));
+              if (visibleItems.length === 0) return null;
+              const isExpanded = expandedMenus[group.id] !== false;
+              const hasActiveChild = visibleItems.some(item => activeTab === item.id);
+
+              return (
+                <div key={group.id} className="space-y-1.5 shrink-0 lg:w-full bg-white/80 backdrop-blur-md rounded-2xl p-2.5 border border-stone-200/80 shadow-2xs">
+                  {/* Category Header (Accordion Toggle) */}
+                  <button
+                    type="button"
+                    onClick={() => toggleMenu(group.id)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      hasActiveChild 
+                        ? 'bg-[#C9A24B]/15 text-[#8C6D23]' 
+                        : 'text-stone-700 hover:bg-stone-100/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <group.categoryIcon className="w-4 h-4 text-[#B38A34]" />
+                      <span className="truncate">{group.categoryTitle}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {group.badgeCount !== undefined && group.badgeCount > 0 && (
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                          group.badgeAlert 
+                            ? 'bg-amber-500 text-white animate-pulse' 
+                            : 'bg-stone-200 text-stone-700'
+                        }`}>
+                          {group.badgeCount}
+                        </span>
+                      )}
+                      <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
+                  </button>
+
+                  {/* Sub-items (القوائم الفرعية المنسدلة) */}
+                  {isExpanded && (
+                    <div className="flex lg:flex-col gap-1 pr-1.5 lg:pr-2 border-r-2 border-[#C9A24B]/30 pt-1">
+                      {visibleItems.map((item) => {
+                        const Icon = item.icon;
+                        const isSelected = activeTab === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            id={`admin-tab-btn-${item.id}`}
+                            onClick={() => handleSelectTab(item.id)}
+                            className={`shrink-0 lg:w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap lg:whitespace-normal ${
+                              isSelected
+                                ? 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] text-white shadow-md shadow-[#C9A24B]/20 font-bold'
+                                : 'bg-transparent hover:bg-stone-100 text-stone-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Icon className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-stone-500'}`} />
+                              <span className="truncate">{item.label}</span>
+                            </div>
+                            {item.count !== undefined && (
+                              <span className={`text-[10px] mr-1.5 px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                                isSelected 
+                                  ? 'bg-white/20 text-white' 
+                                  : (item as any).badgeAlert 
+                                  ? 'bg-amber-500 text-white animate-pulse'
+                                  : 'bg-stone-200/70 text-stone-700'
+                              }`}>
+                                {item.count}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="flex lg:flex-col gap-1.5">
-                  {group.items.map((item) => {
-                    const Icon = item.icon;
-                    const isSelected = activeTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        id={`admin-tab-btn-${item.id}`}
-                        onClick={() => handleSelectTab(item.id)}
-                        className={`shrink-0 lg:w-full flex items-center justify-between p-2.5 sm:p-3 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap lg:whitespace-normal ${
-                          isSelected
-                            ? 'bg-[#C9A24B] text-white shadow-md shadow-[#C9A24B]/20'
-                            : 'bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 shadow-2xs'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 sm:gap-2.5">
-                          <Icon className="w-4 h-4 shrink-0" />
-                          <span className="truncate">{item.label}</span>
-                          {item.restricted && (
-                            <span className="text-[9px] px-1 py-0.5 rounded bg-stone-100 text-stone-500 font-normal hidden sm:inline">
-                              أدمن
-                            </span>
-                          )}
-                        </div>
-                        {item.count !== undefined && (
-                          <span className={`text-[10px] sm:text-xs mr-1.5 px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                            isSelected 
-                              ? 'bg-white/20 text-white' 
-                              : item.badgeAlert 
-                              ? 'bg-amber-500 text-white animate-pulse'
-                              : 'bg-stone-100 text-[#B38A34]'
-                          }`}>
-                            {item.count}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {/* Main Content Area (10 cols on xl, 9 on lg) */}
-          <div className="lg:col-span-9 xl:col-span-10">
+          {/* Main Content Area (9 cols on xl, 8 on lg) */}
+          <div className="lg:col-span-8 xl:col-span-9">
+            {!canAccessTab(currentUser, adminRoles, activeTab) ? (
+              <AccessDeniedScreen
+                tab={activeTab}
+                user={currentUser}
+                roles={adminRoles}
+                onNavigateTab={(allowedTab) => handleSelectTab(allowedTab as AdminTab)}
+              />
+            ) : (
+              <>
+            {/* ONLINE AVAILABILITY & PERIODS CONTROL (NEW DEDICATED MANAGER) */}
+            {activeTab === 'online-control' && (
+              <AdminOnlineAvailabilityManager
+                hotels={localHotels}
+                siteSettings={siteSettings}
+                onUpdateHotel={(updatedHotel) => {
+                  setLocalHotels(prev => prev.map(h => h.id === updatedHotel.id ? updatedHotel : h));
+                }}
+                onUpdateSiteSettings={onUpdateSiteSettings}
+                onShowToast={onShowToast}
+              />
+            )}
+
             {/* ROOM BOOKINGS TAB */}
             {activeTab === 'bookings' && (
               <AdminBookingsManager 
                 onShowToast={onShowToast}
                 siteSettings={siteSettings}
+                currentUser={currentUser}
+                adminRoles={adminRoles}
+                hotels={localHotels}
               />
             )}
 
-            {/* ROOMS & KEYS INVENTORY TAB */}
-            {activeTab === 'rooms-inventory' && (
+            {/* ROOMS, CALENDAR MATRIX, MEALS, PACKAGES, PERIODS, RULES TAB */}
+            {(activeTab === 'rooms-inventory' || 
+              activeTab === 'calendar-grid' || 
+              activeTab === 'rooms-list' || 
+              activeTab === 'meals-list' || 
+              activeTab === 'packages-list' || 
+              activeTab === 'periods-pricing' || 
+              activeTab === 'booking-rules') && (
               <AdminRoomsManager 
                 hotels={localHotels}
                 onShowToast={onShowToast}
@@ -1625,253 +2380,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 onUpdateHotel={(updatedHotel) => {
                   setLocalHotels(prev => prev.map(h => h.id === updatedHotel.id ? updatedHotel : h));
                 }}
+                activeSubTab={
+                  activeTab === 'calendar-grid' ? 'calendar-grid' :
+                  activeTab === 'rooms-list' ? 'rooms' :
+                  activeTab === 'meals-list' ? 'meals' :
+                  activeTab === 'packages-list' ? 'packages' :
+                  activeTab === 'periods-pricing' ? 'periods-pricing' :
+                  activeTab === 'booking-rules' ? 'booking-rules' :
+                  'rooms'
+                }
               />
             )}
 
             {/* 1. HOTELS MANAGEMENT TAB */}
             {activeTab === 'hotels' && (
-              <div id="admin-hotels-section" className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-stone-200">
-                  <div>
-                    <h2 className="text-xl font-cairo font-bold text-stone-900">قائمة الفنادق المعتمدة</h2>
-                    <span className="text-xs text-stone-500">إجمالي: {hotels.length} فندق</span>
-                  </div>
-
-                  <button
-                    id="admin-add-hotel-btn"
-                    onClick={handleOpenAddHotel}
-                    className="px-5 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#B38A34] text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-xs"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>+ إضافة فندق جديد</span>
-                  </button>
-                </div>
-
-                {/* Hotels Table - Spacious Wide Design */}
-                <div className="overflow-x-auto -mx-2 sm:mx-0">
-                  <table className="w-full text-right text-xs sm:text-sm min-w-[1050px]">
-                    <thead>
-                      <tr className="border-b border-stone-200 text-stone-500 text-xs font-semibold whitespace-nowrap">
-                        <th className="pb-3 text-center w-20">الترتيب</th>
-                        <th className="pb-3 pr-2 min-w-[200px]">الفندق</th>
-                        <th className="pb-3 min-w-[140px]">المدينة والحي</th>
-                        <th className="pb-3 min-w-[90px]">النجوم</th>
-                        <th className="pb-3 min-w-[180px]">التصنيفات</th>
-                        <th className="pb-3 text-center min-w-[130px]">حالة الفندق</th>
-                        <th className="pb-3 text-center min-w-[130px]">حجز أونلاين</th>
-                        <th className="pb-3 text-center min-w-[110px]">البار الرئيسي</th>
-                        <th className="pb-3 min-w-[90px]">المسافة</th>
-                        <th className="pb-3 pl-2 text-left min-w-[120px]">الإجراءات</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-stone-100">
-                      {sortedHotels.map((hotel, index) => (
-                        <tr 
-                          key={hotel.id} 
-                          className={`transition-colors ${
-                            hotel.isActive === false 
-                              ? 'bg-stone-50/80 hover:bg-stone-100/60' 
-                              : 'hover:bg-stone-50'
-                          }`}
-                        >
-                          {/* 1. Reorder Column */}
-                          <td className="py-3.5 text-center whitespace-nowrap">
-                            <div className="inline-flex items-center gap-1.5 bg-stone-100 px-2.5 py-1 rounded-xl border border-stone-200 shadow-2xs">
-                              <span className="font-mono font-bold text-xs text-stone-800 min-w-[22px] text-center" title={`ترتيب الظهور: #${index + 1}`}>
-                                #{index + 1}
-                              </span>
-                              <div className="flex flex-col gap-0.5">
-                                <button
-                                  type="button"
-                                  disabled={index === 0}
-                                  onClick={() => handleMoveHotelOrder(hotel.id, 'up')}
-                                  className={`p-1 rounded transition-colors ${
-                                    index === 0 
-                                      ? 'text-stone-300 cursor-not-allowed' 
-                                      : 'text-stone-700 hover:text-[#C9A24B] hover:bg-white cursor-pointer active:scale-95'
-                                  }`}
-                                  title="تقديم ترتيب الفندق لأعلى"
-                                >
-                                  <ChevronUp className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={index === sortedHotels.length - 1}
-                                  onClick={() => handleMoveHotelOrder(hotel.id, 'down')}
-                                  className={`p-1 rounded transition-colors ${
-                                    index === sortedHotels.length - 1 
-                                      ? 'text-stone-300 cursor-not-allowed' 
-                                      : 'text-stone-700 hover:text-[#C9A24B] hover:bg-white cursor-pointer active:scale-95'
-                                  }`}
-                                  title="تأخير ترتيب الفندق لأسفل"
-                                >
-                                  <ChevronDown className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* 2. Hotel Details */}
-                          <td className="py-3.5 pr-2">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={hotel.mainImage}
-                                alt=""
-                                className={`w-11 h-11 rounded-xl object-cover bg-stone-100 shrink-0 border border-stone-200 shadow-2xs ${
-                                  hotel.isActive === false ? 'grayscale opacity-75' : ''
-                                }`}
-                              />
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <strong className="text-stone-900 font-bold block text-sm sm:text-base whitespace-nowrap">
-                                    {hotel.name}
-                                  </strong>
-                                  {hotel.isActive === false && (
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-stone-200 text-stone-600 shrink-0">
-                                      مخفي
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-[11px] text-stone-500 font-mono">
-                                  {hotel.rating} ★ ({hotel.reviewCount} تقييم)
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* 3. City and District */}
-                          <td className="py-3.5 whitespace-nowrap">
-                            <div className="flex flex-col">
-                              <span className="text-stone-900 font-bold text-xs sm:text-sm">{hotel.city}</span>
-                              <span className="text-[11px] text-[#B38A34] font-semibold">حي {hotel.district}</span>
-                            </div>
-                          </td>
-
-                          {/* 4. Stars */}
-                          <td className="py-3.5 whitespace-nowrap text-[#B38A34] font-bold text-xs sm:text-sm">
-                            {hotel.stars} نجوم
-                          </td>
-
-                          {/* 5. Categories */}
-                          <td className="py-3.5">
-                            <div className="flex flex-wrap gap-1 max-w-[260px]">
-                              {(hotel.categories && hotel.categories.length > 0 ? hotel.categories : ['عادي']).map(c => (
-                                <span key={c} className="text-[10px] font-semibold px-2.5 py-0.5 rounded-md bg-stone-100 text-[#B38A34] border border-stone-200 whitespace-nowrap">
-                                  {c}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-
-                          {/* 6. Active / Hidden Toggle Button (تفعيل وإخفاء الفندق) */}
-                          <td className="py-3.5 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleHotelActive(hotel)}
-                              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer active:scale-95 shadow-2xs ${
-                                hotel.isActive !== false
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                  : 'bg-stone-100 text-stone-500 border-stone-300 hover:bg-stone-200'
-                              }`}
-                              title={hotel.isActive !== false ? 'الفندق ظاهر للزوار بالموقع - اضغط لإخفائه' : 'الفندق مخفي من الموقع - اضغط لتفعيله'}
-                            >
-                              {hotel.isActive !== false ? (
-                                <>
-                                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>مفعل (معروض)</span>
-                                </>
-                              ) : (
-                                <>
-                                  <EyeOff className="w-3.5 h-3.5 text-stone-400" />
-                                  <span>مخفي</span>
-                                </>
-                              )}
-                            </button>
-                          </td>
-
-                          {/* 7. Online Booking Toggle Button (تفعيل أو تحويل الحجز لواتساب) */}
-                          <td className="py-3.5 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleHotelOnlineBooking(hotel)}
-                              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border cursor-pointer active:scale-95 shadow-2xs ${
-                                hotel.onlineBookingEnabled !== false
-                                  ? 'bg-amber-50 text-[#B38A34] border-amber-300 hover:bg-amber-100'
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                              }`}
-                              title={hotel.onlineBookingEnabled !== false ? 'الحجز أونلاين مفعّل - اضغط للتحويل إلى واتساب فقط' : 'الحجز عبر واتساب فقط - اضغط لتفعيل الحجز أونلاين'}
-                            >
-                              {hotel.onlineBookingEnabled !== false ? (
-                                <>
-                                  <BedDouble className="w-3.5 h-3.5 text-[#B38A34]" />
-                                  <span>أونلاين</span>
-                                </>
-                              ) : (
-                                <>
-                                  <WhatsAppIcon className="w-3.5 h-3.5" />
-                                  <span>واتساب فقط</span>
-                                </>
-                              )}
-                            </button>
-                          </td>
-
-                          {/* 8. Featured Bar Toggle */}
-                          <td className="py-3.5 text-center whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleHotelFeatured(hotel)}
-                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold transition-all border cursor-pointer active:scale-95 shadow-2xs ${
-                                hotel.featured
-                                  ? 'bg-[#C9A24B]/15 text-[#B38A34] border-[#C9A24B]/40 hover:bg-[#C9A24B]/25'
-                                  : 'bg-stone-100 text-stone-500 border-stone-200 hover:text-stone-800'
-                              }`}
-                              title={hotel.featured ? 'اضغط لإلغاء التمييز في البار المتغيّر' : 'اضغط لتفعيل الظهور في البار المتغيّر'}
-                            >
-                              <Eye className="w-3 h-3" />
-                              <span>{hotel.featured ? 'معروض' : 'مخفي'}</span>
-                            </button>
-                          </td>
-
-                          {/* 8. Distance */}
-                          <td className="py-3.5 text-stone-700 font-mono font-medium whitespace-nowrap">
-                            {hotel.distanceText || `${hotel.distanceToHaram} م`}
-                          </td>
-
-                          {/* 9. Actions */}
-                          <td className="py-3.5 pl-2 text-left whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                id={`album-hotel-btn-${hotel.id}`}
-                                onClick={() => setAlbumModalHotel(hotel)}
-                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors cursor-pointer"
-                                title="إدارة ألبوم الصور والفيديوهات"
-                              >
-                                <Images className="w-4 h-4" />
-                              </button>
-                              <button
-                                id={`edit-hotel-btn-${hotel.id}`}
-                                onClick={() => handleEditHotel(hotel)}
-                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors cursor-pointer"
-                                title="تعديل بيانات الفندق"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button
-                                id={`delete-hotel-btn-${hotel.id}`}
-                                onClick={() => confirmDeleteHotel(hotel)}
-                                className="p-2 rounded-xl bg-stone-100 hover:bg-red-500 hover:text-white text-stone-700 transition-colors cursor-pointer"
-                                title="حذف الفندق"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <AdminHotelsManager
+                hotels={sortedHotels}
+                currentUser={currentUser}
+                adminRoles={adminRoles}
+                onOpenAddHotel={handleOpenAddHotel}
+                onEditHotel={handleEditHotel}
+                onDeleteHotel={confirmDeleteHotel}
+                onOpenAlbum={(hotel) => setAlbumModalHotel(hotel)}
+                onToggleActive={handleToggleHotelActive}
+                onToggleOnlineBooking={handleToggleHotelOnlineBooking}
+                onToggleFeatured={handleToggleHotelFeatured}
+                onToggleDistanceBadge={handleToggleHotelDistanceBadge}
+                onToggleStarsBadge={handleToggleHotelStarsBadge}
+                onToggleCategoriesBadge={handleToggleHotelCategoriesBadge}
+                onBulkToggleDistanceBadge={handleBulkToggleDistanceBadge}
+                onMoveOrder={handleMoveHotelOrder}
+                onShowToast={onShowToast}
+              />
             )}
 
             {/* 2. DISTRICTS MANAGEMENT TAB */}
@@ -1887,28 +2427,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* 3. USERS MANAGEMENT TAB */}
+            {/* 3. USERS & ROLES MANAGEMENT TAB */}
             {activeTab === 'users' && (
               <div id="admin-users-section">
-                {currentUser?.role === 'controller' ? (
-                  <div className="bg-white rounded-3xl border border-stone-200 p-8 shadow-xs text-center space-y-4">
-                    <div className="w-16 h-16 rounded-2xl bg-amber-50 text-[#B38A34] flex items-center justify-center mx-auto">
-                      <Lock className="w-8 h-8" />
-                    </div>
-                    <h3 className="text-xl font-cairo font-bold text-stone-900">قسم مقيد للمدير العام فقط</h3>
-                    <p className="text-sm text-stone-600 max-w-md mx-auto">
-                      أنت مسجل حالياً بصلاحية <strong>متحكم / مشرف</strong>. إدارة المستخدمين وتغيير الصلاحيات تتطلب تسجيل الدخول بحساب المدير العام (أدمن).
-                    </p>
-                  </div>
-                ) : (
-                  <AdminUsersManager
-                    users={adminUsers}
-                    currentUserId={currentUser?.id}
-                    currentUserRole={currentUser?.role || 'admin'}
-                    onRefreshUsers={loadUsers}
-                    onShowToast={onShowToast}
-                  />
-                )}
+                <AdminUsersManager
+                  users={adminUsers}
+                  roles={adminRoles}
+                  currentUserId={currentUser?.id}
+                  currentUser={currentUser}
+                  currentUserRole={currentUser?.role || 'admin'}
+                  onRefreshUsers={loadUsers}
+                  onRefreshRoles={loadRoles}
+                  onShowToast={onShowToast}
+                  onRecordAudit={handleRecordAudit}
+                />
               </div>
             )}
 
@@ -2451,6 +2983,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
+                  {/* Intro Frequency Setting Card */}
+                  <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-stone-900 flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-[#C9A24B]" />
+                        <span>تكرار ظهور الإنترو للزوار (Intro Frequency):</span>
+                      </label>
+                      <span className="text-[10px] text-stone-500 font-bold bg-white px-2 py-0.5 rounded-full border border-stone-200">
+                        يختفي تلقائياً بعد انتهائه أو تخطيه
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[
+                        { id: 'session' as const, title: 'مرة لكل جلسة متصفح 🌐', desc: 'مرة واحدة عند أول دخول ويختفي بعدها طوال الجلسة (الافتراضي)' },
+                        { id: 'daily' as const, title: 'مرة كل 24 ساعة ⏱️', desc: 'مرة واحدة في اليوم فقط للزائر' },
+                        { id: 'always' as const, title: 'مع كل زيارة 🎬', desc: 'يعرض مع كل فتح جديد للصفحة الرئيسية' }
+                      ].map(item => {
+                        const currentFreq = settingsForm.displaySettings?.introFrequency || settingsForm.introVideo?.frequency || 'session';
+                        const isSelected = currentFreq === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              const updated: SiteSettings = {
+                                ...settingsForm,
+                                introVideo: {
+                                  ...(settingsForm.introVideo || { videoUrl: '', enabled: true }),
+                                  frequency: item.id
+                                },
+                                displaySettings: {
+                                  ...settingsForm.displaySettings,
+                                  introFrequency: item.id
+                                }
+                              };
+                              triggerAutoSaveSettings(updated);
+                              onShowToast(`تم ضبط تكرار الإنترو: ${item.title}`, 'success');
+                            }}
+                            className={`p-3 rounded-xl text-right transition-all border cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-xs font-bold'
+                                : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-200'
+                            }`}
+                          >
+                            <strong className="text-xs block mb-0.5">{item.title}</strong>
+                            <span className={`text-[10px] block leading-tight ${isSelected ? 'text-amber-100' : 'text-stone-500'}`}>{item.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Live Interactive Video Preview */}
                   <div className="rounded-2xl border border-stone-200 overflow-hidden bg-stone-950">
                     <div className="p-3 bg-stone-900 border-b border-stone-800 flex items-center justify-between text-xs text-stone-300">
@@ -2567,7 +3152,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
-                      {offers.map((offer) => {
+                      {localOffers.map((offer) => {
                         const galleryCount = offer.gallery?.length || 0;
                         return (
                           <tr key={offer.id} className="hover:bg-stone-50 transition-colors">
@@ -2725,6 +3310,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
+            {/* CONTACTS DIRECTORY MANAGEMENT TAB */}
+            {activeTab === 'contacts' && (
+              <div id="admin-contacts-directory-container">
+                <AdminContactsDirectoryManager
+                  contacts={settingsForm.contactsDirectory || siteSettings?.contactsDirectory || []}
+                  onChange={handleContactsDirectoryChange}
+                  onShowToast={onShowToast}
+                  actionButtons={settingsForm.actionButtons || siteSettings?.actionButtons || []}
+                  onUpdateActionButtons={handleActionButtonsChange}
+                  branches={settingsForm.branches || siteSettings?.branches || []}
+                  onUpdateBranches={handleBranchesChange}
+                />
+              </div>
+            )}
+
+            {/* ACTION BUTTONS MANAGER TAB */}
+            {activeTab === 'buttons' && (
+              <div id="admin-action-buttons-container">
+                <AdminActionButtonsManager
+                  buttons={settingsForm.actionButtons || siteSettings?.actionButtons || []}
+                  onChange={handleActionButtonsChange}
+                  onShowToast={onShowToast}
+                  hotels={hotels}
+                  contactsDirectory={settingsForm.contactsDirectory || siteSettings?.contactsDirectory || []}
+                  onNavigateToContacts={() => handleSelectTab('contacts')}
+                />
+              </div>
+            )}
+
             {/* 5. STORY & NARRATIVE TEASER TAB */}
             {activeTab === 'story-teaser' && (
               <div id="admin-story-teaser-container">
@@ -2817,9 +3431,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="space-y-4">
                     {reviews
                       .filter(r => reviewFilter === 'all' || r.status === reviewFilter)
-                      .map((rev) => (
+                      .map((rev, revIdx) => (
                         <div
-                          key={rev.id}
+                          key={rev.id || `admin-review-${revIdx}`}
                           className="p-5 rounded-2xl bg-stone-50 border border-stone-200 hover:border-[#C9A24B]/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                         >
                           <div className="flex items-start gap-3.5 flex-1">
@@ -3157,15 +3771,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 {/* Sub-Tabs Categorization Navigation */}
-                <div className="bg-white rounded-3xl border border-stone-200 p-2 sm:p-2.5 shadow-xs">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                <div className="bg-white rounded-3xl border border-stone-200 p-2 sm:p-3 shadow-xs">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-100 px-1">
+                    <span className="text-xs font-bold text-stone-600 flex items-center gap-1.5 font-cairo">
+                      <Sliders className="w-3.5 h-3.5 text-[#B38A34]" />
+                      <span>أقسام وتبويبات إعدادات المنصة:</span>
+                    </span>
+                    <span className="text-[11px] text-stone-400 font-medium">
+                      ٧ أقسام تحكم متكاملة
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
                     {[
-                      { id: 'brand' as const, label: 'الهوية والشعار والتبويب', icon: Building2, desc: 'اسم الموقع، الشعار الرسمي، والأيقونة' },
-                      { id: 'booking-module' as const, label: 'نظام الحجوزات والغرف', icon: Key, desc: 'تفعيل/إخفاء الحجز، الواتساب، والبريد' },
-                      { id: 'visibility' as const, label: 'إظهار وإخفاء عناصر تواصل معنا', icon: Eye, desc: 'تحكم في كل عنوان وزر وبطاقة' },
-                      { id: 'contact-data' as const, label: 'بيانات الفروع والقنوات والأقسام', icon: Phone, desc: 'أرقام التواصل، الخرائط، والمسؤولين' },
-                      { id: 'hotel-detail' as const, label: 'نصوص الفندق وروابط الفوتر', icon: Sliders, desc: 'الفنادق المقترحة وروابط الوصول' },
-                      { id: 'database' as const, label: 'قاعدة البيانات وسوبا بيز', icon: Database, desc: 'Supabase PostgreSQL والاتصال' }
+                      { id: 'brand' as const, num: '١', label: 'الهوية والشعار', icon: Building2, desc: 'الاسم الرسمي والشعار والتبويب' },
+                      { id: 'display' as const, num: '٢', label: 'الواجهة والعرض', icon: Monitor, desc: 'الهيدر، الإنترو، وبوابة المشرف' },
+                      { id: 'booking-module' as const, num: '٣', label: 'نظام الحجوزات', icon: Key, desc: 'بوابة الحجز، الواتساب، والبريد' },
+                      { id: 'contact-data' as const, num: '٤', label: 'الفروع والقنوات', icon: Phone, desc: 'أرقام الاتصال والخرائط والمقر' },
+                      { id: 'visibility' as const, num: '٥', label: 'عناصر الظهور', icon: Eye, desc: 'إظهار وإخفاء الأقسام والأزرار' },
+                      { id: 'hotel-detail' as const, num: '٦', label: 'نصوص الفنادق', icon: Sliders, desc: 'الفنادق المقترحة وروابط الفوتر' },
+                      { id: 'database' as const, num: '٧', label: 'قاعدة البيانات', icon: Database, desc: 'Supabase والاتصال الحي' },
+                      { id: 'seo' as const, num: '٨', label: 'محركات البحث (SEO)', icon: Search, desc: 'معاينة جوجل والوصف التعريفي' }
                     ].map((tab) => {
                       const Icon = tab.icon;
                       const isCurrent = settingsSubTab === tab.id;
@@ -3174,17 +3800,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           key={tab.id}
                           type="button"
                           onClick={() => setSettingsSubTab(tab.id)}
-                          className={`p-3 rounded-2xl text-right transition-all flex flex-col gap-1 cursor-pointer border ${
+                          className={`p-3 rounded-2xl text-right transition-all flex flex-col justify-between gap-1.5 cursor-pointer border relative group ${
                             isCurrent
-                              ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-sm font-bold'
-                              : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                              ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-md shadow-[#C9A24B]/20 font-bold'
+                              : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200/90'
                           }`}
                         >
-                          <div className="flex items-center gap-2">
-                            <Icon className={`w-4 h-4 ${isCurrent ? 'text-white' : 'text-[#B38A34]'}`} />
-                            <strong className="text-xs font-bold truncate">{tab.label}</strong>
+                          <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Icon className={`w-3.5 h-3.5 shrink-0 ${isCurrent ? 'text-white' : 'text-[#B38A34]'}`} />
+                              <strong className="text-xs font-bold truncate font-cairo">{tab.label}</strong>
+                            </div>
+                            <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md font-bold ${
+                              isCurrent ? 'bg-white/25 text-white' : 'bg-stone-200/70 text-stone-600'
+                            }`}>
+                              {tab.num}
+                            </span>
                           </div>
-                          <span className={`text-[10px] truncate ${isCurrent ? 'text-amber-100' : 'text-stone-400'}`}>
+                          <span className={`text-[10px] leading-tight line-clamp-1 ${isCurrent ? 'text-amber-100' : 'text-stone-400 group-hover:text-stone-500'}`}>
                             {tab.desc}
                           </span>
                         </button>
@@ -3203,25 +3836,235 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </p>
                     </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="text-xs font-bold text-stone-700 block mb-1.5">اسم المنصة أو الموقع:</label>
-                      <input
-                        type="text"
-                        value={settingsForm.siteTitle}
-                        onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, siteTitle: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
-                      />
-                    </div>
+                  {/* 1. Brand Name & Subtitle (Bilingual) */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
+                      <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                      <span>١. اسم وهوية المنصة والشركة (عربي / English)</span>
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">اسم المنصة أو الشركة (بالعربية):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.siteTitle}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, siteTitle: e.target.value })}
+                          placeholder="برستيج لإدارة وتشغيل الفنادق"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="text-xs font-bold text-stone-700 block mb-1.5">الوصف الفرعي (Subtitle):</label>
-                      <input
-                        type="text"
-                        value={settingsForm.siteSubtitle}
-                        onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, siteSubtitle: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
-                      />
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">اسم المنصة أو الشركة (English):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.siteTitleEn || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, siteTitleEn: e.target.value })}
+                          placeholder="Prestige Hotels Management & Operation"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors dir-ltr text-left"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">الوصف الفرعي (بالعربية):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.siteSubtitle}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, siteSubtitle: e.target.value })}
+                          placeholder="إدارة وتشغيل الفنادق والضيافة الفاخرة"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">الوصف الفرعي (English):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.siteSubtitleEn || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, siteSubtitleEn: e.target.value })}
+                          placeholder="Luxury Hospitality & Hotel Management"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors dir-ltr text-left"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Footer Description / Bio (Bilingual) */}
+                  <div className="space-y-4 pt-4 border-t border-stone-200">
+                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
+                      <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                      <span>٢. نبذة الشركة ونصوص الفوتر الرسمية (عربي / English)</span>
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">نبذة الفوتر العامة (بالعربية):</label>
+                        <textarea
+                          rows={3}
+                          value={settingsForm.footerBio || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, footerBio: e.target.value })}
+                          placeholder="شركة برستيج الرائدة والمتخصصة في تقديم حلول إدارة وتشغيل الفنادق والتسكين الفاخر..."
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors leading-relaxed"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">نبذة الفوتر العامة (English):</label>
+                        <textarea
+                          rows={3}
+                          value={settingsForm.footerBioEn || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, footerBioEn: e.target.value })}
+                          placeholder="Leading company dedicated to providing hotel management, operations, and luxury accommodation..."
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors leading-relaxed dir-ltr text-left"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Customer Service Heading & Description (Bilingual) */}
+                  <div className="space-y-4 pt-4 border-t border-stone-200">
+                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
+                      <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                      <span>٣. قسم خدمة العملاء والمساعدة (الفوتر) (عربي / English)</span>
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">عنوان قسم خدمة العملاء (عربي):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.customerServiceTitle || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, customerServiceTitle: e.target.value })}
+                          placeholder="خدمة العملاء والتواصل"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">عنوان قسم خدمة العملاء (English):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.customerServiceTitleEn || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, customerServiceTitleEn: e.target.value })}
+                          placeholder="Customer Service & Inquiries"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none dir-ltr text-left"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">وصف خدمة العملاء (عربي):</label>
+                        <textarea
+                          rows={2}
+                          value={settingsForm.customerServiceDesc || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, customerServiceDesc: e.target.value })}
+                          placeholder="فريق الاستقبال والحجوزات متاح على مدار الساعة طوال أيام الأسبوع لخدمتكم واستقبال استفساراتكم."
+                          className="w-full px-4 py-2 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">وصف خدمة العملاء (English):</label>
+                        <textarea
+                          rows={2}
+                          value={settingsForm.customerServiceDescEn || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, customerServiceDescEn: e.target.value })}
+                          placeholder="Our reception and booking team is available 24/7 to assist you and receive all inquiries."
+                          className="w-full px-4 py-2 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none dir-ltr text-left"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4. WhatsApp Direct Button & Floating WhatsApp Bubble (Bilingual) */}
+                  <div className="space-y-4 pt-4 border-t border-stone-200">
+                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
+                      <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                      <span>٤. زر واتساب الفوتر والفقاعة العائمة (عربي / English)</span>
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">نص زر واتساب في الفوتر (عربي):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.footerWhatsAppButtonText || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, footerWhatsAppButtonText: e.target.value })}
+                          placeholder="تحدث مع مستشار التسكين واتساب"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">نص زر واتساب في الفوتر (English):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.footerWhatsAppButtonTextEn || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, footerWhatsAppButtonTextEn: e.target.value })}
+                          placeholder="Chat with Housing Advisor on WhatsApp"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none dir-ltr text-left"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">رقم واتساب الفوتر المباشر (اختياري):</label>
+                        <input
+                          type="tel"
+                          value={settingsForm.footerWhatsAppNumber || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, footerWhatsAppNumber: e.target.value })}
+                          placeholder="+966544076726"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm font-mono dir-ltr text-left focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">نص فقاعة واتساب العائمة (عربي):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.floatingWhatsAppBubbleText || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, floatingWhatsAppBubbleText: e.target.value })}
+                          placeholder="تواصل معنا على واتساب"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">نص فقاعة واتساب العائمة (English):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.floatingWhatsAppBubbleTextEn || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, floatingWhatsAppBubbleTextEn: e.target.value })}
+                          placeholder="Chat on WhatsApp"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none dir-ltr text-left"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. Copyright Text (Bilingual) */}
+                  <div className="space-y-4 pt-4 border-t border-stone-200">
+                    <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
+                      <span className="w-2 h-2 rounded-full bg-[#C9A24B]" />
+                      <span>٥. نص حقوق الملكية الفكرية (Copyright) (عربي / English)</span>
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">نص الحقوق (بالعربية):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.copyrightText || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, copyrightText: e.target.value })}
+                          placeholder="لإدارة وتشغيل الفنادق والضيافة. جميع الحقوق محفوظة."
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 block mb-1.5">نص الحقوق (English):</label>
+                        <input
+                          type="text"
+                          value={settingsForm.copyrightTextEn || ''}
+                          onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, copyrightTextEn: e.target.value })}
+                          placeholder="Hotel Management & Operations. All rights reserved."
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm focus:border-[#C9A24B] focus:bg-white focus:outline-none dir-ltr text-left"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -3370,6 +4213,288 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
+                {/* Sub-Tab: Site Display & Layout Settings (عرض وتجربة الموقع، الهيدر، الإنترو، وبوابة المشرفين) */}
+                {settingsSubTab === 'display' && (
+                  <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-8 animate-fadeIn">
+                    <div className="pb-4 border-b border-stone-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
+                          <Monitor className="w-4 h-4" />
+                        </div>
+                        <h3 className="text-lg font-cairo font-bold text-stone-900">
+                          إعدادات عرض وتجربة تصفح الموقع (Display & UX Settings)
+                        </h3>
+                      </div>
+                      <p className="text-xs text-stone-500 mt-1">
+                        التحكم في سلوك شريط التنقل العلوي (الهيدر)، تكرار تشغيل فيديو الإنترو في الصفحة الرئيسية، وخصوصية روابط المشرفين.
+                      </p>
+                    </div>
+
+                    {/* Section 1: Header Navbar Behavior */}
+                    <div className="p-6 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <label className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                          <Layout className="w-4 h-4 text-[#C9A24B]" />
+                          <span>سلوك شريط التنقل العلوي (Header Navbar Behavior):</span>
+                        </label>
+                        <span className="text-[10px] font-bold text-stone-500 bg-white px-2.5 py-1 rounded-full border border-stone-200">
+                          يطبق للجوال والكمبيوتر دون قفزات (No Layout Jumps)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {[
+                          {
+                            id: 'scroll_hide' as const,
+                            title: 'إخفاء ذكي عند النزول / إظهار عند الصعود ⚡',
+                            subtitle: 'Hide on scroll down / Show on scroll up',
+                            badge: 'الموصى به افتراضياً',
+                            desc: 'يظهر في أعلى الصفحة، ويختفي بنعومة أثناء التمرير للأسفل لتوفير مساحة قراءة للزائر، ويعود فور التمرير للأعلى أو اقتراب المؤشر من الأعلى.'
+                          },
+                          {
+                            id: 'fixed' as const,
+                            title: 'ثابت وظاهر دائماً (Always Fixed) 📌',
+                            subtitle: 'Always visible at top',
+                            badge: 'شريط عائم دائم',
+                            desc: 'يبقى شريط التنقل الزجاجي ثابتاً وظاهراً في أعلى الشاشة في كل الأوقات وأثناء التمرير على الجوال والكمبيوتر.'
+                          },
+                          {
+                            id: 'static' as const,
+                            title: 'متمرر مع الصفحة (Static / Scrolls Away) 📜',
+                            subtitle: 'Scrolls naturally with content',
+                            badge: 'تصفح تقليدي',
+                            desc: 'يبقى في بداية الصفحة ويتمرر للأعلى مع المحتوى ليختفي بطريقة طبيعية دون أي تثبيت أو قفزات في التخطيط.'
+                          }
+                        ].map(item => {
+                          const currentBehavior = settingsForm.displaySettings?.headerBehavior || 'scroll_hide';
+                          const isSelected = currentBehavior === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                const updated: SiteSettings = {
+                                  ...settingsForm,
+                                  displaySettings: {
+                                    ...settingsForm.displaySettings,
+                                    headerBehavior: item.id
+                                  }
+                                };
+                                triggerAutoSaveSettings(updated);
+                                onShowToast(`تم ضبط سلوك شريط الهيدر: ${item.title}`, 'success');
+                              }}
+                              className={`p-4 rounded-2xl text-right transition-all flex flex-col justify-between border cursor-pointer relative ${
+                                isSelected
+                                  ? 'bg-white border-[#C9A24B] shadow-sm ring-2 ring-[#C9A24B]/30'
+                                  : 'bg-white/80 hover:bg-white border-stone-200 text-stone-700'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-1 mb-1">
+                                  <strong className="text-xs font-bold text-stone-900 block">{item.title}</strong>
+                                  {isSelected && (
+                                    <div className="w-5 h-5 rounded-full bg-[#C9A24B] text-white flex items-center justify-center shrink-0">
+                                      <Check className="w-3 h-3 stroke-[3]" />
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-stone-400 block font-mono mb-2">{item.subtitle}</span>
+                                <p className="text-[11px] text-stone-600 leading-relaxed">{item.desc}</p>
+                              </div>
+                              <div className="mt-3 pt-2 border-t border-stone-100 flex items-center justify-between">
+                                <span className="text-[10px] text-[#B38A34] font-bold">{item.badge}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Section 2: Intro Animation Frequency */}
+                    <div className="p-6 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                          <Film className="w-4 h-4 text-[#C9A24B]" />
+                          <span>تكرار وظهور إنترو الصفحة الرئيسية (Intro Animation Frequency):</span>
+                        </label>
+
+                        {/* Toggle Intro enabled/disabled */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentEnabled = settingsForm.displaySettings?.introEnabled !== false && settingsForm.introVideo?.enabled !== false;
+                            const updated: SiteSettings = {
+                              ...settingsForm,
+                              introVideo: {
+                                ...(settingsForm.introVideo || { videoUrl: '' }),
+                                enabled: !currentEnabled
+                              },
+                              displaySettings: {
+                                ...settingsForm.displaySettings,
+                                introEnabled: !currentEnabled
+                              }
+                            };
+                            triggerAutoSaveSettings(updated);
+                            onShowToast(!currentEnabled ? 'تم تفعيل إنترو الصفحة الرئيسية' : 'تم تعطيل إنترو الصفحة الرئيسية', 'info');
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            (settingsForm.displaySettings?.introEnabled !== false && settingsForm.introVideo?.enabled !== false)
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-stone-200 text-stone-600'
+                          }`}
+                        >
+                          {(settingsForm.displaySettings?.introEnabled !== false && settingsForm.introVideo?.enabled !== false) ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>الإنترو مفعّل</span>
+                            </>
+                          ) : (
+                            <>
+                              <X className="w-3.5 h-3.5" />
+                              <span>الإنترو معطّل</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {[
+                          {
+                            id: 'session' as const,
+                            title: 'مرة واحدة لكل جلسة متصفح 🌐',
+                            subtitle: 'Once per browser session',
+                            badge: 'الافتراضي الموصى به',
+                            desc: 'يتم تشغيل الإنترو الترحيبي مرة واحدة فقط عند فتح الزائر للموقع، ويختفي بعد انتهائه أو تخطيه ولا يتكرر أثناء تنقله حتى يغلق المتصفح.'
+                          },
+                          {
+                            id: 'daily' as const,
+                            title: 'مرة واحدة كل 24 ساعة ⏱️',
+                            subtitle: 'Once every 24 hours',
+                            badge: 'هادئ للزوار المتكررين',
+                            desc: 'يظهر للزائر مرة واحدة في اليوم فقط. في حال زيارته المتكررة لن يظهر الإنترو مجدداً إلا بعد انقضاء 24 ساعة كاملة.'
+                          },
+                          {
+                            id: 'always' as const,
+                            title: 'مع كل زيارة للرئيسية 🎬',
+                            subtitle: 'Every visit / page load',
+                            badge: 'عرض دائم',
+                            desc: 'يتم تشغيل مقطع الإنترو مع كل فتح أو إعادة تحميل للصفحة الرئيسية، مع إمكانية التخطي الفوري بزر المتابعة.'
+                          }
+                        ].map(item => {
+                          const currentFreq = settingsForm.displaySettings?.introFrequency || settingsForm.introVideo?.frequency || 'session';
+                          const isSelected = currentFreq === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                const updated: SiteSettings = {
+                                  ...settingsForm,
+                                  introVideo: {
+                                    ...(settingsForm.introVideo || { videoUrl: '', enabled: true }),
+                                    frequency: item.id
+                                  },
+                                  displaySettings: {
+                                    ...settingsForm.displaySettings,
+                                    introFrequency: item.id
+                                  }
+                                };
+                                triggerAutoSaveSettings(updated);
+                                onShowToast(`تم ضبط تكرار الإنترو: ${item.title}`, 'success');
+                              }}
+                              className={`p-4 rounded-2xl text-right transition-all flex flex-col justify-between border cursor-pointer ${
+                                isSelected
+                                  ? 'bg-white border-[#C9A24B] shadow-sm ring-2 ring-[#C9A24B]/30'
+                                  : 'bg-white/80 hover:bg-white border-stone-200 text-stone-700'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-1 mb-1">
+                                  <strong className="text-xs font-bold text-stone-900 block">{item.title}</strong>
+                                  {isSelected && (
+                                    <div className="w-5 h-5 rounded-full bg-[#C9A24B] text-white flex items-center justify-center shrink-0">
+                                      <Check className="w-3 h-3 stroke-[3]" />
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-stone-400 block font-mono mb-2">{item.subtitle}</span>
+                                <p className="text-[11px] text-stone-600 leading-relaxed">{item.desc}</p>
+                              </div>
+                              <div className="mt-3 pt-2 border-t border-stone-100 flex items-center justify-between">
+                                <span className="text-[10px] text-[#B38A34] font-bold">{item.badge}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl flex items-start gap-2 text-xs text-amber-900">
+                        <Sparkles className="w-4 h-4 text-[#C9A24B] shrink-0 mt-0.5" />
+                        <p className="text-[11px] leading-relaxed">
+                          <strong>حماية السيو وسرعة الأرشفة:</strong> يتم استثناء محركات البحث والمفهرسات (Googlebot و Bingbot وغيرها) تلقائياً لعرض محتوى الموقع الفوري دون أي حجب أو تأخير، كما يختفي الإنترو كلياً بمجرد انتهاء الفيديو أو الضغط على زر التخطي.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Section 3: Admin Link in Footer */}
+                    <div className="p-6 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <label className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                            <Lock className="w-4 h-4 text-[#C9A24B]" />
+                            <span>رابط "بوابة المشرفين" في أسفل الموقع (Footer Admin Link):</span>
+                          </label>
+                          <p className="text-xs text-stone-500 mt-0.5">
+                            إظهار أو إخفاء رابط الدخول للوحة التحكم في الفوتر للزوار العاديين.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentVal = settingsForm.displaySettings?.showFooterAdminLink === true;
+                            const updated: SiteSettings = {
+                              ...settingsForm,
+                              displaySettings: {
+                                ...settingsForm.displaySettings,
+                                showFooterAdminLink: !currentVal
+                              }
+                            };
+                            triggerAutoSaveSettings(updated);
+                            onShowToast(!currentVal ? 'تم إظهار رابط بوابة المشرفين في الفوتر' : 'تم إخفاء رابط المشرفين من الفوتر بنجاح', 'info');
+                          }}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer ${
+                            settingsForm.displaySettings?.showFooterAdminLink === true
+                              ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                              : 'bg-stone-200 hover:bg-stone-300 text-stone-700'
+                          }`}
+                        >
+                          {settingsForm.displaySettings?.showFooterAdminLink === true ? (
+                            <>
+                              <Eye className="w-4 h-4" />
+                              <span>ظاهر في الفوتر</span>
+                            </>
+                          ) : (
+                            <>
+                              <EyeOff className="w-4 h-4" />
+                              <span>مخفي عن الزوار (الافتراضي الآمن)</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="p-3 bg-stone-100 rounded-xl border border-stone-200/80 text-[11px] text-stone-600 space-y-1">
+                        <p className="font-semibold text-stone-800">
+                          🔒 ملاحظة أمنية:
+                        </p>
+                        <p>
+                          عند إخفاء الرابط، تظل بوابة المشرفين متاحة دائماً للإدارة عبر كتابة الرابط المباشر <code className="px-1.5 py-0.5 rounded bg-white font-mono text-[#B38A34] font-bold">/admin</code> في شريط المتصفح، وهي محمية بنظام قيود المحاولات المتكررة (Rate Limiting) ووسم <code className="px-1.5 py-0.5 rounded bg-white font-mono">noindex</code> لمنع محركات البحث من فهرستها.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Sub-Tab: Booking Module Settings (التحكم في إظهار وإخفاء نظام الحجوزات) */}
                 {settingsSubTab === 'booking-module' && (
                   <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6 animate-fadeIn">
@@ -3383,23 +4508,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleSelectTab('bookings')}
-                          className="px-3.5 py-1.5 rounded-xl bg-[#C9A24B]/10 hover:bg-[#C9A24B]/20 text-[#B38A34] text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>فتح سجل الحجوزات</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSelectTab('rooms-inventory')}
-                          className="px-3.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Key className="w-3.5 h-3.5" />
-                          <span>إدارة الغرف والمفاتيح</span>
-                        </button>
+                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#C9A24B]/10 border border-[#C9A24B]/20 text-[#8C6D23] text-xs font-bold">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>التنقل وإدارة الأقسام متاح عبر القوائم الجانبية</span>
                       </div>
                     </div>
 
@@ -3655,13 +4766,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
 
                       <div>
-                        <label className="text-xs font-bold text-stone-700 block mb-1.5">
-                          بريد الحجوزات الرسمي (Gmail / Corporate):
-                        </label>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-bold text-stone-700 block">
+                            بريد إشعارات الحجز المعتمد (Gmail / Corporate):
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const target = resolveBookingEmail(settingsForm);
+                                onShowToast(`جاري إرسال إشعار تجريبي إلى ${target}...`, 'info');
+                                try {
+                                  const sampleBooking: any = {
+                                    id: 'test_' + Date.now(),
+                                    bookingCode: 'TEST-8800',
+                                    digitalKey: 'CONF-8800',
+                                    hotelId: 'test_hotel',
+                                    hotelName: 'فندق تجريبي (فحص الإشعار والبريد)',
+                                    hotelCity: 'مكة المكرمة',
+                                    roomId: 'room_suite',
+                                    roomName: 'جناح ديلوكس تجريبي',
+                                    guestName: 'أحمد هشام (اختبار النظام)',
+                                    guestPhone: '+966560580250',
+                                    guestEmail: target,
+                                    checkIn: '2026-03-01',
+                                    checkOut: '2026-03-04',
+                                    nights: 3,
+                                    roomsCount: 1,
+                                    adults: 2,
+                                    children: 1,
+                                    mealPlanId: 'meal_breakfast',
+                                    mealPlanName: 'شامل بوفيه إفطار فاخر',
+                                    mealPlanPrice: 45,
+                                    roomPricePerNight: 400,
+                                    totalAmount: 1335,
+                                    specialRequests: 'إشعار تجريبي لاختبار وصول رسائل الحجوزات والواتساب والبريد.',
+                                    status: 'pending',
+                                    adminNotes: 'ملاحظة المشرف: حجز تجريبي للتأكد من وصول تفاصيل الحجز إلى بريد الشركة.',
+                                    createdAt: Date.now()
+                                  };
+                                  const res = await sendOnlineBookingNotification(sampleBooking, settingsForm);
+                                  if (res && res.needsActivation) {
+                                    onShowToast(`تم إرسال رابط التفعيل إلى: ${target} - يرجى الضغط على زر التفعيل في البريد لمرة واحدة للاستلام التلقائي المستمر.`, 'info');
+                                  } else {
+                                    onShowToast(`تم تسليم إشعار التجربة بنجاح إلى: ${target}`, 'success');
+                                  }
+                                } catch {
+                                  onShowToast('حدث خطأ أثناء إرسال الإشعار التجريبي', 'error');
+                                }
+                              }}
+                              className="text-[11px] text-[#B38A34] hover:text-[#98752B] font-bold bg-[#C9A24B]/15 hover:bg-[#C9A24B]/25 px-2.5 py-0.5 rounded-lg transition-colors cursor-pointer"
+                            >
+                              ✉️ تجربة إرسال إشعار بريدي
+                            </button>
+                            <a
+                              href="https://mail.google.com/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-stone-500 hover:text-stone-800 font-semibold underline"
+                            >
+                              فتح Gmail للتحقق
+                            </a>
+                          </div>
+                        </div>
                         <input
                           type="email"
                           dir="ltr"
-                          placeholder="bookings@prestigeksa.com"
+                          placeholder="prestigeksa.umrah@gmail.com"
                           value={settingsForm.bookingModule?.bookingEmail || ''}
                           onChange={(e) => {
                             triggerAutoSaveSettings({
@@ -3684,9 +4855,632 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           }}
                           className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs font-bold text-right focus:border-[#C9A24B] focus:bg-white focus:outline-none transition-colors"
                         />
-                        <span className="text-[10px] text-stone-400 mt-1 block">
-                          البريد الذي تصله تفاصيل الحجز فورياً وبشكل مجاني
+                        <span className="text-[10px] text-stone-500 mt-1 block">
+                          عند قيام العميل بالحجز أونلاين، يتم إرسال إشعار فوري منسق بتفاصيل الحجز وسند الحجز إلى هذا الإيميل، وتصلك رسالة مع زر محادثة واتساب مباشر مع العميل.
                         </span>
+                      </div>
+                    </div>
+
+                    {/* POST-BOOKING AUTOMATION & FREE WORKFLOW SETTINGS */}
+                    <div className="pt-6 border-t border-stone-200 space-y-6">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#C9A24B]" />
+                        <h4 className="text-sm font-bold text-stone-900 font-cairo">
+                          إعدادات سير العمل والتأكيد الآلي (البريد المجاني + الواتساب)
+                        </h4>
+                      </div>
+
+                      {/* Expiry Hours & Email Toggle Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Pending Expiry Hours */}
+                        <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-1.5">
+                          <label className="text-xs font-bold text-stone-800 block">
+                            مهلة انتهاء صلاحية الحجوزات المعلقة (بالساعات):
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="72"
+                            value={settingsForm.bookingModule?.pendingExpiryHours ?? 24}
+                            onChange={(e) => {
+                              const val = Math.max(1, parseInt(e.target.value) || 24);
+                              triggerAutoSaveSettings({
+                                ...settingsForm,
+                                bookingModule: {
+                                  ...settingsForm.bookingModule,
+                                  pendingExpiryHours: val
+                                }
+                              });
+                            }}
+                            className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 font-mono font-bold text-xs"
+                          />
+                          <p className="text-[10px] text-stone-500 leading-normal">
+                            القيمة الافتراضية 24 ساعة. بعد انقضاء هذه المدة دون تأكيد، يتوقف احتساب الحجز من الغرف تلقائياً دون الحاجة لـ Cloud Functions.
+                          </p>
+                        </div>
+
+                        {/* Enable/Disable Email Sending */}
+                        <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between gap-3">
+                          <div>
+                            <strong className="text-xs font-bold text-stone-900 block">إرسال الفواتير وسندات الحجز بالبريد</strong>
+                            <p className="text-[10px] text-stone-500 mt-0.5">
+                              تفعيل أو تعطيل إرسال ملفات PDF عبر Google Apps Script تلقائياً للنزيل
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const curr = settingsForm.bookingModule?.enableEmailSending !== false;
+                              triggerAutoSaveSettings({
+                                ...settingsForm,
+                                bookingModule: {
+                                  ...settingsForm.bookingModule,
+                                  enableEmailSending: !curr
+                                }
+                              });
+                            }}
+                            className={`w-11 h-6 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                              settingsForm.bookingModule?.enableEmailSending !== false ? 'bg-[#C9A24B]' : 'bg-stone-300'
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded-full bg-white shadow-xs transform transition-transform ${
+                              settingsForm.bookingModule?.enableEmailSending !== false ? (document.dir === 'rtl' ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                            }`} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Google Apps Script Integration (100% Free) */}
+                      <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-50/50 via-white to-amber-50/30 border border-amber-200/80 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-[#B38A34]" />
+                            <h5 className="text-xs font-bold text-stone-900">
+                              تكامل البريد المجاني (Google Apps Script + Gmail)
+                            </h5>
+                          </div>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                            مجاني 100% بدون Blaze
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                              رابط تطبيق ويب Google Apps Script (Web App URL):
+                            </label>
+                            <input
+                              type="url"
+                              dir="ltr"
+                              placeholder="https://script.google.com/macros/s/.../exec"
+                              value={settingsForm.bookingModule?.appsScriptUrl || ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    appsScriptUrl: e.target.value.trim()
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-mono font-bold focus:border-[#C9A24B] focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                              المفتاح السري المشترك (Shared Secret Key):
+                            </label>
+                            <input
+                              type="password"
+                              dir="ltr"
+                              placeholder="أدخل السر المحفوظ في Script Properties"
+                              value={settingsForm.bookingModule?.appsScriptSecret || ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    appsScriptSecret: e.target.value.trim()
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-mono font-bold focus:border-[#C9A24B] focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="text-[11px] text-stone-500 bg-white/80 p-3 rounded-xl border border-stone-200 space-y-1">
+                          <strong className="text-stone-800 block text-xs">تعليمات إعداد ونشر Google Apps Script:</strong>
+                          <p>1. افتح الملف <code className="bg-stone-100 px-1 py-0.5 rounded text-stone-800">apps-script/Code.gs</code> في مشروعك.</p>
+                          <p>2. توجه إلى <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="text-[#B38A34] underline">script.google.com</a> وأنشئ مشروعاً جديداً والصق محتوى الملف.</p>
+                          <p>3. في إعدادات المشروع (Project Settings ➔ Script Properties)، أضف خاصية باسم <code>SHARED_SECRET</code> وضع قيمة سرية قوية، وأضف <code>COMPANY_EMAIL</code> لبريدك.</p>
+                          <p>4. انقر <strong>Deploy ➔ New deployment ➔ Web app</strong> واجعل التنفيذ <em>Execute as: Me</em> والوصول <em>Who has access: Anyone</em>.</p>
+                          <p>5. انسخ رابط الويب والصقه في الحقل أعلاه وضع نفس القيمة السرية.</p>
+                        </div>
+                      </div>
+
+                      {/* WhatsApp Channels & Message Templates */}
+                      <div className="space-y-4 pt-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-bold text-stone-700 block mb-1">
+                              رقم واتساب الشركة الرسمي لاستقبال التأكيدات:
+                            </label>
+                            <input
+                              type="tel"
+                              dir="ltr"
+                              placeholder="+966544076726"
+                              value={settingsForm.bookingModule?.companyWhatsApp || ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    companyWhatsApp: e.target.value.trim(),
+                                    bookingWhatsApp: e.target.value.trim()
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-bold text-right focus:border-[#C9A24B] focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-stone-700 block mb-1">
+                              أرقام مسؤولي التسكين وطاقم العمل (مفصولة بفاصلة):
+                            </label>
+                            <input
+                              type="text"
+                              dir="ltr"
+                              placeholder="+966544076726, +966501234567"
+                              value={settingsForm.bookingModule?.staffContactNumbers?.join(', ') || ''}
+                              onChange={(e) => {
+                                const list = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    staffContactNumbers: list
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-bold text-right focus:border-[#C9A24B] focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* WhatsApp Message Templates (AR / EN) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          {/* Visitor Confirmation Template (AR) */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-stone-800 block">
+                              قالب رسالة تأكيد النزيل عبر الواتساب (عربي):
+                            </label>
+                            <textarea
+                              rows={5}
+                              dir="rtl"
+                              placeholder="السلام عليكم شركة برستيج... أرغب بتأكيد طلبي للحجز #{bookingCode} بكود التأكيد {confirmationCode}..."
+                              value={settingsForm.bookingModule?.whatsappMessageTemplateAr || ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    whatsappMessageTemplateAr: e.target.value
+                                  }
+                                });
+                              }}
+                              className="w-full p-3 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                            />
+                            <span className="text-[10px] text-stone-400 block">
+                              المتغيرات المتاحة: <code>{'{bookingCode}'}</code>, <code>{'{confirmationCode}'}</code>, <code>{'{guestName}'}</code>, <code>{'{hotelName}'}</code>, <code>{'{checkIn}'}</code>
+                            </span>
+                          </div>
+
+                          {/* Visitor Confirmation Template (EN) */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-stone-800 block">
+                              Visitor WhatsApp Confirmation Template (English):
+                            </label>
+                            <textarea
+                              rows={5}
+                              dir="ltr"
+                              placeholder="Hello Prestige Hotels... I would like to confirm my booking #{bookingCode} with confirmation code {confirmationCode}..."
+                              value={settingsForm.bookingModule?.whatsappMessageTemplateEn || ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    whatsappMessageTemplateEn: e.target.value
+                                  }
+                                });
+                              }}
+                              className="w-full p-3 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                            />
+                            <span className="text-[10px] text-stone-400 block">
+                              Available placeholders: <code>{'{bookingCode}'}</code>, <code>{'{confirmationCode}'}</code>, <code>{'{guestName}'}</code>, <code>{'{hotelName}'}</code>, <code>{'{checkIn}'}</code>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Staff WhatsApp Confirmation Message Templates (AR / EN) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t border-stone-100">
+                          {/* Staff Confirmation to Guest Template (AR) */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-stone-800 block">
+                              قالب رد الموظف باعتماد الحجز والفاتورة للنزيل (عربي):
+                            </label>
+                            <textarea
+                              rows={4}
+                              dir="rtl"
+                              placeholder="أهلاً بك ضيفنا العزيز {guestName}... تم اعتماد وتأكيد حجزك رقم #{bookingCode} بفندق {hotelName}. رابط فاتورتك وسندك الرسمي: {invoiceUrl}"
+                              value={settingsForm.bookingModule?.whatsappStaffConfirmationTemplateAr || ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    whatsappStaffConfirmationTemplateAr: e.target.value
+                                  }
+                                });
+                              }}
+                              className="w-full p-3 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                            />
+                            <span className="text-[10px] text-stone-400 block">
+                              المتغيرات المتاحة: <code>{'{bookingCode}'}</code>, <code>{'{guestName}'}</code>, <code>{'{hotelName}'}</code>, <code>{'{invoiceUrl}'}</code>
+                            </span>
+                          </div>
+
+                          {/* Staff Confirmation to Guest Template (EN) */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-stone-800 block">
+                              Staff WhatsApp Confirmation & Invoice Template (English):
+                            </label>
+                            <textarea
+                              rows={4}
+                              dir="ltr"
+                              placeholder="Dear {guestName}, your booking #{bookingCode} at {hotelName} is confirmed! View your official certified invoice here: {invoiceUrl}"
+                              value={settingsForm.bookingModule?.whatsappStaffConfirmationTemplateEn || ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    whatsappStaffConfirmationTemplateEn: e.target.value
+                                  }
+                                });
+                              }}
+                              className="w-full p-3 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                            />
+                            <span className="text-[10px] text-stone-400 block">
+                              Available placeholders: <code>{'{bookingCode}'}</code>, <code>{'{guestName}'}</code>, <code>{'{hotelName}'}</code>, <code>{'{invoiceUrl}'}</code>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* ── INVOICE & VOUCHER CUSTOMIZATION CARD (تخصيص فواتير وسندات الحجز المعتمدة) ── */}
+                      <div className="pt-6 border-t border-stone-200 space-y-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-[#C9A24B]" />
+                            <h4 className="text-sm font-bold text-stone-900 font-cairo">
+                              تخصيص بيانات فواتير وسندات الحجز الرسمية (Vouchers & Invoices)
+                            </h4>
+                          </div>
+                          <span className="text-[11px] font-bold text-[#B38A34] bg-[#C9A24B]/10 px-3 py-1 rounded-full border border-[#C9A24B]/20 shrink-0">
+                            طباعة A4 معتمدة وإمكانية الإخفاء
+                          </span>
+                        </div>
+
+                        {/* Top Header Information (Name, Subtitle, Address) */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="text-xs font-bold text-stone-700 block mb-1">
+                              اسم الشركة الرسمي في الفاتورة:
+                            </label>
+                            <input
+                              type="text"
+                              dir="rtl"
+                              placeholder="شركة برستيج لإدارة وتشغيل الفنادق"
+                              value={settingsForm.bookingModule?.invoiceCompanyName ?? ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    invoiceCompanyName: e.target.value
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-bold focus:border-[#C9A24B] focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-stone-700 block mb-1">
+                              وصف ونشاط الشركة في الفاتورة:
+                            </label>
+                            <input
+                              type="text"
+                              dir="rtl"
+                              placeholder="للضيافة الفندقية وإدارة الإيواء السياحي بمكة والمدينة"
+                              value={settingsForm.bookingModule?.invoiceCompanySubtitle ?? ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    invoiceCompanySubtitle: e.target.value
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-stone-700 block mb-1">
+                              عنوان ومقر الشركة في الفاتورة:
+                            </label>
+                            <input
+                              type="text"
+                              dir="rtl"
+                              placeholder="مكة المكرمة - المملكة العربية السعودية"
+                              value={settingsForm.bookingModule?.invoiceCompanyAddress ?? ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    invoiceCompanyAddress: e.target.value
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* CR Number & Tax Number with Show/Hide Toggles */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* CR Number */}
+                          <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-stone-800">
+                                رقم السجل التجاري (س.ت):
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold text-stone-500">
+                                  {settingsForm.bookingModule?.showInvoiceCr !== false ? 'ظاهر' : 'مخفي'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = settingsForm.bookingModule?.showInvoiceCr !== false;
+                                    triggerAutoSaveSettings({
+                                      ...settingsForm,
+                                      bookingModule: {
+                                        ...settingsForm.bookingModule,
+                                        showInvoiceCr: !current
+                                      }
+                                    });
+                                  }}
+                                  className={`w-10 h-5 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                                    settingsForm.bookingModule?.showInvoiceCr !== false ? 'bg-[#C9A24B]' : 'bg-stone-300'
+                                  }`}
+                                >
+                                  <div className={`w-4 h-4 rounded-full bg-white shadow-xs transform transition-transform ${
+                                    settingsForm.bookingModule?.showInvoiceCr !== false ? (document.dir === 'rtl' ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                                  }`} />
+                                </button>
+                              </div>
+                            </div>
+                            <input
+                              type="text"
+                              dir="ltr"
+                              placeholder="4031258941"
+                              value={settingsForm.bookingModule?.invoiceCrNumber ?? ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    invoiceCrNumber: e.target.value.trim()
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 font-mono font-bold text-xs text-right focus:border-[#C9A24B] focus:outline-none"
+                            />
+                            <p className="text-[10px] text-stone-400">
+                              يمكنك تعديل رقم السجل أو النقر على المفتاح لإخفائه تماماً من الفاتورة وسند الحجز.
+                            </p>
+                          </div>
+
+                          {/* Tax / VAT Number */}
+                          <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-stone-800">
+                                الرقم الضريبي (VAT):
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold text-stone-500">
+                                  {settingsForm.bookingModule?.showInvoiceTaxNo !== false ? 'ظاهر' : 'مخفي'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = settingsForm.bookingModule?.showInvoiceTaxNo !== false;
+                                    triggerAutoSaveSettings({
+                                      ...settingsForm,
+                                      bookingModule: {
+                                        ...settingsForm.bookingModule,
+                                        showInvoiceTaxNo: !current
+                                      }
+                                    });
+                                  }}
+                                  className={`w-10 h-5 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                                    settingsForm.bookingModule?.showInvoiceTaxNo !== false ? 'bg-[#C9A24B]' : 'bg-stone-300'
+                                  }`}
+                                >
+                                  <div className={`w-4 h-4 rounded-full bg-white shadow-xs transform transition-transform ${
+                                    settingsForm.bookingModule?.showInvoiceTaxNo !== false ? (document.dir === 'rtl' ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                                  }`} />
+                                </button>
+                              </div>
+                            </div>
+                            <input
+                              type="text"
+                              dir="ltr"
+                              placeholder="310458921400003"
+                              value={settingsForm.bookingModule?.invoiceTaxNumber ?? ''}
+                              onChange={(e) => {
+                                triggerAutoSaveSettings({
+                                  ...settingsForm,
+                                  bookingModule: {
+                                    ...settingsForm.bookingModule,
+                                    invoiceTaxNumber: e.target.value.trim()
+                                  }
+                                });
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 font-mono font-bold text-xs text-right focus:border-[#C9A24B] focus:outline-none"
+                            />
+                            <p className="text-[10px] text-stone-400">
+                              يمكنك تعديل الرقم الضريبي أو النقر على المفتاح لإخفائه تماماً من الفاتورة وسند الحجز.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Footer Contact Details (Support Name, Phone, Email, Toggle) */}
+                        <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+                          <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+                            <div>
+                              <strong className="text-xs font-bold text-stone-900 block">
+                                بيانات التواصل وخدمة العملاء في تذييل الفاتورة (أسفل الفاتورة)
+                              </strong>
+                              <p className="text-[11px] text-stone-500 mt-0.5">
+                                إمكانية تعديل اسم المسؤول أو القسم، رقم الهاتف، والبريد الإلكتروني أو إخفاء التذييل.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold text-stone-500">
+                                {settingsForm.bookingModule?.showInvoiceSupportFooter !== false ? 'مفعل' : 'معطل'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const current = settingsForm.bookingModule?.showInvoiceSupportFooter !== false;
+                                  triggerAutoSaveSettings({
+                                    ...settingsForm,
+                                    bookingModule: {
+                                      ...settingsForm.bookingModule,
+                                      showInvoiceSupportFooter: !current
+                                    }
+                                  });
+                                }}
+                                className={`w-10 h-5 rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                                  settingsForm.bookingModule?.showInvoiceSupportFooter !== false ? 'bg-[#C9A24B]' : 'bg-stone-300'
+                                }`}
+                              >
+                                <div className={`w-4 h-4 rounded-full bg-white shadow-xs transform transition-transform ${
+                                  settingsForm.bookingModule?.showInvoiceSupportFooter !== false ? (document.dir === 'rtl' ? '-translate-x-5' : 'translate-x-5') : 'translate-x-0'
+                                }`} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div>
+                              <label className="text-xs font-bold text-stone-700 block mb-1">
+                                عنوان التذييل (الجهة):
+                              </label>
+                              <input
+                                type="text"
+                                dir="rtl"
+                                placeholder="مجموعة برستيج الفندقية"
+                                value={settingsForm.bookingModule?.invoiceSupportTitle ?? ''}
+                                onChange={(e) => {
+                                  triggerAutoSaveSettings({
+                                    ...settingsForm,
+                                    bookingModule: {
+                                      ...settingsForm.bookingModule,
+                                      invoiceSupportTitle: e.target.value
+                                    }
+                                  });
+                                }}
+                                className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-stone-700 block mb-1">
+                                اسم المسؤول / القسم:
+                              </label>
+                              <input
+                                type="text"
+                                dir="rtl"
+                                placeholder="إدارة الحجوزات والمبيعات"
+                                value={settingsForm.bookingModule?.invoiceSupportName ?? ''}
+                                onChange={(e) => {
+                                  triggerAutoSaveSettings({
+                                    ...settingsForm,
+                                    bookingModule: {
+                                      ...settingsForm.bookingModule,
+                                      invoiceSupportName: e.target.value
+                                    }
+                                  });
+                                }}
+                                className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs focus:border-[#C9A24B] focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-stone-700 block mb-1">
+                                رقم هاتف التواصل:
+                              </label>
+                              <input
+                                type="tel"
+                                dir="ltr"
+                                placeholder="+966544076726"
+                                value={settingsForm.bookingModule?.invoiceSupportPhone ?? ''}
+                                onChange={(e) => {
+                                  triggerAutoSaveSettings({
+                                    ...settingsForm,
+                                    bookingModule: {
+                                      ...settingsForm.bookingModule,
+                                      invoiceSupportPhone: e.target.value.trim()
+                                    }
+                                  });
+                                }}
+                                className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs text-right font-mono focus:border-[#C9A24B] focus:outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-stone-700 block mb-1">
+                                البريد الإلكتروني للتواصل:
+                              </label>
+                              <input
+                                type="email"
+                                dir="ltr"
+                                placeholder="booking@prestige-hotels.com"
+                                value={settingsForm.bookingModule?.invoiceSupportEmail ?? ''}
+                                onChange={(e) => {
+                                  triggerAutoSaveSettings({
+                                    ...settingsForm,
+                                    bookingModule: {
+                                      ...settingsForm.bookingModule,
+                                      invoiceSupportEmail: e.target.value.trim()
+                                    }
+                                  });
+                                }}
+                                className="w-full px-3 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs text-right font-mono focus:border-[#C9A24B] focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -4167,7 +5961,65 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Sub-Tab 8: SEO & Google SERP Preview Settings */}
+                {settingsSubTab === 'seo' && (
+                  <div className="space-y-6 animate-fadeIn">
+                    <div className="flex items-center justify-between border-b border-stone-200 pb-3">
+                      <div>
+                        <h4 className="font-cairo font-bold text-base text-stone-900">
+                          إعدادات محركات البحث العامة للموقع (Site-wide SEO & Google SERP)
+                        </h4>
+                        <p className="text-xs text-stone-500">
+                          تخصيص عنوان ووصف الصفحة الرئيسية وكلمات البحث المستهدفة لرحلات الحج والعمرة
+                        </p>
+                      </div>
+                    </div>
+
+                    <AdminSEOEditor
+                      values={{
+                        titleAr: settingsForm.metaTitle || settingsForm.siteTitle || 'برستيج لإدارة وتشغيل الفنادق | حجز فنادق مكة والمدينة وعروض الشركات',
+                        titleEn: settingsForm.metaTitleEn || settingsForm.siteTitleEn || 'Prestige Hotels Management | Luxury Hotel Booking & Operations in Makkah & Madinah',
+                        descriptionAr: settingsForm.metaDescription || settingsForm.footerBio || 'شركة برستيج الرائدة في إدارة وتشغيل الفنادق في مكة المكرمة والمدينة المنورة. أفضل عروض حجز فنادق مكة للشركات والمجموعات، فندق برستيج أجياد، خدمات إعاشة ونقل فاخر.',
+                        descriptionEn: settingsForm.metaDescriptionEn || settingsForm.footerBioEn || 'Prestige Hotels Management: premier hotel management and direct bookings for Makkah & Madinah hotels overlooking the Holy Mosques. Exclusive group and corporate contracts.',
+                        keywords: settingsForm.metaKeywords || 'فنادق مكة, فنادق المدينة المنورة, حجز فنادق العمرة, شركة برستيج لإدارة الفنادق',
+                        slug: ''
+                      }}
+                      onChange={(seo) => {
+                        const updated = {
+                          ...settingsForm,
+                          metaTitle: seo.titleAr,
+                          metaTitleEn: seo.titleEn,
+                          metaDescription: seo.descriptionAr,
+                          metaDescriptionEn: seo.descriptionEn,
+                          metaKeywords: seo.keywords
+                        };
+                        triggerAutoSaveSettings(updated);
+                      }}
+                      pagePathPrefix=""
+                      defaultTitleAr="برستيج لإدارة وتشغيل الفنادق | حجز فنادق مكة والمدينة وعروض الشركات"
+                      defaultTitleEn="Prestige Hotels Management | Luxury Hotel Booking & Operations in Makkah & Madinah"
+                      defaultDescAr="شركة برستيج الرائدة في إدارة وتشغيل الفنادق في مكة المكرمة والمدينة المنورة. أفضل عروض حجز فنادق مكة للشركات والمجموعات، فندق برستيج أجياد، خدمات إعاشة ونقل فاخر."
+                      defaultDescEn="Prestige Hotels Management: premier hotel management and direct bookings for Makkah & Madinah hotels overlooking the Holy Mosques."
+                    />
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* 6. AUDIT LOG TAB */}
+            {activeTab === 'audit-log' && (
+              <div id="admin-audit-log-section">
+                <AuditLogViewer
+                  logs={auditLogs}
+                  auditLogs={auditLogs}
+                  users={adminUsers}
+                  onRefresh={loadAuditLogs}
+                  onShowToast={onShowToast}
+                />
+              </div>
+            )}
+              </>
             )}
           </div>
         </div>
@@ -4226,12 +6078,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 {[
                   { step: 1 as const, title: '١. البيانات والحي' },
                   { step: 2 as const, title: '٢. الصور والفيديو' },
                   { step: 3 as const, title: '٣. المرافق والوصف' },
-                  { step: 4 as const, title: '٤. روابط الحجز والخرائط' }
+                  { step: 4 as const, title: '٤. روابط الحجز والخرائط' },
+                  { step: 5 as const, title: '٥. إعدادات SEO وجوجل' }
                 ].map((s) => (
                   <button
                     key={s.step}
@@ -4327,8 +6180,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <option value="">-- اختر الحي المرتبط --</option>
                           {districts
                             .filter(d => d.city === hotelForm.city)
-                            .map(d => (
-                              <option key={d.id} value={d.name}>
+                            .map((d, dIdx) => (
+                              <option key={d.id || `district-${d.name}-${dIdx}`} value={d.name}>
                                 حي {d.name} {d.distanceRange ? `(${d.distanceRange})` : ''}
                               </option>
                             ))}
@@ -4344,6 +6197,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
+                  {/* Stars, Custom Classification & View Type Row */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="text-xs font-bold text-stone-700 block mb-1">تصنيف النجوم:</label>
@@ -4352,85 +6206,478 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) => setHotelForm({ ...hotelForm, stars: parseInt(e.target.value) })}
                         className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
                       >
-                        <option value={5}>5 نجوم (فاخر ملكي)</option>
-                        <option value={4}>4 نجوم (ديلوكس)</option>
-                        <option value={3}>3 نجوم (اقتصادي)</option>
+                        <option value={5}>⭐⭐⭐⭐⭐ 5 نجوم (فاخر ملكي)</option>
+                        <option value={4}>⭐⭐⭐⭐ 4 نجوم (ديلوكس)</option>
+                        <option value={3}>⭐⭐⭐ 3 نجوم (اقتصادي)</option>
+                        <option value={2}>⭐⭐ نجمتان (سياحي)</option>
+                        <option value={1}>⭐ نجمة واحدة</option>
+                        <option value={0}>بدون نجوم (تصنيف مخصص)</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-xs font-bold text-stone-700 block mb-1">المسافة عن الحرم (متر):</label>
+                      <label className="text-xs font-bold text-stone-700 block mb-1">
+                        لقب أو تصنيف مخصص (اختياري):
+                      </label>
                       <input
-                        type="number"
-                        value={hotelForm.distanceToHaram}
-                        onChange={(e) => {
-                          const dist = parseInt(e.target.value) || 0;
-                          setHotelForm({
-                            ...hotelForm,
-                            distanceToHaram: dist,
-                            distanceText: dist === 0 ? 'على ساحة الحرم مباشرة (٠م)' : `${dist} متراً عن ساحة الحرم`
-                          });
-                        }}
+                        type="text"
+                        value={hotelForm.customClassification || ''}
+                        onChange={(e) => setHotelForm({ ...hotelForm, customClassification: e.target.value })}
+                        placeholder="مثال: شقق فندقية فاخرة، أجنحة ملكية"
                         className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs font-bold text-stone-700 block mb-1">وقت المشي (دقائق):</label>
-                      <input
-                        type="number"
-                        value={hotelForm.walkingTimeMinutes}
-                        onChange={(e) => setHotelForm({ ...hotelForm, walkingTimeMinutes: parseInt(e.target.value) || 1 })}
-                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
-                      />
+                      <label className="text-xs font-bold text-stone-700 block mb-1">نوع الإطلالة: *</label>
+                      <select
+                        value={hotelForm.viewType || hotelForm.location?.viewType || 'إطلالة حرم'}
+                        onChange={(e) => {
+                          const newView = e.target.value as any;
+                          const currentDist = parseDistanceInput(distanceInputStr);
+                          // When "إطلالة على المدينة" is chosen or distance is far, auto-switch to bus
+                          const autoBus = newView === 'إطلالة على المدينة' || currentDist >= 1000;
+                          const newTransport = autoBus ? 'bus' : (hotelForm.transportType || 'walking');
+                          setHotelForm(prev => ({
+                            ...prev,
+                            viewType: newView,
+                            transportType: newTransport,
+                            location: { ...prev.location, viewType: newView, transportType: newTransport }
+                          }));
+                        }}
+                        className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-bold focus:outline-none focus:bg-white focus:border-[#C9A24B]"
+                      >
+                        {HOTEL_VIEW_OPTIONS.map((opt, optIdx) => (
+                          <option key={`${opt.value}-${optIdx}`} value={opt.value}>
+                            {opt.label} ({opt.desc})
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-xs font-bold text-stone-700 block mb-1">نوع الإطلالة:</label>
-                    <select
-                      value={hotelForm.location.viewType}
-                      onChange={(e) => setHotelForm({
-                        ...hotelForm,
-                        location: { ...hotelForm.location, viewType: e.target.value as any }
-                      })}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B]"
-                    >
-                      <option value="إطلالة مباشرة على الكعبة">إطلالة مباشرة على الكعبة</option>
-                      <option value="إطلالة على ساحات الحرم">إطلالة على ساحات الحرم</option>
-                      <option value="إطلالة على المدينة">إطلالة على المدينة</option>
-                      <option value="قريب جداً من الحرم">قريب جداً من الحرم</option>
-                    </select>
+                  {/* Smart Distance & Transportation Card */}
+                  <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-200/80 pb-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                          <span>المسافة ووسيلة النقل إلى الحرم</span>
+                          <span className="text-[10px] text-[#B38A34] font-medium bg-[#C9A24B]/10 px-2 py-0.5 rounded-full">
+                            حساب ذكي وتلقائي
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-stone-500 mt-0.5">
+                          يمكنك كتابة 1.5 ويفهم النظام تلقائياً أنها 1500 متر، أو كتابة 350 مباشرة.
+                        </p>
+                      </div>
+
+                      {/* Transportation Mode Toggle */}
+                      <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-stone-200 shrink-0 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHotelForm(prev => ({
+                              ...prev,
+                              transportType: 'walking',
+                              location: { ...prev.location, transportType: 'walking' }
+                            }));
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            hotelForm.transportType !== 'bus'
+                              ? 'bg-[#C9A24B] text-white shadow-xs'
+                              : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+                          }`}
+                        >
+                          <Footprints className="w-3.5 h-3.5" />
+                          <span>مشياً على الأقدام</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHotelForm(prev => ({
+                              ...prev,
+                              transportType: 'bus',
+                              location: { ...prev.location, transportType: 'bus' }
+                            }));
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            hotelForm.transportType === 'bus'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+                          }`}
+                        >
+                          <Bus className="w-3.5 h-3.5" />
+                          <span>حافلة / باص ترددي</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-stone-700">المسافة إلى ساحة الحرم:</label>
+                          <span className="text-[11px] font-bold text-[#B38A34] bg-white px-2 py-0.5 rounded-md border border-stone-200">
+                            {formatDistanceDisplay(parseDistanceInput(distanceInputStr), 'ar')}
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          value={distanceInputStr}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setDistanceInputStr(val);
+                            const parsed = parseDistanceInput(val);
+                            const currentView = hotelForm.viewType || hotelForm.location?.viewType || 'إطلالة حرم';
+                            const autoBus = parsed >= 1000 || currentView === 'إطلالة على المدينة';
+                            const newTransport = autoBus ? 'bus' : (hotelForm.transportType || 'walking');
+                            setHotelForm(prev => ({
+                              ...prev,
+                              distanceToHaram: parsed,
+                              transportType: newTransport,
+                              location: { ...prev.location, transportType: newTransport }
+                            }));
+                          }}
+                          placeholder="مثال: 1.5 أو 350 أو 2"
+                          className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-bold focus:outline-none focus:border-[#C9A24B]"
+                        />
+                        <div className="flex items-center justify-between mt-1 text-[11px] text-stone-500">
+                          <span>القيمة بالأمتار: {parseDistanceInput(distanceInputStr).toLocaleString('ar-SA')} م</span>
+                          {parseDistanceInput(distanceInputStr) >= 1000 && (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1">
+                              <Bus className="w-3 h-3 text-amber-600" />
+                              حافلة مفعلة للمسافة
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5 mb-1">
+                          {hotelForm.transportType === 'bus' ? (
+                            <>
+                              <Bus className="w-3.5 h-3.5 text-amber-600" />
+                              <span>وقت الوصول بالحافلة (دقائق):</span>
+                            </>
+                          ) : (
+                            <>
+                              <Footprints className="w-3.5 h-3.5 text-[#B38A34]" />
+                              <span>وقت المشي (دقائق):</span>
+                            </>
+                          )}
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={hotelForm.walkingTimeMinutes || 2}
+                          onChange={(e) => setHotelForm({ ...hotelForm, walkingTimeMinutes: Math.max(1, parseInt(e.target.value) || 1) })}
+                          className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs sm:text-sm text-stone-900 font-bold focus:outline-none focus:border-[#C9A24B]"
+                        />
+                        <p className="text-[11px] text-stone-500 mt-1">
+                          {hotelForm.transportType === 'bus'
+                            ? 'نقل ترددي مباشر بالحافلات إلى ساحات الحرم 24/7.'
+                            : 'الوقت المقدر للمشي على الأقدام حتى ساحات الحرم الشريف.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Show/Hide Distance Badge on Hotel Card */}
+                    <div className="pt-3 border-t border-stone-200/80 flex items-center justify-between gap-4">
+                      <div>
+                        <strong className="text-xs font-bold text-stone-900 block mb-0.5">
+                          إظهار شارة المسافة والوقت على صورة الفندق ({hotelForm.transportType === 'bus' ? 'باص الحرم' : 'دقائق سيراً للحرم'})
+                        </strong>
+                        <p className="text-[11px] text-stone-500">
+                          عند إخفائها، لن تظهر شارة (دقائق سيراً للحرم) على صورة الفندق في بطاقات الموقع.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setHotelForm(prev => ({ ...prev, showDistanceBadge: prev.showDistanceBadge === false ? true : false }))}
+                        className={`w-14 h-8 flex items-center rounded-full p-1 transition-colors duration-300 cursor-pointer ${
+                          hotelForm.showDistanceBadge !== false ? 'bg-[#C9A24B] justify-end' : 'bg-stone-300 justify-start'
+                        }`}
+                        title={hotelForm.showDistanceBadge !== false ? 'الشارة معروضة للزوار' : 'الشارة مخفية'}
+                      >
+                        <div className="w-6 h-6 rounded-full bg-white shadow-md" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Categories */}
-                  <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200">
-                    <label className="text-xs font-bold text-stone-800 block mb-2">
-                      تصنيفات الفندق (يمكن اختيار أكثر من تصنيف):
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      {ALL_HOTEL_CATEGORIES.map((cat) => {
-                        const isChecked = (hotelForm.categories || []).includes(cat);
-                        return (
-                          <div
-                            key={cat}
-                            onClick={() => toggleFormCategory(cat)}
-                            className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
-                              isChecked
-                                ? 'bg-[#C9A24B]/15 border-[#C9A24B] text-[#B38A34]'
-                                : 'bg-white border-stone-200 text-stone-700 hover:border-stone-400'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              readOnly
-                              className="w-4 h-4 rounded text-[#C9A24B] accent-[#C9A24B]"
-                            />
-                            <span className="select-none text-xs">{cat}</span>
+                  <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3">
+                    {(() => {
+                      const formCategories = Array.isArray(hotelForm.categories) 
+                        ? hotelForm.categories 
+                        : (typeof hotelForm.categories === 'string' ? (hotelForm.categories as string).split(',').map(s => s.trim()).filter(Boolean) : []);
+
+                      return (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-stone-800 block">
+                              نوع الفندق وتصنيفات المواسم (عمرة، رمضان، سنوي، حج، أو مخصص):
+                            </label>
+                            <span className="text-[11px] text-stone-500 font-medium">
+                              {formCategories.length} تصنيف مختار
+                            </span>
                           </div>
-                        );
-                      })}
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            {ALL_HOTEL_CATEGORIES.map((cat, catIdx) => {
+                              const isChecked = formCategories.includes(cat);
+                              return (
+                                <div
+                                  key={`${cat || 'cat'}-${catIdx}`}
+                                  onClick={() => toggleFormCategory(cat)}
+                                  className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                                    isChecked
+                                      ? 'bg-[#C9A24B]/15 border-[#C9A24B] text-[#B38A34]'
+                                      : 'bg-white border-stone-200 text-stone-700 hover:border-stone-400'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    readOnly
+                                    className="w-4 h-4 rounded text-[#C9A24B] accent-[#C9A24B]"
+                                  />
+                                  <span className="select-none text-xs">{cat}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Custom Categories Chips if any exist */}
+                          {formCategories.filter(c => !ALL_HOTEL_CATEGORIES.includes(c as any)).length > 0 && (
+                            <div className="pt-2">
+                              <span className="text-[11px] font-bold text-stone-600 block mb-1.5">تصنيفات مخصصة إضافية:</span>
+                              <div className="flex flex-wrap gap-2">
+                                {formCategories.filter(c => !ALL_HOTEL_CATEGORIES.includes(c as any)).map((customCat, cIdx) => (
+                                  <span
+                                    key={`${customCat}-${cIdx}`}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#C9A24B]/15 border border-[#C9A24B]/30 text-xs font-bold text-[#B38A34]"
+                                  >
+                                    <span>{customCat}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveCategory(customCat)}
+                                      className="w-4 h-4 rounded-full hover:bg-[#C9A24B]/30 flex items-center justify-center text-stone-600 hover:text-red-600"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+
+                    {/* Add Custom Category Input */}
+                    <div className="pt-2 border-t border-stone-200 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newCategoryInput}
+                        onChange={(e) => setNewCategoryInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddCustomCategory();
+                          }
+                        }}
+                        placeholder="إضافة نوع أو موسم جديد (مثال: فنادق الحج، باقات الشتاء)..."
+                        className="flex-1 px-3 py-1.5 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddCustomCategory}
+                        className="px-3 py-1.5 bg-[#C9A24B] hover:bg-[#B38A34] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1 shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>إضافة تصنيف</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Master Card Display & Visibility Controls */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-50/70 via-stone-50 to-stone-100 border border-[#C9A24B]/40 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between border-b border-[#C9A24B]/20 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center font-bold">
+                          <Eye className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs sm:text-sm font-bold text-stone-900">
+                            التحكم في إظهار وإخفاء عناصر بطاقة الفندق للزوار
+                          </h4>
+                          <p className="text-[11px] text-stone-500">
+                            تحكم كامل في كل عنصر يظهر أو يختفي للزوار على بطاقة الفندق في الموقع
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold text-[#B38A34] bg-[#C9A24B]/10 px-2.5 py-1 rounded-full border border-[#C9A24B]/20">
+                        تحكم فوري
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* 1. Distance & Walking Time Badge */}
+                      <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+                            <Footprints className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-stone-800 block truncate">
+                              مدة المشي والمسافة للحرم
+                            </span>
+                            <span className="text-[10px] text-stone-400 block truncate">
+                              {hotelForm.showDistanceBadge !== false ? 'ظاهرة على صورة الفندق' : 'مخفية عن الزوار'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHotelForm(prev => ({ ...prev, showDistanceBadge: prev.showDistanceBadge === false ? true : false }))}
+                          className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                            hotelForm.showDistanceBadge !== false ? 'bg-[#C9A24B] justify-end' : 'bg-stone-300 justify-start'
+                          }`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-white shadow-xs" />
+                        </button>
+                      </div>
+
+                      {/* 2. Hotel Stars Rating */}
+                      <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-amber-50 text-[#B38A34] flex items-center justify-center shrink-0">
+                            <Star className="w-3.5 h-3.5 fill-current" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-stone-800 block truncate">
+                              تصنيف النجوم
+                            </span>
+                            <span className="text-[10px] text-stone-400 block truncate">
+                              {hotelForm.showStars !== false ? 'النجوم الذهبية ظاهرة' : 'النجوم مخفية'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHotelForm(prev => ({ ...prev, showStars: prev.showStars === false ? true : false }))}
+                          className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                            hotelForm.showStars !== false ? 'bg-[#C9A24B] justify-end' : 'bg-stone-300 justify-start'
+                          }`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-white shadow-xs" />
+                        </button>
+                      </div>
+
+                      {/* 3. Hotel Categories (عمرة / رمضان / سنوي / حج) */}
+                      <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                            <Tag className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-stone-800 block truncate">
+                              نوع وتصنيف الفندق (رمضان/عمرة/حج)
+                            </span>
+                            <span className="text-[10px] text-stone-400 block truncate">
+                              {hotelForm.showCategories !== false ? 'شارات المواسم ظاهرة' : 'شارات المواسم مخفية'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHotelForm(prev => ({ ...prev, showCategories: prev.showCategories === false ? true : false }))}
+                          className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                            hotelForm.showCategories !== false ? 'bg-[#C9A24B] justify-end' : 'bg-stone-300 justify-start'
+                          }`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-white shadow-xs" />
+                        </button>
+                      </div>
+
+                      {/* 4. Guest Rating & Reviews */}
+                      <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-stone-800 block truncate">
+                              تقييم النزلاء والمراجعات
+                            </span>
+                            <span className="text-[10px] text-stone-400 block truncate">
+                              {hotelForm.showRating !== false ? 'رقم التقييم ظاهر' : 'التقييم مخفي'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHotelForm(prev => ({ ...prev, showRating: prev.showRating === false ? true : false }))}
+                          className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                            hotelForm.showRating !== false ? 'bg-[#C9A24B] justify-end' : 'bg-stone-300 justify-start'
+                          }`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-white shadow-xs" />
+                        </button>
+                      </div>
+
+                      {/* 5. District & Neighborhood */}
+                      <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center shrink-0">
+                            <MapPin className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-stone-800 block truncate">
+                              اسم الحي والمنطقة
+                            </span>
+                            <span className="text-[10px] text-stone-400 block truncate">
+                              {hotelForm.showDistrict !== false ? 'شارة الحي ظاهرة' : 'شارة الحي مخفية'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHotelForm(prev => ({ ...prev, showDistrict: prev.showDistrict === false ? true : false }))}
+                          className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                            hotelForm.showDistrict !== false ? 'bg-[#C9A24B] justify-end' : 'bg-stone-300 justify-start'
+                          }`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-white shadow-xs" />
+                        </button>
+                      </div>
+
+                      {/* 6. Active / Hidden Full Hotel */}
+                      <div className="p-3 bg-white rounded-xl border border-stone-200 flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                            <Eye className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-stone-800 block truncate">
+                              ظهور الفندق ككل بالموقع
+                            </span>
+                            <span className="text-[10px] text-stone-400 block truncate">
+                              {hotelForm.isActive !== false ? 'الفندق متاح للزوار' : 'الفندق مخفي ومعطل'}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHotelForm(prev => ({ ...prev, isActive: prev.isActive === false ? true : false }))}
+                          className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors cursor-pointer shrink-0 ${
+                            hotelForm.isActive !== false ? 'bg-emerald-600 justify-end' : 'bg-stone-300 justify-start'
+                          }`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-white shadow-xs" />
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -4450,35 +6697,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       onClick={() => setHotelForm(prev => ({ ...prev, featured: !prev.featured }))}
                       className={`w-14 h-8 flex items-center rounded-full p-1 transition-colors duration-300 ${
                         hotelForm.featured ? 'bg-[#C9A24B] justify-end' : 'bg-stone-300 justify-start'
-                      }`}
-                    >
-                      <div className="w-6 h-6 rounded-full bg-white shadow-md" />
-                    </button>
-                  </div>
-
-                  {/* Active / Hidden Status Toggle (تفعيل أو إخفاء الفندق) */}
-                  <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <strong className="text-xs font-bold text-stone-900 block">
-                          حالة ظهور الفندق في الموقع للزوار
-                        </strong>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          hotelForm.isActive !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-700'
-                        }`}>
-                          {hotelForm.isActive !== false ? 'مفعل (ظاهر للزوار)' : 'مخفي (معطل مؤقتاً)'}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-stone-500">
-                        عند التعطيل والإخفاء، لن يظهر هذا الفندق للزوار في الصفحة الرئيسية أو قائمة الفنادق.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setHotelForm(prev => ({ ...prev, isActive: prev.isActive === false ? true : false }))}
-                      className={`w-14 h-8 flex items-center rounded-full p-1 transition-colors duration-300 cursor-pointer ${
-                        hotelForm.isActive !== false ? 'bg-emerald-600 justify-end' : 'bg-stone-300 justify-start'
                       }`}
                     >
                       <div className="w-6 h-6 rounded-full bg-white shadow-md" />
@@ -5037,6 +7255,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* STEP 5: SEO & Google Search Snippet */}
+              {hotelFormStep === 5 && (
+                <div className="space-y-4 animate-fadeIn">
+                  <AdminSEOEditor
+                    values={{
+                      titleAr: hotelForm.metaTitle || (hotelForm.name ? `فندق ${hotelForm.name} في ${hotelForm.city} (${hotelForm.stars} نجوم) | شركة برستيج` : ''),
+                      titleEn: hotelForm.metaTitleEn || (hotelForm.nameEn ? `${hotelForm.nameEn} - ${hotelForm.city} (${hotelForm.stars} Stars) | Prestige Hotels Management` : ''),
+                      descriptionAr: hotelForm.metaDescription || (hotelForm.overview || ''),
+                      descriptionEn: hotelForm.metaDescriptionEn || '',
+                      keywords: hotelForm.keywords || '',
+                      slug: hotelForm.slug || ''
+                    }}
+                    onChange={(seo) => {
+                      setHotelForm(prev => ({
+                        ...prev,
+                        metaTitle: seo.titleAr,
+                        metaTitleEn: seo.titleEn,
+                        metaDescription: seo.descriptionAr,
+                        metaDescriptionEn: seo.descriptionEn,
+                        keywords: seo.keywords
+                      }));
+                    }}
+                    pagePathPrefix="hotels"
+                    defaultTitleAr={`فندق ${hotelForm.name || 'الفندق'} في ${hotelForm.city || 'مكة المكرمة'} | شركة برستيج`}
+                    defaultTitleEn={`${hotelForm.nameEn || hotelForm.name || 'Hotel'} | Prestige Hotels Management`}
+                    defaultDescAr={`احجز إقامتك في فندق ${hotelForm.name || 'الفندق'} في ${hotelForm.city || 'مكة المكرمة'}. حجز مباشر، أفضل الأسعار وخدمات ضيافة متكاملة.`}
+                    defaultDescEn={`Book your stay at ${hotelForm.nameEn || hotelForm.name || 'Hotel'} in ${hotelForm.city || 'Makkah'}. Direct booking and premium hospitality.`}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Modal Footer Navigation */}
@@ -5060,7 +7309,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   إلغاء
                 </button>
 
-                {hotelFormStep < 4 ? (
+                {hotelFormStep < 5 ? (
                   <button
                     type="button"
                     onClick={() => setHotelFormStep((hotelFormStep + 1) as any)}
@@ -5326,7 +7575,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {offerForm.gallery && offerForm.gallery.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {offerForm.gallery.map((item, idx) => (
-                      <div key={item.id || idx} className="relative rounded-xl overflow-hidden bg-stone-800 border border-stone-700 group aspect-video">
+                      <div key={item.id || `offer-media-${idx}`} className="relative rounded-xl overflow-hidden bg-stone-800 border border-stone-700 group aspect-video">
                         {item.type === 'video' ? (
                           <div className="w-full h-full bg-stone-950 flex items-center justify-center">
                             <Film className="w-6 h-6 text-[#C9A24B]" />
@@ -5743,6 +7992,51 @@ CREATE POLICY "Anon Full Access Content" ON public.content FOR ALL USING (true);
                   إغلاق
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Auto-Save & Cloud Synchronization Real-Time Capsule */}
+      {autoSaveStatus !== 'idle' && (
+        <div 
+          id="admin-autosave-floating-pill" 
+          className="fixed bottom-6 right-6 sm:right-8 z-[99999] pointer-events-none transition-all duration-300 transform translate-y-0 opacity-100 animate-fadeIn"
+        >
+          <div className={`apple-glass bg-white/95 backdrop-blur-2xl border shadow-2xl rounded-2xl px-5 py-3.5 flex items-center gap-3.5 text-stone-900 pointer-events-auto transition-all ${
+            autoSaveStatus === 'saving' 
+              ? 'border-amber-300/80 ring-2 ring-amber-400/20 shadow-amber-500/10' 
+              : 'border-emerald-300/80 ring-2 ring-emerald-400/20 shadow-emerald-500/10'
+          }`}>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+              autoSaveStatus === 'saving' 
+                ? 'bg-amber-500/15 text-amber-600' 
+                : 'bg-emerald-500/15 text-emerald-600'
+            }`}>
+              {autoSaveStatus === 'saving' ? (
+                <RotateCcw className="w-5 h-5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className={`font-cairo font-bold text-sm ${
+                  autoSaveStatus === 'saving' ? 'text-stone-900' : 'text-emerald-800'
+                }`}>
+                  {autoSaveStatus === 'saving' ? 'جاري الحفظ تلقائياً...' : 'تم الحفظ والمزامنة بنجاح'}
+                </span>
+                {autoSaveStatus === 'saving' ? (
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                ) : (
+                  <span className="text-emerald-600 text-xs font-bold">✓</span>
+                )}
+              </div>
+              <p className="text-xs text-stone-500 font-medium mt-0.5">
+                {autoSaveStatus === 'saving' 
+                  ? 'يتم الآن مزامنة كافة التعديلات والتحديثات مع قاعدة البيانات السحابية' 
+                  : 'تم تأكيد وحفظ كافة البيانات في السحابة بنجاح وهي معروضة للزوار الآن'}
+              </p>
             </div>
           </div>
         </div>

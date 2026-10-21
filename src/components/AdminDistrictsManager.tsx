@@ -291,10 +291,10 @@ export const AdminDistrictsManager: React.FC<AdminDistrictsManagerProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
-            {filteredDistricts.map((district) => {
+            {filteredDistricts.map((district, dIdx) => {
               const linkedCount = hotelCountsByDistrict[district.name] || 0;
               return (
-                <tr key={district.id} className="hover:bg-stone-50 transition-colors">
+                <tr key={district.id || `district-${district.name}-${dIdx}`} className="hover:bg-stone-50 transition-colors">
                   <td className="py-3.5 pr-2">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-lg bg-amber-50 text-[#B38A34] flex items-center justify-center shrink-0 border border-amber-200/50">

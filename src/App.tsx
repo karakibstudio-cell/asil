@@ -4,6 +4,8 @@ import {
   getHotelsFromDb, 
   getOffersFromDb, 
   getSiteSettingsFromDb, 
+  getSiteBundleFromDb,
+  listenToSiteVersion,
   saveSiteSettingsToDb, 
   DEFAULT_SITE_SETTINGS,
   auth,
@@ -11,15 +13,13 @@ import {
   safeSetLocalStorage
 } from './services/firebase';
 import { INITIAL_HOTELS, INITIAL_OFFERS, INITIAL_SITE_SETTINGS } from './data/mockHotels';
-import { subscribeToSupabaseRealtime } from './services/supabase';
+import { subscribeToSupabaseRealtime, mapSupabaseRowToHotel } from './services/supabase';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { WhatsAppFAB } from './components/WhatsAppFAB';
 import { EditModeFloatingBar } from './components/EditModeFloatingBar';
 import { Toast, ToastMessage } from './components/Toast';
-import { Lightbox, LightboxMediaItem } from './components/Lightbox';
-import { RoomBookingModal } from './components/RoomBookingModal';
-import { TrackBookingModal } from './components/TrackBookingModal';
+import type { LightboxMediaItem } from './components/Lightbox';
 import { LiveContentProvider } from './context/LiveContentContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ScrollNavigationButton } from './components/ScrollNavigationButton';
@@ -28,21 +28,19 @@ import {
   syncRouteToUrl, 
   findHotelBySlugOrId, 
   getHotelSlug,
+  detectLanguageFromUrl,
   AdminTab
 } from './utils/routing';
 import { updateFavicon } from './utils/favicon';
+import { SEOHead } from './components/SEOHead';
+import { HotelDetailSkeleton } from './components/HotelDetailSkeleton';
+import { FirstVisitIntroOverlay } from './components/FirstVisitIntroOverlay';
+import { PageErrorBoundary } from './components/PageErrorBoundary';
 
-// Pages - all public visitor pages are bundled for instant (0ms) zero-latency navigation
-import { HomePage } from './pages/HomePage';
-import { HotelsPage } from './pages/HotelsPage';
-import { HotelDetailPage } from './pages/HotelDetailPage';
-import { OffersPage } from './pages/OffersPage';
-import { AboutPage } from './pages/AboutPage';
-import { ContactPage } from './pages/ContactPage';
-import { BookingPortalPage } from './pages/BookingPortalPage';
+import { prefetchRoute, scheduleIdlePrefetch } from './utils/prefetch';
 import type { AdminDashboardTab } from './pages/AdminDashboard';
 
-// Safe lazy loader for the heavy Admin Dashboard only
+// Safe lazy loader for chunks
 function safeLazy<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>
 ) {
@@ -56,20 +54,54 @@ function safeLazy<T extends React.ComponentType<any>>(
   });
 }
 
-// Lazy load ONLY the heavy Admin Dashboard so visitors load the page instantly
-const AdminDashboard = safeLazy(() => 
-  import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard }))
-);
+import { HomePage } from './pages/HomePage';
+
+// Route-level lazy loading for non-home pages: only load active chunk
+const HotelsPage = safeLazy(() => import('./pages/HotelsPage').then(m => ({ default: m.HotelsPage })));
+const HotelDetailPage = safeLazy(() => import('./pages/HotelDetailPage').then(m => ({ default: m.HotelDetailPage })));
+const OffersPage = safeLazy(() => import('./pages/OffersPage').then(m => ({ default: m.OffersPage })));
+const AboutPage = safeLazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })));
+const ContactPage = safeLazy(() => import('./pages/ContactPage').then(m => ({ default: m.ContactPage })));
+const BookingPortalPage = safeLazy(() => import('./pages/BookingPortalPage').then(m => ({ default: m.BookingPortalPage })));
+const InvoicePage = safeLazy(() => import('./pages/InvoicePage').then(m => ({ default: m.InvoicePage })));
+
+// Lazy load modals & heavy overlays
+const RoomBookingModal = safeLazy(() => import('./components/RoomBookingModal').then(m => ({ default: m.RoomBookingModal })));
+const TrackBookingModal = safeLazy(() => import('./components/TrackBookingModal').then(m => ({ default: m.TrackBookingModal })));
+const Lightbox = safeLazy(() => import('./components/Lightbox').then(m => ({ default: m.Lightbox })));
+const AdminDashboard = safeLazy(() => import('./pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<ActivePage>('home');
-  const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
-  const [selectedBookingHotelId, setSelectedBookingHotelId] = useState<string | undefined>(undefined);
-  const [activeAdminTab, setActiveAdminTab] = useState<AdminDashboardTab>('hotels');
-  const [activeCityFilter, setActiveCityFilter] = useState<'all' | 'مكة المكرمة' | 'المدينة المنورة'>('all');
-  const [activeDistrictFilter, setActiveDistrictFilter] = useState<string | undefined>(undefined);
-  const [activeOfferId, setActiveOfferId] = useState<string | undefined>(undefined);
-  const [directPhotoUrl, setDirectPhotoUrl] = useState<string | null>(null);
+  // Synchronous route parsing on initial render so the correct page and hotel is selected immediately (0ms, no flash)
+  const initialRoute = useRef(
+    parseCurrentRoute(
+      (() => {
+        try {
+          const saved = localStorage.getItem('diy_hotels');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        } catch {}
+        return INITIAL_HOTELS;
+      })()
+    )
+  ).current;
+
+  const [currentPage, setCurrentPage] = useState<ActivePage>(initialRoute.page);
+  const [selectedHotelId, setSelectedHotelId] = useState<string | null>(initialRoute.hotelId || null);
+  const [selectedBookingHotelId, setSelectedBookingHotelId] = useState<string | undefined>(
+    initialRoute.page === 'room-booking' ? initialRoute.hotelId : undefined
+  );
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminDashboardTab>(initialRoute.adminTab || 'hotels');
+  const [activeCityFilter, setActiveCityFilter] = useState<'all' | 'مكة المكرمة' | 'المدينة المنورة'>(
+    initialRoute.cityFilter || 'all'
+  );
+  const [activeDistrictFilter, setActiveDistrictFilter] = useState<string | undefined>(initialRoute.districtFilter);
+  const [activeOfferId, setActiveOfferId] = useState<string | undefined>(initialRoute.offerId);
+  const [directPhotoUrl, setDirectPhotoUrl] = useState<string | null>(initialRoute.photoUrl || null);
+  const [invoiceBookingId, setInvoiceBookingId] = useState<string | undefined>(initialRoute.invoiceBookingId);
+  const [invoiceToken, setInvoiceToken] = useState<string | undefined>(initialRoute.invoiceToken);
 
   // Global Room Booking & Tracking Modals State
   const [isGlobalBookingModalOpen, setIsGlobalBookingModalOpen] = useState<boolean>(false);
@@ -82,7 +114,7 @@ export default function App() {
       const saved = localStorage.getItem('diy_hotels');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length >= INITIAL_HOTELS.length) return parsed;
       }
       if (INITIAL_HOTELS.length > 0) {
         safeSetLocalStorage('diy_hotels', INITIAL_HOTELS);
@@ -120,6 +152,17 @@ export default function App() {
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isFontsReady, setIsFontsReady] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined' && document.fonts) {
+      document.fonts.ready
+        .then(() => setIsFontsReady(true))
+        .catch(() => setIsFontsReady(true));
+    } else {
+      setIsFontsReady(true);
+    }
+  }, []);
 
   // Admin Auth State with persistence & Firebase Auth sync
   const [isAdminLoggedIn, setIsAdminLoggedInState] = useState<boolean>(() => {
@@ -143,7 +186,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (auth) {
+    scheduleIdlePrefetch();
+  }, []);
+
+  useEffect(() => {
+    // Only subscribe to Firebase Auth if an admin was logged in or URL targets /admin
+    const wasLoggedIn = (() => {
+      try {
+        return localStorage.getItem('diy_admin_logged_in') === 'true';
+      } catch {
+        return false;
+      }
+    })();
+    const isAdminRoute = typeof window !== 'undefined' && 
+      (window.location.pathname.includes('/admin') || window.location.hash.includes('/admin'));
+
+    if ((wasLoggedIn || isAdminRoute) && auth) {
       const unsubscribe = onAuthStateChanged(auth, (user) => {
         if (user) {
           setIsAdminLoggedIn(true);
@@ -165,26 +223,22 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Fetch data from Supabase — skipCache=true ensures we always get fresh data from the DB
-  const loadData = useCallback(async (isSilent = false) => {
+  // Fetch data with Stale-While-Revalidate: 1 bundled read, instant cache-first, silent background revalidation
+  const loadData = useCallback(async (isSilent = true, forceRefresh = false) => {
     if (!isSilent) setIsLoading(true);
     try {
-      const [fetchedHotels, fetchedOffers, fetchedSettings] = await Promise.all([
-        getHotelsFromDb(true),
-        getOffersFromDb(true),
-        getSiteSettingsFromDb(true)
-      ]);
-      if (Array.isArray(fetchedHotels) && fetchedHotels.length > 0) {
-        setHotels(fetchedHotels);
+      const bundle = await getSiteBundleFromDb(forceRefresh);
+      if (Array.isArray(bundle.hotels) && bundle.hotels.length > 0) {
+        setHotels(bundle.hotels);
       }
-      if (Array.isArray(fetchedOffers) && fetchedOffers.length > 0) {
-        setOffers(fetchedOffers);
+      if (Array.isArray(bundle.offers) && bundle.offers.length > 0) {
+        setOffers(bundle.offers);
       }
-      if (fetchedSettings && typeof fetchedSettings === 'object') {
-        setSiteSettings(fetchedSettings);
+      if (bundle.siteSettings && typeof bundle.siteSettings === 'object') {
+        setSiteSettings(bundle.siteSettings);
       }
     } catch (err) {
-      console.error('Error loading data:', err);
+      console.error('Error loading site bundle:', err);
     } finally {
       if (!isSilent) setIsLoading(false);
     }
@@ -194,41 +248,90 @@ export default function App() {
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Initial load always bypasses cache to get the freshest data from Supabase
-    loadData(true);
+    // Initial mount: instant display from memory/INITIAL_HOTELS (0ms) and silently revalidate from Supabase
+    loadData(true, true);
 
-    const unsubscribe = subscribeToSupabaseRealtime((payload) => {
-      // Handle site_settings changes instantly (optimistic)
+    const unsubscribeSupabase = subscribeToSupabaseRealtime((payload) => {
+      // 1. Instant Optimistic Realtime Sync for Hotels (0ms)
+      if (payload.table === 'hotels') {
+        if (payload.eventType === 'DELETE' && (payload.old?.id || payload.new?.id)) {
+          const deleteId = payload.old?.id || payload.new?.id;
+          setHotels(prev => {
+            const next = prev.filter(h => h.id !== deleteId);
+            safeSetLocalStorage('diy_hotels', next);
+            return next;
+          });
+        } else if (payload.new) {
+          try {
+            const updatedHotel = mapSupabaseRowToHotel(payload.new);
+            setHotels(prev => {
+              const exists = prev.some(h => h.id === updatedHotel.id);
+              let next: Hotel[];
+              if (exists) {
+                next = prev.map(h => h.id === updatedHotel.id ? { ...h, ...updatedHotel } : h);
+              } else {
+                next = [updatedHotel, ...prev];
+              }
+              safeSetLocalStorage('diy_hotels', next);
+              return next;
+            });
+          } catch (e) {
+            console.warn('[Realtime Hotels Sync] Map error:', e);
+          }
+        }
+      }
+
+      // 2. Instant Optimistic Realtime Sync for Offers (0ms)
+      if (payload.table === 'offers') {
+        if (payload.eventType === 'DELETE' && (payload.old?.id || payload.new?.id)) {
+          const deleteId = payload.old?.id || payload.new?.id;
+          setOffers(prev => {
+            const next = prev.filter(o => o.id !== deleteId);
+            safeSetLocalStorage('diy_offers', next);
+            return next;
+          });
+        } else if (payload.new) {
+          try {
+            const updatedOffer = payload.new as Offer;
+            setOffers(prev => {
+              const exists = prev.some(o => o.id === updatedOffer.id);
+              let next: Offer[];
+              if (exists) {
+                next = prev.map(o => o.id === updatedOffer.id ? { ...o, ...updatedOffer } : o);
+              } else {
+                next = [updatedOffer, ...prev];
+              }
+              safeSetLocalStorage('diy_offers', next);
+              return next;
+            });
+          } catch (e) {
+            console.warn('[Realtime Offers Sync] Map error:', e);
+          }
+        }
+      }
+
+      // 3. Instant Optimistic Realtime Sync for Site Settings
       if (payload.table === 'site_settings' && payload.new?.settings_data) {
         try {
           const raw = payload.new.settings_data;
           const fresh = typeof raw === 'object' ? raw : JSON.parse(raw);
-          setSiteSettings(prev => ({ ...prev, ...fresh }));
-          return;
-        } catch {
-          // Fall through to debounced reload
-        }
+          setSiteSettings(prev => {
+            const next = { ...prev, ...fresh };
+            safeSetLocalStorage('diy_site_settings', next);
+            return next;
+          });
+        } catch {}
       }
 
-      // For hotels/offers changes, debounce to avoid hammering the API
-      // skipCache=true ensures we bypass the in-memory cache on realtime events
-      if (payload.table === 'hotels' || payload.table === 'offers' || payload.table === 'site_settings') {
-        if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
-        realtimeDebounceRef.current = setTimeout(() => {
-          if (payload.table === 'hotels') {
-            getHotelsFromDb(true).then(h => { if (h?.length) setHotels(h); });
-          } else if (payload.table === 'offers') {
-            getOffersFromDb(true).then(o => { if (o?.length) setOffers(o); });
-          } else {
-            getSiteSettingsFromDb(true).then(s => { if (s) setSiteSettings(s); });
-          }
-        }, 300);
-      }
-      // Ignore messages, reviews, districts, admin_users — no need to re-fetch main data
+      // Safety debounce background revalidation to guarantee consistency across all tables
+      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+      realtimeDebounceRef.current = setTimeout(() => {
+        loadData(true, true);
+      }, 1500);
     });
 
     return () => {
-      unsubscribe();
+      unsubscribeSupabase();
       if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
     };
   }, [loadData]);
@@ -299,6 +402,10 @@ export default function App() {
       } else {
         setDirectPhotoUrl(null);
       }
+      if (route.page === 'invoice') {
+        setInvoiceBookingId(route.invoiceBookingId);
+        setInvoiceToken(route.invoiceToken);
+      }
     };
 
     window.addEventListener('hashchange', handleRouteChange);
@@ -367,6 +474,13 @@ export default function App() {
       } else {
         setSelectedBookingHotelId(undefined);
       }
+    } else if (page === 'invoice') {
+      resolvedPage = 'invoice';
+      const bId = typeof optionsOrHotelId === 'string' ? optionsOrHotelId : (optionsOrHotelId as any)?.bookingId;
+      const tok = (optionsOrHotelId as any)?.token;
+      if (bId) setInvoiceBookingId(bId);
+      if (tok) setInvoiceToken(tok);
+      targetOptions = { invoiceBookingId: bId, invoiceToken: tok };
     } else if (['home', 'hotels', 'about', 'contact'].includes(page)) {
       resolvedPage = page as ActivePage;
       if (page === 'hotels' && typeof optionsOrHotelId === 'object' && optionsOrHotelId?.city) {
@@ -384,29 +498,66 @@ export default function App() {
     navigateTo('hotel-detail', hotelIdOrSlug);
   };
 
-  const selectedHotel = (selectedHotelId && findHotelBySlugOrId(hotels, selectedHotelId)) || hotels[0];
+  // Determine selected hotel strictly from ID/slug. NEVER fall back to hotels[0] to avoid flashing wrong hotel!
+  const selectedHotel = selectedHotelId ? findHotelBySlugOrId(hotels, selectedHotelId) : undefined;
+
+  // Auto-redirect legacy hash routes to clean canonical paths
+  useEffect(() => {
+    if (initialRoute.isLegacyHash) {
+      syncRouteToUrl(currentPage, initialRoute.lang, {
+        hotel: selectedHotel,
+        hotelIdOrSlug: selectedHotelId || undefined,
+        cityFilter: activeCityFilter !== 'all' ? activeCityFilter : undefined,
+        adminTab: activeAdminTab,
+        offerId: activeOfferId,
+        photoUrl: directPhotoUrl || undefined
+      }, true);
+    }
+  }, []);
 
   return (
     <LanguageProvider>
       <LiveContentProvider isAdminLoggedIn={isAdminLoggedIn} onShowToast={showToast}>
+        {/* Dynamic SEO Meta, Canonical, Hreflang & JSON-LD Injection */}
+        <SEOHead
+          page={currentPage}
+          lang={detectLanguageFromUrl()}
+          hotel={selectedHotel}
+          siteSettings={siteSettings}
+        />
+
+        {/* First-Visit Brand Intro & Loading Presentation */}
+        <FirstVisitIntroOverlay
+          siteSettings={siteSettings}
+          isReady={isFontsReady && hotels.length > 0}
+          onFinished={() => {
+            const heroEl = document.getElementById('hero-slider-section');
+            if (heroEl) {
+              heroEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }}
+        />
+
         <div className="min-h-screen bg-[#F8F7F4] text-stone-900 flex flex-col font-cairo selection:bg-[#C9A24B] selection:text-white">
           {/* Toast Notifications */}
           <Toast toasts={toasts} onDismiss={removeToast} />
 
           {/* Direct Image Lightbox Modal if URL points to #/image?src=... */}
           {directPhotoUrl && (
-            <Lightbox
-              isOpen={Boolean(directPhotoUrl)}
-              onClose={() => {
-                setDirectPhotoUrl(null);
-                window.location.hash = '#/home';
-              }}
-              mediaItems={[{
-                type: 'image',
-                url: directPhotoUrl,
-                title: 'معاينة الصورة'
-              }]}
-            />
+            <React.Suspense fallback={null}>
+              <Lightbox
+                isOpen={Boolean(directPhotoUrl)}
+                onClose={() => {
+                  setDirectPhotoUrl(null);
+                  navigateTo('home');
+                }}
+                mediaItems={[{
+                  type: 'image',
+                  url: directPhotoUrl,
+                  title: 'معاينة الصورة'
+                }]}
+              />
+            </React.Suspense>
           )}
 
           {/* Header Floating Glass Capsule */}
@@ -437,7 +588,34 @@ export default function App() {
               />
             )}
 
-              {currentPage === 'hotels' && (
+            {currentPage !== 'home' && currentPage !== 'admin' && (
+              <React.Suspense fallback={
+                currentPage === 'room-booking' ? (
+                  <div className="min-h-screen bg-[#F8F7F4] pt-24 pb-16" dir="rtl">
+                    <div className="max-w-5xl mx-auto px-4 sm:px-6 mb-8 text-center space-y-3">
+                      <div className="h-6 w-48 bg-stone-200/80 rounded-full mx-auto animate-pulse" />
+                      <div className="h-10 w-96 max-w-full bg-stone-200 rounded-xl mx-auto animate-pulse" />
+                      <div className="h-4 w-72 max-w-full bg-stone-200/60 rounded-lg mx-auto animate-pulse" />
+                    </div>
+                    <div className="max-w-5xl mx-auto px-4 sm:px-6">
+                      <div className="bg-white rounded-3xl border border-stone-200/80 shadow-sm p-6 sm:p-8 min-h-[640px] animate-pulse">
+                        <div className="h-8 bg-stone-100 rounded-xl w-64 mx-auto mb-6" />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                          <div className="h-20 bg-stone-50 rounded-2xl border border-stone-200/60" />
+                          <div className="h-20 bg-stone-50 rounded-2xl border border-stone-200/60" />
+                          <div className="h-20 bg-stone-50 rounded-2xl border border-stone-200/60" />
+                        </div>
+                        <div className="h-64 bg-stone-50/60 rounded-2xl border border-stone-200/40" />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="min-h-[70vh] flex items-center justify-center bg-[#F8F7F4]">
+                    <div className="w-8 h-8 rounded-full border-2 border-[#C9A24B] border-t-transparent animate-spin" />
+                  </div>
+                )
+              }>
+                {currentPage === 'hotels' && (
                 <HotelsPage
                   hotels={hotels}
                   isLoading={isLoading}
@@ -448,15 +626,21 @@ export default function App() {
                 />
               )}
 
-              {currentPage === 'hotel-detail' && selectedHotel && (
-                <HotelDetailPage
-                  hotel={selectedHotel}
-                  allHotels={hotels}
-                  onBack={() => navigateTo('hotels')}
-                  onSelectHotel={handleSelectHotel}
-                  onNavigate={navigateTo}
-                  siteSettings={siteSettings}
-                />
+              {currentPage === 'hotel-detail' && (
+                <PageErrorBoundary onReset={() => navigateTo('hotels')}>
+                  {selectedHotel ? (
+                    <HotelDetailPage
+                      hotel={selectedHotel}
+                      allHotels={hotels}
+                      onBack={() => navigateTo('hotels')}
+                      onSelectHotel={handleSelectHotel}
+                      onNavigate={navigateTo}
+                      siteSettings={siteSettings}
+                    />
+                  ) : (
+                    <HotelDetailSkeleton onBack={() => navigateTo('hotels')} />
+                  )}
+                </PageErrorBoundary>
               )}
 
               {currentPage === 'room-booking' && (
@@ -492,6 +676,18 @@ export default function App() {
                 <ContactPage onShowToast={showToast} siteSettings={siteSettings} />
               )}
 
+              {currentPage === 'invoice' && (
+                <InvoicePage
+                  bookingId={invoiceBookingId}
+                  token={invoiceToken}
+                  siteSettings={siteSettings}
+                  onNavigateHome={() => navigateTo('home')}
+                  onShowToast={showToast}
+                />
+              )}
+              </React.Suspense>
+            )}
+
             {currentPage === 'admin' && (
               <React.Suspense fallback={
                 <div className="min-h-screen flex items-center justify-center bg-[#F8F7F4]">
@@ -525,6 +721,7 @@ export default function App() {
           {/* Floating WhatsApp Action Button (Left) */}
           <WhatsAppFAB
             channels={siteSettings?.channels}
+            siteSettings={siteSettings}
             currentHotelName={currentPage === 'hotel-detail' && selectedHotel ? selectedHotel.name : undefined}
           />
 
@@ -535,28 +732,34 @@ export default function App() {
             onShowToast={showToast}
           />
 
-          {/* Global Interactive Room Booking Modal */}
-          {hotels.length > 0 && siteSettings?.bookingModule?.enabled !== false && (
-            <RoomBookingModal
-              isOpen={isGlobalBookingModalOpen}
-              onClose={() => setIsGlobalBookingModalOpen(false)}
-              hotel={selectedHotel || hotels[0]}
-              siteSettings={siteSettings}
-              onSuccessToast={showToast}
-              onOpenTrackModal={(code) => {
-                setGlobalTrackCode(code);
-                setIsTrackModalOpen(true);
-              }}
-            />
+          {/* Global Interactive Room Booking Modal (Lazy-Loaded only when requested) */}
+          {hotels.length > 0 && siteSettings?.bookingModule?.enabled !== false && isGlobalBookingModalOpen && (
+            <React.Suspense fallback={null}>
+              <RoomBookingModal
+                isOpen={isGlobalBookingModalOpen}
+                onClose={() => setIsGlobalBookingModalOpen(false)}
+                hotel={selectedHotel || hotels[0]}
+                siteSettings={siteSettings}
+                onSuccessToast={showToast}
+                onOpenTrackModal={(code) => {
+                  setGlobalTrackCode(code);
+                  setIsTrackModalOpen(true);
+                }}
+              />
+            </React.Suspense>
           )}
 
-          {/* Global Track & Review Booking Modal */}
-          <TrackBookingModal
-            isOpen={isTrackModalOpen}
-            onClose={() => setIsTrackModalOpen(false)}
-            initialCode={globalTrackCode}
-            siteSettings={siteSettings}
-          />
+          {/* Global Track & Review Booking Modal (Lazy-Loaded only when requested) */}
+          {isTrackModalOpen && (
+            <React.Suspense fallback={null}>
+              <TrackBookingModal
+                isOpen={isTrackModalOpen}
+                onClose={() => setIsTrackModalOpen(false)}
+                initialCode={globalTrackCode}
+                siteSettings={siteSettings}
+              />
+            </React.Suspense>
+          )}
 
           {/* Footer */}
           <Footer onNavigate={navigateTo} activeOffers={offers} siteSettings={siteSettings} />

@@ -472,13 +472,19 @@ interface LanguageProviderProps {
 
 export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    try {
-      const saved = localStorage.getItem('diy_app_language');
-      if (saved === 'en' || saved === 'ar') return saved;
-      return 'ar';
-    } catch {
-      return 'ar';
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      if (path.startsWith('/en/') || path === '/en') return 'en';
+      if (path.startsWith('/ar/') || path === '/ar') return 'ar';
+      const hash = window.location.hash.toLowerCase();
+      if (hash.includes('/en/') || hash.startsWith('#/en')) return 'en';
+      if (hash.includes('/ar/') || hash.startsWith('#/ar')) return 'ar';
+      try {
+        const saved = localStorage.getItem('diy_app_language');
+        if (saved === 'en' || saved === 'ar') return saved;
+      } catch {}
     }
+    return 'ar';
   });
 
   // Persistent dynamic translation cache in memory and localStorage
@@ -493,13 +499,49 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   const [, setCacheVersion] = useState(0);
   const isRtl = language === 'ar';
 
+  // Listen to browser popstate to sync language if user navigates back/forward
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path.startsWith('/en/') || path === '/en') {
+        setLanguageState('en');
+      } else if (path.startsWith('/ar/') || path === '/ar') {
+        setLanguageState('ar');
+      }
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    return () => window.removeEventListener('popstate', handleUrlChange);
+  }, []);
+
+  const switchUrlLanguage = (nextLang: Language) => {
+    if (typeof window === 'undefined') return;
+    const currentPath = window.location.pathname;
+    let newPath = currentPath;
+
+    if (currentPath.startsWith('/en/') || currentPath === '/en') {
+      newPath = currentPath.replace(/^\/en/, `/${nextLang}`);
+    } else if (currentPath.startsWith('/ar/') || currentPath === '/ar') {
+      newPath = currentPath.replace(/^\/ar/, `/${nextLang}`);
+    } else if (currentPath === '/' || !currentPath) {
+      newPath = `/${nextLang}`;
+    } else {
+      newPath = `/${nextLang}${currentPath}`;
+    }
+
+    if (newPath !== currentPath) {
+      window.history.pushState(null, '', newPath + window.location.search);
+      // Dispatch a popstate-like event so router picks it up
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
+
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
     try {
       localStorage.setItem('diy_app_language', lang);
-      // Sync google translate cookie for full DOM translation bridge
       document.cookie = `googtrans=/ar/${lang}; path=/;`;
     } catch {}
+    switchUrlLanguage(lang);
   }, []);
 
   const toggleLanguage = useCallback(() => {
@@ -509,6 +551,7 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
         localStorage.setItem('diy_app_language', next);
         document.cookie = `googtrans=/ar/${next}; path=/;`;
       } catch {}
+      switchUrlLanguage(next);
       return next;
     });
   }, []);

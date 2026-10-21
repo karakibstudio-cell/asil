@@ -148,13 +148,13 @@ export const OurHotelsAccordion: React.FC<OurHotelsAccordionProps> = ({
 
         {/* Accordion Container */}
         <div className="max-w-4xl mx-auto space-y-4">
-          {districtNames.map((district) => {
+          {districtNames.filter(Boolean).map((district, dIdx) => {
             const districtHotels = currentCityDistricts[district] || [];
             const isExpanded = expandedDistrict === district;
 
             return (
               <div
-                key={district}
+                key={`${district || 'dist'}-${dIdx}`}
                 id={`district-accordion-${district}`}
                 className={`rounded-2xl border transition-all duration-300 overflow-hidden ${
                   isExpanded
@@ -200,9 +200,9 @@ export const OurHotelsAccordion: React.FC<OurHotelsAccordionProps> = ({
                 {isExpanded && (
                   <div className="px-5 sm:px-6 pb-6 pt-2 border-t border-[#EFE6D8]/80 animate-fadeIn">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-                      {districtHotels.map((hotel) => (
+                      {districtHotels.map((hotel, hIdx) => (
                         <div
-                          key={hotel.id}
+                          key={hotel.id || `accordion-hotel-${hIdx}`}
                           id={`accordion-hotel-item-${hotel.id}`}
                           onClick={() => onSelectHotel(hotel.id)}
                           className="flex items-center gap-3.5 p-3 rounded-xl bg-white border border-stone-200 hover:border-[#C9A24B] transition-all cursor-pointer group shadow-2xs hover:shadow-sm"
@@ -222,21 +222,31 @@ export const OurHotelsAccordion: React.FC<OurHotelsAccordionProps> = ({
                             }}
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1 mb-1">
-                              {[...Array(hotel.stars)].map((_, i) => (
-                                <Star key={i} className="w-3 h-3 fill-[#C9A24B] text-[#C9A24B]" />
-                              ))}
-                              <span className={`text-[11px] font-bold text-stone-500 ${isRtl ? 'mr-1' : 'ml-1'}`}>
-                                {hotel.rating} ★
-                              </span>
-                            </div>
+                            {(hotel.showStars !== false || hotel.showRating !== false) && (
+                              <div className="flex items-center gap-1 mb-1">
+                                {hotel.showStars !== false && (
+                                  <div className="flex items-center gap-0.5">
+                                    {[...Array(Math.max(0, Math.min(7, typeof hotel.stars === 'number' ? hotel.stars : (parseInt(hotel.stars as any, 10) || 0))))].map((_, i) => (
+                                      <Star key={i} className="w-3 h-3 fill-[#C9A24B] text-[#C9A24B]" />
+                                    ))}
+                                  </div>
+                                )}
+                                {hotel.showRating !== false && (
+                                  <span className={`text-[11px] font-bold text-stone-500 ${isRtl ? 'mr-1' : 'ml-1'}`}>
+                                    {hotel.rating} ★
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             <h4 className="font-cairo font-bold text-sm text-stone-900 truncate group-hover:text-[#B38A34] transition-colors">
                               {language === 'en' && hotel.nameEn ? hotel.nameEn : hotel.name}
                             </h4>
-                            <div className="flex items-center gap-1 text-xs text-stone-500 mt-1">
-                              <Footprints className="w-3 h-3 text-[#B38A34]" />
-                              <span>{translateDynamic(hotel.distanceText)}</span>
-                            </div>
+                            {hotel.showDistanceBadge !== false && hotel.showTransportInfo !== false && hotel.distanceText && (
+                              <div className="flex items-center gap-1 text-xs text-stone-500 mt-1">
+                                <Footprints className="w-3 h-3 text-[#B38A34]" />
+                                <span>{translateDynamic(hotel.distanceText)}</span>
+                              </div>
+                            )}
                           </div>
                           <div className="w-8 h-8 rounded-full bg-[#EFE6D8]/50 group-hover:bg-[#C9A24B] group-hover:text-white flex items-center justify-center shrink-0 transition-colors">
                             <ArrowLeft className={`w-4 h-4 text-[#B38A34] group-hover:text-white ${isRtl ? '' : 'rotate-180'}`} />

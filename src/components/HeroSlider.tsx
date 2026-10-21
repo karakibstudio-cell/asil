@@ -18,10 +18,10 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { WhatsAppIcon } from './BookingIcons';
 import { getFirstActiveWhatsApp, getChannelHref, buildWhatsAppLink } from '../utils/channels';
-import { Lightbox, LightboxMediaItem } from './Lightbox';
 import { SafeVideoPlayer } from './SafeVideoPlayer';
 import { EditableText } from './EditableText';
 import { useLanguage } from '../context/LanguageContext';
+import { Lightbox, LightboxMediaItem } from './Lightbox';
 
 interface HeroSliderProps {
   slides?: HeroSlide[];
@@ -249,7 +249,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
 
         return (
           <div
-            key={slide.id}
+            key={slide.id || `hero-slide-${idx}`}
             className={`absolute inset-0 transition-opacity duration-1000 ease-in-out overflow-hidden ${
               isCurrent ? 'opacity-100 z-0' : 'opacity-0 -z-10 pointer-events-none'
             }`}
@@ -530,7 +530,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
               const isActive = idx === currentIndex;
               return (
                 <button
-                  key={s.id}
+                  key={s.id || `hero-dot-${idx}`}
                   id={`hero-slide-dot-${idx}`}
                   onClick={() => {
                     setSlideDirection(idx > currentIndex ? 'next' : 'prev');

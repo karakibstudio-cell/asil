@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Hotel, Offer, ActivePage, SiteSettings, HotelReview, HeroSlide } from '../types';
 import { HotelCard } from '../components/HotelCard';
 import { FeaturedHotelsCarousel } from '../components/FeaturedHotelsCarousel';
 import { OurHotelsAccordion } from '../components/OurHotelsAccordion';
-import { AddReviewModal } from '../components/AddReviewModal';
 import { HeroSlider } from '../components/HeroSlider';
 import { IntroVideoSection } from '../components/IntroVideoSection';
 import { CompanyStoryTeaser } from '../components/CompanyStoryTeaser';
 import { IntegratedServices } from '../components/IntegratedServices';
 import { EditableText } from '../components/EditableText';
-import { getReviewsFromDb } from '../services/firebase';
+import { getApprovedReviewsFromDb } from '../services/firebase';
 import { useLanguage } from '../context/LanguageContext';
-import { motion } from 'framer-motion';
 import { 
   Building2, 
   MapPin,
@@ -30,6 +29,10 @@ import {
   Tag, 
   Quote 
 } from 'lucide-react';
+
+const AddReviewModal = React.lazy(() => 
+  import('../components/AddReviewModal').then(m => ({ default: m.AddReviewModal }))
+);
 
 interface HomePageProps {
   hotels: Hotel[];
@@ -82,9 +85,8 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const loadLiveReviews = async () => {
     try {
-      const allRevs = await getReviewsFromDb();
-      const approved = allRevs.filter((r) => r.status === 'approved');
-      if (approved.length > 0) {
+      const approved = await getApprovedReviewsFromDb(6);
+      if (approved && approved.length > 0) {
         setLiveReviews(approved);
       }
     } catch (e) {
@@ -186,11 +188,17 @@ export const HomePage: React.FC<HomePageProps> = ({
         isActive: true
       }));
 
-    return [...originalSlides, ...adSlides];
+    return [...originalSlides, ...adSlides].map(slide => {
+      let img = slide.imageUrl;
+      if (img && img.includes('slide_0.png')) {
+        img = img.replace('slide_0.png', 'slide_0.webp');
+      }
+      return { ...slide, imageUrl: img };
+    });
   }, [siteSettings?.heroSlides, activeOffers]);
 
   return (
-    <div id="home-page" className="min-h-screen bg-[#F8F7F4] text-stone-900 overflow-hidden">
+    <div id="home-page" className="min-h-screen bg-[#F8F7F4] text-stone-900 overflow-x-clip">
       {/* 1. Cinematic Intro Video (Customized from Admin - Top priority when enabled) */}
       <IntroVideoSection
         siteSettings={siteSettings}
@@ -364,7 +372,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           >
             {featuredHotels.map((hotel, index) => (
               <HotelCard
-                key={hotel.id}
+                key={hotel.id || `featured-hotel-${index}`}
                 hotel={hotel}
                 onClick={onSelectHotel}
                 index={index}
@@ -842,12 +850,16 @@ export const HomePage: React.FC<HomePageProps> = ({
         </section>
       )}
 
-      {/* Review Submission Modal */}
-      <AddReviewModal
-        isOpen={isReviewModalOpen}
-        onClose={() => setIsReviewModalOpen(false)}
-        hotels={hotels}
-      />
+      {/* Review Submission Modal (Lazy-loaded only when opened) */}
+      {isReviewModalOpen && (
+        <React.Suspense fallback={null}>
+          <AddReviewModal
+            isOpen={isReviewModalOpen}
+            onClose={() => setIsReviewModalOpen(false)}
+            hotels={hotels}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 };

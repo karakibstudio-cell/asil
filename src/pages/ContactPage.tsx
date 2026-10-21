@@ -42,9 +42,9 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
   const primaryPhone = getFirstActivePhone(siteSettings?.channels);
   const primaryEmail = getFirstActiveEmail(siteSettings?.channels);
 
-  // Active Branches
+  // Active Branches (filtered by isActive !== false AND showInContactPage !== false)
   const activeBranches = (siteSettings?.branches && siteSettings.branches.length > 0
-    ? siteSettings.branches.filter(b => b.isActive !== false)
+    ? siteSettings.branches.filter(b => b.isActive !== false && b.showInContactPage !== false)
     : [
         {
           id: 'branch_makkah',
@@ -349,13 +349,13 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
                     )}
 
                     <div className="space-y-2.5">
-                      {activeChannels.map((channel) => {
+                      {activeChannels.map((channel, chIdx) => {
                         const href = getChannelHref(channel);
                         const meta = CHANNEL_METAS[channel.type] || CHANNEL_METAS.custom;
 
                         return (
                           <a
-                            key={channel.id}
+                            key={channel.id || `channel-${chIdx}`}
                             href={href}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -411,6 +411,15 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
                           ? 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah'
                           : 'https://maps.google.com/?q=Northern+Central+Area+Madinah');
 
+                        const branchName = language === 'en' ? (branch.nameEn || translateDynamic(branch.name)) : branch.name;
+                        const branchAddress = language === 'en' ? (branch.addressEn || translateDynamic(branch.address)) : branch.address;
+
+                        // Dynamic contacts list for this branch: respect showContactInfo and showInContact
+                        const showBranchContacts = branch.showContactInfo ?? Boolean(branch.isMainBranch);
+                        const activeContacts = showBranchContacts
+                          ? (branch.contacts || []).filter(c => c.isActive !== false && c.showInContact !== false)
+                          : [];
+
                         return (
                           <div key={branch.id || idx} className="p-3.5 rounded-2xl bg-stone-50 border border-stone-200/80 hover:border-[#C9A24B] transition-all space-y-2">
                             <div className="flex items-start justify-between gap-2">
@@ -421,7 +430,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
                                 <div>
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <strong className="text-stone-900 text-sm block font-bold">
-                                      {translateDynamic(branch.name)}
+                                      {branchName}
                                     </strong>
                                     {branch.isMainBranch && (
                                       <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-[#C9A24B]/15 text-[#B38A34]">
@@ -429,15 +438,23 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
                                       </span>
                                     )}
                                   </div>
-                                  <p className="text-xs text-stone-600 mt-0.5 leading-relaxed">
-                                    {translateDynamic(branch.address)}
-                                  </p>
+                                  {branch.showAddress !== false && (
+                                    <p className="text-xs text-stone-600 mt-0.5 leading-relaxed">
+                                      {branchAddress}
+                                    </p>
+                                  )}
+                                  {branch.showWorkingHours !== false && (branch.workingHoursEn || branch.workingHours) && (
+                                    <p className="text-[11px] text-stone-500 mt-1 flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-[#C9A24B] shrink-0" />
+                                      <span>{language === 'en' ? (branch.workingHoursEn || branch.workingHours) : (branch.workingHours || branch.workingHoursEn)}</span>
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                             </div>
 
                             <div className="pt-2 border-t border-stone-200/60 flex items-center justify-between flex-wrap gap-2">
-                              {cs?.showBranchesMapButton !== false && (
+                              {cs?.showBranchesMapButton !== false && branch.showMapUrl !== false && (
                                 <a
                                   href={mapUrl}
                                   target="_blank"
@@ -450,25 +467,75 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onShowToast, siteSetti
                                 </a>
                               )}
 
-                              <div className="flex items-center gap-3 text-[11px] font-mono dir-ltr">
-                                {cs?.showBranchesPhoneButton !== false && branch.phone && (
-                                  <a href={`tel:${branch.phone}`} className="text-stone-600 hover:text-[#B38A34] transition-colors flex items-center gap-1">
-                                    <Phone className="w-3.5 h-3.5 text-[#B38A34]" />
-                                    <span>{branch.phone}</span>
-                                  </a>
-                                )}
-                                {cs?.showBranchesWhatsAppButton !== false && branch.whatsapp && (
-                                  <a
-                                    href={buildWhatsAppLink(branch.whatsapp, `السلام عليكم ورحمة الله، أود الاستفسار والتواصل مع فرع ${branch.name}.`)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-emerald-700 hover:text-emerald-800 transition-colors flex items-center gap-1 font-bold"
-                                  >
-                                    <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
-                                    <span>واتساب</span>
-                                  </a>
-                                )}
-                              </div>
+                              {/* Dynamic Contacts: completely hidden if no active contacts or showContactInfo is disabled */}
+                              {activeContacts.length > 0 && (
+                                <div className="flex items-center flex-wrap gap-2.5 text-[11px] font-mono dir-ltr">
+                                  {activeContacts.map((contact, cIdx) => {
+                                    const contactLabel = language === 'en' ? (contact.labelEn || contact.label) : contact.label;
+                                    if (contact.type === 'whatsapp') {
+                                      return (
+                                        <a
+                                          key={contact.id || cIdx}
+                                          href={buildWhatsAppLink(contact.value, language === 'en' ? `Hello, I would like to inquire regarding ${branchName}.` : `السلام عليكم ورحمة الله، أود الاستفسار والتواصل مع فرع ${branchName}.`)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-emerald-700 hover:text-emerald-800 transition-colors flex items-center gap-1 font-bold"
+                                          title={contactLabel}
+                                        >
+                                          <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366]" />
+                                          <span className="font-sans text-[10px] font-normal text-stone-500">{contactLabel}:</span>
+                                          <span>{contact.value}</span>
+                                        </a>
+                                      );
+                                    }
+                                    if (contact.type === 'call') {
+                                      return (
+                                        <a
+                                          key={contact.id || cIdx}
+                                          href={`tel:${contact.value.replace(/\s+/g, '')}`}
+                                          className="text-stone-600 hover:text-[#B38A34] transition-colors flex items-center gap-1"
+                                          title={contactLabel}
+                                        >
+                                          <Phone className="w-3.5 h-3.5 text-[#B38A34]" />
+                                          <span className="font-sans text-[10px] font-normal text-stone-500">{contactLabel}:</span>
+                                          <span>{contact.value}</span>
+                                        </a>
+                                      );
+                                    }
+                                    if (contact.type === 'email') {
+                                      return (
+                                        <a
+                                          key={contact.id || cIdx}
+                                          href={`mailto:${contact.value}`}
+                                          className="text-stone-600 hover:text-[#B38A34] transition-colors flex items-center gap-1"
+                                          title={contactLabel}
+                                        >
+                                          <Mail className="w-3.5 h-3.5 text-[#B38A34]" />
+                                          <span className="font-sans text-[10px] font-normal text-stone-500">{contactLabel}:</span>
+                                          <span>{contact.value}</span>
+                                        </a>
+                                      );
+                                    }
+                                    if (contact.type === 'link') {
+                                      return (
+                                        <a
+                                          key={contact.id || cIdx}
+                                          href={contact.value}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-stone-600 hover:text-[#B38A34] transition-colors flex items-center gap-1"
+                                          title={contactLabel}
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5 text-[#B38A34]" />
+                                          <span className="font-sans text-[10px] font-normal text-stone-500">{contactLabel}:</span>
+                                          <span>{contact.value}</span>
+                                        </a>
+                                      );
+                                    }
+                                    return null;
+                                  })}
+                                </div>
+                              )}
                             </div>
                           </div>
                         );

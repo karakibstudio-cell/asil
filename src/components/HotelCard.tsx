@@ -6,6 +6,7 @@ import {
   Footprints, 
   ArrowLeft, 
   Building,
+  Bus,
   CalendarCheck,
   ExternalLink,
   PhoneCall,
@@ -14,7 +15,10 @@ import {
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from './BookingIcons';
 import { HotelBookingModal } from './HotelBookingModal';
 import { useLanguage } from '../context/LanguageContext';
+import { prefetchHotelDetails } from '../services/firebase';
+import { prefetchRoute } from '../utils/prefetch';
 import { buildWhatsAppLink, getFirstActiveWhatsApp } from '../utils/channels';
+import { isBusTransportation, formatTransportText } from '../utils/hotelTransport';
 
 interface HotelCardProps {
   hotel: Hotel;
@@ -35,6 +39,7 @@ export const HotelCard: React.FC<HotelCardProps> = ({
 }) => {
   const { language, t, translateDynamic, isRtl } = useLanguage();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const handleSelectHotel = (e?: React.MouseEvent) => {
     e?.stopPropagation?.();
@@ -43,7 +48,7 @@ export const HotelCard: React.FC<HotelCardProps> = ({
     if (onSelect) onSelect(targetKey);
   };
 
-  const isOnlineBookingActive = siteSettings?.bookingModule?.enabled !== false && hotel.onlineBookingEnabled !== false;
+  const isOnlineBookingActive = siteSettings?.bookingModule?.enabled !== false && hotel.onlineBookingEnabled === true;
 
   const handleBookingClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -81,23 +86,39 @@ export const HotelCard: React.FC<HotelCardProps> = ({
       <div
         id={`hotel-card-${hotel.id}`}
         onClick={handleSelectHotel}
+        onMouseEnter={() => {
+          prefetchHotelDetails(hotel.slug || hotel.id);
+          prefetchRoute('hotel-detail');
+        }}
+        onTouchStart={() => {
+          prefetchHotelDetails(hotel.slug || hotel.id);
+          prefetchRoute('hotel-detail');
+        }}
         className="group bg-white hover:bg-[#FAF8F5] rounded-2xl border border-[#EFE6D8] hover:border-[#C9A24B] transition-all duration-300 overflow-hidden cursor-pointer shadow-sm hover:shadow-xl hover:shadow-[#C9A24B]/10 flex flex-col relative"
         style={{ animationDelay: `${index * 80}ms` }}
       >
         {/* Image Container with Fixed Aspect Ratio & Zoom */}
-        <div className="relative aspect-[16/10] sm:aspect-[16/11] w-full overflow-hidden bg-stone-100">
+        <div className="relative aspect-[16/10] sm:aspect-[16/11] w-full overflow-hidden bg-stone-200">
+          {!imageLoaded && (
+            <div className="absolute inset-0 bg-gradient-to-r from-stone-200 via-stone-100 to-stone-200 animate-pulse flex items-center justify-center">
+              <Building className="w-8 h-8 text-stone-300" />
+            </div>
+          )}
           <img
             src={hotel.mainImage || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80'}
             alt={hotel.name}
-            className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-            loading="lazy"
+            className={`w-full h-full object-cover transition-all duration-500 ease-out group-hover:scale-105 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+            loading={index < 6 ? "eager" : "lazy"}
+            fetchPriority={index < 3 ? "high" : "auto"}
             decoding="async"
+            onLoad={() => setImageLoaded(true)}
             onError={(e) => {
               const target = e.currentTarget;
               if (!target.dataset.fallbackApplied) {
                 target.dataset.fallbackApplied = 'true';
                 target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80';
               }
+              setImageLoaded(true);
             }}
           />
 
@@ -107,26 +128,40 @@ export const HotelCard: React.FC<HotelCardProps> = ({
           {/* Top Badges */}
           <div className="absolute top-3 right-3 left-3 flex items-center justify-between pointer-events-none">
             {/* Distance Badge */}
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/95 backdrop-blur-md text-stone-900 text-xs font-semibold border border-stone-200 shadow-sm">
-              <Footprints className="w-3.5 h-3.5 text-[#B38A34]" />
-              <span>{translateDynamic(hotel.distanceText)}</span>
-            </span>
-
-            {/* Featured Badge if flagged */}
-            {hotel.featured && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#C9A24B] text-white text-xs font-bold shadow-md">
-                <span>{language === 'en' ? 'Featured' : 'مميز'}</span>
+            {hotel.showDistanceBadge !== false && hotel.distanceText ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/95 backdrop-blur-md text-stone-900 text-xs font-semibold border border-stone-200 shadow-sm">
+                <Footprints className="w-3.5 h-3.5 text-[#B38A34]" />
+                <span>{translateDynamic(hotel.distanceText)}</span>
               </span>
-            )}
+            ) : <div />}
+
+            <div className="flex items-center gap-1.5">
+              {/* Online Booking Badge */}
+              {isOnlineBookingActive && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-600/95 text-white text-[11px] font-bold shadow-md border border-emerald-400/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-200 animate-pulse" />
+                  <span>{language === 'en' ? 'Online' : 'أونلاين ✓'}</span>
+                </span>
+              )}
+
+              {/* Featured Badge if flagged */}
+              {hotel.featured && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#C9A24B] text-white text-xs font-bold shadow-md">
+                  <span>{language === 'en' ? 'Featured' : 'مميز'}</span>
+                </span>
+              )}
+            </div>
           </div>
 
           {/* City & District Tag on Bottom-Right of Image */}
-          <div className={`absolute bottom-3 ${isRtl ? 'right-3' : 'left-3'} pointer-events-none`}>
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-sm text-white text-[11px] font-medium border border-white/20">
-              <MapPin className="w-3 h-3 text-[#DFBE72]" />
-              <span>{translateDynamic(hotel.city)} - {translateDynamic(hotel.district)}</span>
-            </span>
-          </div>
+          {hotel.showDistrict !== false && (
+            <div className={`absolute bottom-3 ${isRtl ? 'right-3' : 'left-3'} pointer-events-none`}>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-sm text-white text-[11px] font-medium border border-white/20">
+                <MapPin className="w-3 h-3 text-[#DFBE72]" />
+                <span>{translateDynamic(hotel.city)} - {translateDynamic(hotel.district)}</span>
+              </span>
+            </div>
+          )}
 
           {/* External Platform Badges Top Left/Bottom Left */}
           <div className="absolute bottom-3 left-3 flex items-center gap-1.5 z-10">
@@ -220,50 +255,93 @@ export const HotelCard: React.FC<HotelCardProps> = ({
         <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-3">
           <div>
             {/* Star Rating & Reviews */}
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-1">
-                {[...Array(hotel.stars)].map((_, i) => (
-                  <Star key={i} className="w-4 h-4 fill-[#C9A24B] text-[#C9A24B]" />
-                ))}
-                <span className={`text-xs text-stone-500 ${isRtl ? 'mr-1.5' : 'ml-1.5'} font-medium`}>
-                  ({hotel.stars} {language === 'en' ? 'Stars' : 'نجوم'})
-                </span>
+            {(hotel.showStars !== false || hotel.showRating !== false || hotel.customClassification) && (
+              <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                {hotel.showStars !== false ? (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {[...Array(Math.max(0, Math.min(7, typeof hotel.stars === 'number' ? hotel.stars : (parseInt(hotel.stars as any, 10) || 0))))].map((_, i) => (
+                      <Star key={i} className="w-4 h-4 fill-[#C9A24B] text-[#C9A24B]" />
+                    ))}
+                    <span className={`text-xs text-stone-500 ${isRtl ? 'mr-1.5' : 'ml-1.5'} font-medium`}>
+                      ({hotel.stars ?? 5} {language === 'en' ? 'Stars' : 'نجوم'})
+                    </span>
+                    {hotel.customClassification && (
+                      <span className="text-[11px] font-bold text-[#B38A34] bg-[#C9A24B]/10 px-2 py-0.5 rounded-md border border-[#C9A24B]/30 mr-1">
+                        {translateDynamic(hotel.customClassification)}
+                      </span>
+                    )}
+                  </div>
+                ) : hotel.customClassification ? (
+                  <span className="text-[11px] font-bold text-[#B38A34] bg-[#C9A24B]/10 px-2.5 py-0.5 rounded-md border border-[#C9A24B]/30">
+                    {translateDynamic(hotel.customClassification)}
+                  </span>
+                ) : <div />}
+
+                {hotel.showRating !== false && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#C9A24B]/10 text-[#B38A34] border border-[#C9A24B]/30">
+                    {hotel.rating} ★
+                  </span>
+                )}
               </div>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#C9A24B]/10 text-[#B38A34] border border-[#C9A24B]/30">
-                {hotel.rating} ★
-              </span>
-            </div>
+            )}
 
             {/* Hotel Title */}
             <h3 className="font-cairo font-bold text-base sm:text-lg text-stone-900 group-hover:text-[#B38A34] transition-colors line-clamp-1">
               {language === 'en' && hotel.nameEn ? hotel.nameEn : translateDynamic(hotel.name)}
             </h3>
 
-            {/* Location view / Walking time */}
-            <p className="text-xs text-stone-500 mt-1 line-clamp-1 flex items-center gap-1">
-              <Building className="w-3.5 h-3.5 text-[#B38A34] shrink-0" />
-              <span>{translateDynamic(hotel.location?.viewType || (language === 'en' ? 'Premier View' : 'إطلالة مميزة'))}</span>
-              <span className="text-stone-300">•</span>
-              <span>
-                {language === 'en'
-                  ? `${hotel.walkingTimeMinutes} min walk to Haram`
-                  : `${hotel.walkingTimeMinutes} دقائق سيراً للحرم`}
-              </span>
-            </p>
+            {/* Location view / Walking or Bus Transport */}
+            {(hotel.showTransportInfo !== false || hotel.showDistanceBadge !== false) && (
+              <p className="text-xs text-stone-500 mt-1 line-clamp-1 flex items-center gap-1.5 flex-wrap">
+                {hotel.location?.viewType && (
+                  <span className="flex items-center gap-1 text-stone-700 font-medium">
+                    <Building className="w-3.5 h-3.5 text-[#B38A34] shrink-0" />
+                    <span>{translateDynamic(hotel.location.viewType)}</span>
+                  </span>
+                )}
+                {hotel.showDistanceBadge !== false && hotel.showTransportInfo !== false && (
+                  <>
+                    {hotel.location?.viewType && <span className="text-stone-300">•</span>}
+                    <span className="inline-flex items-center gap-1 font-semibold text-[#B38A34]">
+                      {isBusTransportation(hotel) ? (
+                        <>
+                          <Bus className="w-3.5 h-3.5 text-[#C9A24B] shrink-0" />
+                          <span>{formatTransportText(hotel, language).text}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Footprints className="w-3.5 h-3.5 text-[#C9A24B] shrink-0" />
+                          <span>{formatTransportText(hotel, language).text}</span>
+                        </>
+                      )}
+                    </span>
+                  </>
+                )}
+              </p>
+            )}
 
             {/* Hotel Category Tags */}
-            {hotel.categories && hotel.categories.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                {hotel.categories.map((cat) => (
-                  <span
-                    key={cat}
-                    className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-[#EFE6D8]/40 text-stone-800 border border-[#EFE6D8]"
-                  >
-                    {translateDynamic(cat)}
-                  </span>
-                ))}
-              </div>
-            )}
+            {hotel.showCategories !== false && (() => {
+              const cats = (Array.isArray(hotel.categories) 
+                ? hotel.categories 
+                : (typeof hotel.categories === 'string' ? (hotel.categories as string).split(',') : [])
+              ).map((c: any) => String(c).trim()).filter(Boolean);
+
+              if (cats.length === 0) return null;
+
+              return (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                  {cats.map((cat, idx) => (
+                    <span
+                      key={`${cat || 'cat'}-${idx}`}
+                      className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-[#EFE6D8]/40 text-stone-800 border border-[#EFE6D8]"
+                    >
+                      {translateDynamic(cat)}
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Card Actions: Contact/Book & View Details */}

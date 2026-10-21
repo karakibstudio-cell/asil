@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Offer, ActivePage, SiteSettings } from '../types';
 import { CountdownTimer } from '../components/CountdownTimer';
-import { Lightbox, LightboxMediaItem } from '../components/Lightbox';
 import { SafeVideoPlayer } from '../components/SafeVideoPlayer';
 import { parseVideoUrl } from '../utils/video';
 import { getFirstActiveWhatsApp, getChannelHref } from '../utils/channels';
@@ -25,6 +24,7 @@ import {
   ExternalLink,
   Building2
 } from 'lucide-react';
+import { Lightbox, LightboxMediaItem } from '../components/Lightbox';
 
 interface OffersPageProps {
   offers: Offer[];
@@ -174,9 +174,9 @@ export const OffersPage: React.FC<OffersPageProps> = ({
         {/* Offers Grid */}
         {activeOffers.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {activeOffers.map((offer) => (
+            {activeOffers.map((offer, oIdx) => (
               <div
-                key={offer.id}
+                key={offer.id || `offer-${oIdx}`}
                 id={`offer-card-${offer.id}`}
                 className="group bg-white rounded-3xl border border-stone-200/90 hover:border-[#C9A24B] transition-all duration-300 overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-xl hover:shadow-[#C9A24B]/10 relative"
               >

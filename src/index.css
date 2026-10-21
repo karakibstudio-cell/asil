@@ -163,3 +163,82 @@ html[dir="ltr"] body,
 img {
   content-visibility: auto;
 }
+
+/* Print & Official A4 Document Layout Rules */
+@page {
+  size: A4 portrait;
+  margin: 10mm 12mm;
+}
+
+@media print {
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    font-size: 12pt;
+  }
+
+  /* Hide headers, footers, sidebars, interactive controls, toolbars and background backdrops */
+  header, footer, nav, aside, .no-print, .print\:hidden, button, a[href^="http"] {
+    /* Keep text visible on printed paper */
+  }
+  
+  .print\:hidden,
+  header,
+  footer,
+  nav,
+  .no-print,
+  #header-navbar,
+  #footer-section {
+    display: none !important;
+  }
+
+  .no-print-backdrop {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    inset: auto !important;
+  }
+
+  /* True A4 paper formatting for official invoice */
+  #prestige-invoice-paper,
+  .printable-voucher {
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    background: #ffffff !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  #prestige-invoice-paper table,
+  #prestige-invoice-paper tr,
+  #prestige-invoice-paper td,
+  #prestige-invoice-paper th {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+/* Accessibility: Respect Reduced Motion Preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

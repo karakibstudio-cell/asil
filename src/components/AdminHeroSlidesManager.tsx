@@ -19,10 +19,10 @@ import {
   Sliders,
   CheckCircle2
 } from 'lucide-react';
-import { Lightbox, LightboxMediaItem } from './Lightbox';
 import { SafeVideoPlayer } from './SafeVideoPlayer';
 import { optimizeImageFile } from '../utils/imageOptimizer';
 import { uploadMediaToSupabase } from '../services/supabase';
+import { Lightbox, LightboxMediaItem } from './Lightbox';
 
 const sampleVideos = [
   {
@@ -341,8 +341,11 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
   const handleDeleteSlide = async (id: string) => {
     if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه الشريحة نهائياً؟')) {
       const updated = slides.filter(s => s.id !== id);
-      await saveSlidesList(updated);
+      setSlides(updated);
       onShowToast('تم حذف الشريحة بنجاح', 'success');
+      saveSlidesList(updated).catch(err => {
+        console.error('Error saving slides after delete:', err);
+      });
     }
   };
 

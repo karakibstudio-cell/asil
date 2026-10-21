@@ -214,7 +214,7 @@ CREATE POLICY "Anon Full Access Room Bookings" ON public.room_bookings FOR ALL U
 DO $$
 DECLARE
   tbl text;
-  new_tables text[] := ARRAY['room_types', 'meal_plans', 'room_packages', 'room_bookings'];
+  new_tables text[] := ARRAY['room_types', 'meal_plans', 'room_packages', 'room_bookings', 'admin_roles', 'audit_logs'];
 BEGIN
   FOREACH tbl IN ARRAY new_tables LOOP
     IF NOT EXISTS (
@@ -229,3 +229,43 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+
+-- ------------------------------------------------------------------------------
+-- 8. ADMIN ROLES & AUDIT LOGS (جداول الصلاحيات وسجل تدقيق العمليات)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.admin_roles (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    name_en TEXT,
+    description TEXT,
+    is_system BOOLEAN DEFAULT false,
+    permissions JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    user_name TEXT NOT NULL,
+    user_email TEXT,
+    module TEXT NOT NULL,
+    action TEXT NOT NULL,
+    action_label_ar TEXT,
+    record_id TEXT,
+    record_title TEXT,
+    details TEXT,
+    old_value JSONB,
+    new_value JSONB,
+    timestamp BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.admin_roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anon Full Access Admin Roles" ON public.admin_roles;
+CREATE POLICY "Anon Full Access Admin Roles" ON public.admin_roles FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Anon Full Access Audit Logs" ON public.audit_logs;
+CREATE POLICY "Anon Full Access Audit Logs" ON public.audit_logs FOR ALL USING (true);

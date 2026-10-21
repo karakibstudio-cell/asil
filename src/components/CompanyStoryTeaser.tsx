@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Building2, Sparkles, MapPin, Award, ArrowLeft, CheckCircle2, PhoneCall } from 'lucide-react';
+import { Building2, Sparkles, MapPin, Award, ArrowLeft, CheckCircle2, PhoneCall, Phone, Mail, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { EditableText } from './EditableText';
 import { ActivePage, StoryTeaserSettings } from '../types';
@@ -118,8 +118,8 @@ export const CompanyStoryTeaser: React.FC<CompanyStoryTeaserProps> = ({
             {/* Key Locations / Focus Areas */}
             {teaser.showLocationTags !== false && locationTags.length > 0 && (
               <div className="flex flex-wrap items-center gap-2.5 pt-2">
-                {locationTags.map((tag) => (
-                  <div key={tag.id} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-stone-100 text-stone-800 text-xs font-bold border border-stone-200">
+                {locationTags.map((tag, tIdx) => (
+                  <div key={tag.id || `teaser-tag-${tIdx}`} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-stone-100 text-stone-800 text-xs font-bold border border-stone-200">
                     <MapPin className="w-3.5 h-3.5 text-[#B38A34]" />
                     <span>
                       <EditableText
@@ -156,10 +156,49 @@ export const CompanyStoryTeaser: React.FC<CompanyStoryTeaserProps> = ({
                 {teaser.showContactButton !== false && (
                   <button
                     type="button"
-                    onClick={() => onNavigate('contact')}
+                    onClick={() => {
+                      const action = teaser.contactButtonAction || 'contact';
+                      const target = teaser.contactButtonTarget?.trim();
+
+                      if (action === 'whatsapp') {
+                        const phone = (target || '966560580250').replace(/[^0-9]/g, '');
+                        const defaultMsg = 'مرحباً، أود الاستفسار بخصوص عروض الشركات والمجموعات وفنادق برستيج.';
+                        const msg = encodeURIComponent(teaser.contactButtonWhatsappMessage || defaultMsg);
+                        window.open(`https://wa.me/${phone}?text=${msg}`, '_blank', 'noopener,noreferrer');
+                        return;
+                      }
+
+                      if (action === 'call') {
+                        const phone = target || '+966560580250';
+                        window.location.href = `tel:${phone.replace(/\s+/g, '')}`;
+                        return;
+                      }
+
+                      if (action === 'email') {
+                        const email = target || 'info@prestigehotels.sa';
+                        const subject = encodeURIComponent('استفسار عن عروض الشركات والمجموعات');
+                        window.location.href = `mailto:${email}?subject=${subject}`;
+                        return;
+                      }
+
+                      if (action === 'about') {
+                        onNavigate('about');
+                        return;
+                      }
+
+                      onNavigate('contact');
+                    }}
                     className="px-6 py-3.5 rounded-2xl bg-white hover:bg-stone-50 text-stone-800 font-bold text-sm border border-stone-300 hover:border-[#C9A24B] transition-all flex items-center gap-2 cursor-pointer"
                   >
-                    <PhoneCall className="w-4 h-4 text-[#B38A34]" />
+                    {teaser.contactButtonAction === 'whatsapp' ? (
+                      <MessageCircle className="w-4 h-4 text-emerald-600" />
+                    ) : teaser.contactButtonAction === 'call' ? (
+                      <Phone className="w-4 h-4 text-blue-600" />
+                    ) : teaser.contactButtonAction === 'email' ? (
+                      <Mail className="w-4 h-4 text-amber-600" />
+                    ) : (
+                      <PhoneCall className="w-4 h-4 text-[#B38A34]" />
+                    )}
                     <span>
                       <EditableText
                         contentKey="story.contactBtn"

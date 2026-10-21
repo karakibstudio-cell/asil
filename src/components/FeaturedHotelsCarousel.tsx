@@ -8,10 +8,12 @@ import {
   ChevronLeft, 
   ArrowLeft, 
   Building, 
-  Tag 
+  Tag,
+  Bus 
 } from 'lucide-react';
 import { EditableText } from './EditableText';
 import { useLanguage } from '../context/LanguageContext';
+import { isBusTransportation, formatTransportText } from '../utils/hotelTransport';
 
 interface FeaturedHotelsCarouselProps {
   hotels: Hotel[];
@@ -191,11 +193,11 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
             <div className="absolute top-4 sm:top-6 inset-x-4 sm:inset-x-6 z-30 flex items-center justify-between gap-3 pointer-events-none">
               {/* Category tags */}
               <div className="flex flex-wrap items-center gap-1.5">
-                {(currentHotel.categories || ['عادي']).map((cat) => {
-                  const style = CATEGORY_COLORS[cat] || CATEGORY_COLORS['عادي'];
+                {currentHotel.showCategories !== false && (Array.isArray(currentHotel.categories) ? currentHotel.categories : (typeof currentHotel.categories === 'string' ? (currentHotel.categories as string).split(',') : ['عادي'])).map(c => String(c).trim()).filter(Boolean).map((cat, catIdx) => {
+                  const style = CATEGORY_COLORS[cat as HotelCategory] || CATEGORY_COLORS['عادي'];
                   return (
                     <span
-                      key={cat}
+                      key={`${cat || 'cat'}-${catIdx}`}
                       className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md border ${style.bg} ${style.text} ${style.border}`}
                     >
                       <Tag className="w-3 h-3" />
@@ -206,17 +208,25 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
               </div>
 
               {/* Stars & Rating */}
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-xs text-white">
-                <div className="flex items-center gap-0.5">
-                  {[...Array(currentHotel.stars)].map((_, i) => (
-                    <Star key={i} className="w-3.5 h-3.5 fill-[#DFBE72] text-[#DFBE72]" />
-                  ))}
+              {(currentHotel.showStars !== false || currentHotel.showRating !== false) && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-xs text-white">
+                  {currentHotel.showStars !== false && (
+                    <div className="flex items-center gap-0.5">
+                      {[...Array(Math.max(0, Math.min(7, typeof currentHotel.stars === 'number' ? currentHotel.stars : (parseInt(currentHotel.stars as any, 10) || 0))))].map((_, i) => (
+                        <Star key={i} className="w-3.5 h-3.5 fill-[#DFBE72] text-[#DFBE72]" />
+                      ))}
+                    </div>
+                  )}
+                  {currentHotel.showRating !== false && (
+                    <>
+                      <span className="font-bold text-[#DFBE72] font-mono">{currentHotel.rating} ★</span>
+                      <span className="text-stone-300">
+                        {language === 'en' ? `(${currentHotel.reviewCount} reviews)` : `(${currentHotel.reviewCount} تقييم)`}
+                      </span>
+                    </>
+                  )}
                 </div>
-                <span className="font-bold text-[#DFBE72] font-mono">{currentHotel.rating} ★</span>
-                <span className="text-stone-300">
-                  {language === 'en' ? `(${currentHotel.reviewCount} reviews)` : `(${currentHotel.reviewCount} تقييم)`}
-                </span>
-              </div>
+              )}
             </div>
 
             {/* Bottom Content Overlay (Hotel Name, City, District, Distance, CTA) */}
@@ -225,15 +235,28 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
               <div className="space-y-3 max-w-2xl">
                 {/* City, District & Distance pills */}
                 <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-stone-200">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/15 backdrop-blur-md font-medium border border-white/20">
-                    <MapPin className="w-3.5 h-3.5 text-[#DFBE72]" />
-                    <span>{translateDynamic(currentHotel.city)} - {language === 'en' ? `${translateDynamic(currentHotel.district)} District` : `حي ${currentHotel.district}`}</span>
-                  </span>
+                  {currentHotel.showDistrict !== false && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/15 backdrop-blur-md font-medium border border-white/20">
+                      <MapPin className="w-3.5 h-3.5 text-[#DFBE72]" />
+                      <span>{translateDynamic(currentHotel.city)} - {language === 'en' ? `${translateDynamic(currentHotel.district)} District` : `حي ${currentHotel.district}`}</span>
+                    </span>
+                  )}
 
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/15 backdrop-blur-md font-medium border border-white/20">
-                    <Footprints className="w-3.5 h-3.5 text-[#DFBE72]" />
-                    <span>{translateDynamic(currentHotel.distanceText)}</span>
-                  </span>
+                  {currentHotel.showDistanceBadge !== false && currentHotel.showTransportInfo !== false && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/15 backdrop-blur-md font-medium border border-white/20">
+                      {isBusTransportation(currentHotel) ? (
+                        <>
+                          <Bus className="w-3.5 h-3.5 text-[#DFBE72]" />
+                          <span>{formatTransportText(currentHotel, language).text}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Footprints className="w-3.5 h-3.5 text-[#DFBE72]" />
+                          <span>{translateDynamic(currentHotel.distanceText)}</span>
+                        </>
+                      )}
+                    </span>
+                  )}
 
                   {currentHotel.location?.viewType && (
                     <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/15 backdrop-blur-md font-medium border border-white/20">

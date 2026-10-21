@@ -27,19 +27,21 @@ export interface LightboxMediaItem {
 }
 
 interface LightboxProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   mediaItems?: LightboxMediaItem[];
   images?: string[];
   initialIndex?: number;
+  currentIndex?: number;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   mediaItems,
   images,
-  initialIndex = 0
+  initialIndex = 0,
+  currentIndex: propCurrentIndex
 }) => {
   const { language, isRtl } = useLanguage();
   const items: LightboxMediaItem[] = React.useMemo(() => {
@@ -50,7 +52,14 @@ export const Lightbox: React.FC<LightboxProps> = ({
     return [];
   }, [mediaItems, images]);
 
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const effectiveInitial = propCurrentIndex !== undefined ? propCurrentIndex : initialIndex;
+  const [currentIndex, setCurrentIndex] = useState(effectiveInitial);
+
+  useEffect(() => {
+    if (propCurrentIndex !== undefined) {
+      setCurrentIndex(propCurrentIndex);
+    }
+  }, [propCurrentIndex]);
   const [isMuted, setIsMuted] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -421,7 +430,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             <div className="relative w-full h-full max-h-[86vh] flex items-center justify-center p-2 sm:p-4">
               <SafeVideoPlayer
                 videoRef={videoRef}
-                key={currentItem.url}
+                key={currentItem.url || `lightbox-media-${currentIndex}`}
                 url={currentItem.url}
                 poster={currentItem.thumbnail}
                 className="max-h-[86vh] max-w-[96vw] w-auto h-auto rounded-xl shadow-2xl object-contain"

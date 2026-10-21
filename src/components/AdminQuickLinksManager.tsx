@@ -53,16 +53,16 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
     link: null
   });
 
-  const standardPages: { key: string; label: string; defaultTitle: string }[] = [
-    { key: 'home', label: 'الرئيسية (الصفحة الأولى)', defaultTitle: 'الرئيسية' },
-    { key: 'hotels', label: 'فنادق مكة والمدينة (الكل)', defaultTitle: 'فنادق مكة والمدينة' },
-    { key: 'hotels-makkah', label: '🕋 فنادق مكة المكرمة فقط', defaultTitle: 'فنادق مكة المكرمة' },
-    { key: 'hotels-madinah', label: '🕌 فنادق المدينة المنورة فقط', defaultTitle: 'فنادق المدينة المنورة' },
-    { key: 'offers', label: '📢 صفحة الإعلانات والعروض', defaultTitle: 'الإعلانات والعروض' },
-    { key: 'packages', label: 'باقات الحج والعمرة', defaultTitle: 'باقات الحج والعمرة' },
-    { key: 'about', label: 'من نحن', defaultTitle: 'من نحن' },
-    { key: 'contact', label: 'تواصل معنا', defaultTitle: 'تواصل معنا' },
-    { key: 'custom_url', label: '🔗 رابط خارجي أو مخصص (URL)', defaultTitle: 'رابط خارجي' },
+  const standardPages: { key: string; label: string; defaultTitle: string; defaultTitleEn: string }[] = [
+    { key: 'home', label: 'الرئيسية (الصفحة الأولى)', defaultTitle: 'الرئيسية', defaultTitleEn: 'Home' },
+    { key: 'hotels', label: 'فنادق مكة والمدينة (الكل)', defaultTitle: 'فنادق مكة والمدينة', defaultTitleEn: 'Makkah & Madinah Hotels' },
+    { key: 'hotels-makkah', label: '🕋 فنادق مكة المكرمة فقط', defaultTitle: 'فنادق مكة المكرمة', defaultTitleEn: 'Makkah Hotels' },
+    { key: 'hotels-madinah', label: '🕌 فنادق المدينة المنورة فقط', defaultTitle: 'فنادق المدينة المنورة', defaultTitleEn: 'Madinah Hotels' },
+    { key: 'offers', label: '📢 صفحة الإعلانات والعروض', defaultTitle: 'الإعلانات والعروض', defaultTitleEn: 'Offers & Promotions' },
+    { key: 'packages', label: 'باقات الحج والعمرة', defaultTitle: 'باقات الحج والعمرة', defaultTitleEn: 'Hajj & Umrah Packages' },
+    { key: 'about', label: 'من نحن', defaultTitle: 'من نحن', defaultTitleEn: 'About Us' },
+    { key: 'contact', label: 'تواصل معنا', defaultTitle: 'تواصل معنا', defaultTitleEn: 'Contact Us' },
+    { key: 'custom_url', label: '🔗 رابط خارجي أو مخصص (URL)', defaultTitle: 'رابط خارجي', defaultTitleEn: 'External Link' },
   ];
 
   const handleToggleActive = (id: string, e?: React.MouseEvent) => {
@@ -88,6 +88,7 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
     setForm({
       id: 'quick_' + Date.now(),
       title: '',
+      titleEn: '',
       targetPage: 'hotels-makkah',
       url: '',
       isActive: true,
@@ -107,10 +108,12 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
     const match = standardPages.find(p => p.key === newTarget);
     // If title was empty or was a default title from another option, auto-fill standard title
     const isPreviousDefault = standardPages.some(p => p.defaultTitle === form.title);
+    const isPreviousDefaultEn = standardPages.some(p => p.defaultTitleEn === form.titleEn);
     setForm(prev => ({
       ...prev,
       targetPage: newTarget,
-      title: (!prev.title || isPreviousDefault) && match ? match.defaultTitle : prev.title
+      title: (!prev.title || isPreviousDefault) && match ? match.defaultTitle : prev.title,
+      titleEn: (!prev.titleEn || isPreviousDefaultEn) && match ? match.defaultTitleEn : prev.titleEn
     }));
   };
 
@@ -411,27 +414,42 @@ export const AdminQuickLinksManager: React.FC<AdminQuickLinksManagerProps> = ({
                   onChange={(e) => handleTargetPageChange(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm font-semibold focus:border-[#C9A24B] focus:bg-white focus:outline-none cursor-pointer"
                 >
-                  {standardPages.map(page => (
-                    <option key={page.key} value={page.key}>
+                  {standardPages.map((page, pIdx) => (
+                    <option key={`${page.key}-${pIdx}`} value={page.key}>
                       {page.label}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Link Title */}
-              <div>
-                <label className="text-xs font-bold text-stone-700 block mb-1">
-                  عنوان الرابط (الاسم الظاهر في الفوتر): <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="مثال: فنادق مكة المكرمة، فنادق المدينة المنورة، الإعلانات"
-                  className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm font-semibold focus:border-[#C9A24B] focus:bg-white focus:outline-none"
-                />
+              {/* Link Title (Arabic & English) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">
+                    عنوان الرابط (بالعربية): <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    placeholder="مثال: فنادق مكة المكرمة"
+                    className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm font-semibold focus:border-[#C9A24B] focus:bg-white focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">
+                    عنوان الرابط (English):
+                  </label>
+                  <input
+                    type="text"
+                    value={form.titleEn || ''}
+                    onChange={(e) => setForm({ ...form, titleEn: e.target.value })}
+                    placeholder="e.g. Makkah Hotels"
+                    className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-300 text-stone-900 text-xs sm:text-sm font-semibold focus:border-[#C9A24B] focus:bg-white focus:outline-none dir-ltr text-left"
+                  />
+                </div>
               </div>
 
               {/* Custom URL Field if selected */}
