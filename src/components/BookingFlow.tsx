@@ -153,6 +153,26 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
   const [adultsCount, setAdultsCount] = useState<number>(initialAdults || 2);
   const [childrenCount, setChildrenCount] = useState<number>(initialChildren || 0);
 
+  useEffect(() => {
+    if (initialCheckIn) setCheckIn(initialCheckIn);
+  }, [initialCheckIn]);
+
+  useEffect(() => {
+    if (initialCheckOut) setCheckOut(initialCheckOut);
+  }, [initialCheckOut]);
+
+  useEffect(() => {
+    if (initialRooms) setRoomsCount(initialRooms);
+  }, [initialRooms]);
+
+  useEffect(() => {
+    if (initialAdults) setAdultsCount(initialAdults);
+  }, [initialAdults]);
+
+  useEffect(() => {
+    if (initialChildren !== undefined) setChildrenCount(initialChildren);
+  }, [initialChildren]);
+
   // Booking Mode: Individual / Family vs Group / Campaign
   const [bookingType, setBookingType] = useState<'individual' | 'group'>('individual');
 

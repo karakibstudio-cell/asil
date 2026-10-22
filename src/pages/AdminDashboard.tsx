@@ -197,6 +197,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Dashboard Sidebar Navigation
   type AdminTab = AdminDashboardTab;
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
+  const [isSidebarHidden, setIsSidebarHidden] = useState(false);
 
   useEffect(() => {
     if (initialTab && initialTab !== activeTab) {
@@ -2167,6 +2168,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
+            {/* Toggle Full Workspace Width (Collapse Sidebar) */}
+            <button
+              type="button"
+              onClick={() => setIsSidebarHidden(prev => !prev)}
+              className="hidden lg:flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+              title={isSidebarHidden ? 'إظهار القائمة الجانبية' : 'توسيع شاشة العمل وإخفاء القائمة الجانبية مؤقتاً لعرض كامل الجداول بدون سحب'}
+            >
+              <Layout className="w-3.5 h-3.5 text-[#B38A34]" />
+              <span>{isSidebarHidden ? 'إظهار القائمة ◨' : 'توسيع شاشة العمل ⛶'}</span>
+            </button>
+
             <button
               onClick={onNavigateHome}
               className="px-4 py-2 rounded-xl bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
@@ -2185,10 +2197,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
-        {/* Dashboard Grid Layout: 3-cols for Hierarchical Sidebar on desktop, 9-cols for Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+        {/* Dashboard Grid Layout: Responsive Sidebar & Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6">
           {/* Hierarchical Sidebar Navigation (القوائم الرئيسية والمنسدلة الفرعية) */}
-          <div className="lg:col-span-4 xl:col-span-3 flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 gap-3 no-scrollbar">
+          {!isSidebarHidden && (
+            <div className="lg:col-span-3 xl:col-span-2 flex lg:flex-col overflow-x-auto lg:overflow-x-visible pb-3 lg:pb-0 gap-3 no-scrollbar transition-all">
             {[
               {
                 id: 'online-booking',
@@ -2371,9 +2384,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               );
             })}
           </div>
+          )}
 
-          {/* Main Content Area (9 cols on xl, 8 on lg) */}
-          <div className="lg:col-span-8 xl:col-span-9">
+          {/* Main Content Area: Expands to full 100% width (col-span-12) when sidebar is hidden */}
+          <div className={isSidebarHidden ? "col-span-12 w-full transition-all duration-300" : "lg:col-span-9 xl:col-span-10 w-full transition-all duration-300"}>
             {!canAccessTab(currentUser, adminRoles, activeTab) ? (
               <AccessDeniedScreen
                 tab={activeTab}

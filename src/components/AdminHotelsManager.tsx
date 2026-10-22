@@ -35,7 +35,9 @@ import {
   Clock,
   Sparkles,
   Footprints,
-  Tag
+  Tag,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { WhatsAppIcon } from './BookingIcons';
 
@@ -135,6 +137,7 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
   // Rooms and Allotment Summary cache per hotel
   const [hotelRoomsMap, setHotelRoomsMap] = useState<Record<string, RoomTypeItem[]>>({});
+  const [isWideMode, setIsWideMode] = useState(false);
 
   useEffect(() => {
     getRoomsFromDb().then((allRooms) => {
@@ -310,7 +313,14 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
   };
 
   return (
-    <div id="admin-hotels-section" className="bg-white rounded-3xl border border-stone-200 p-5 sm:p-7 shadow-xs space-y-5">
+    <div 
+      id="admin-hotels-section" 
+      className={`bg-white rounded-3xl border border-stone-200 p-4 sm:p-6 shadow-xs space-y-4 transition-all duration-300 ${
+        isWideMode 
+          ? 'w-full lg:-mx-8 xl:-mx-20 lg:w-[calc(100%+4rem)] xl:w-[calc(100%+10rem)] max-w-none z-10 relative' 
+          : 'w-full'
+      }`}
+    >
       {/* 1. Header Toolbar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
         <div>
@@ -328,6 +338,21 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
+          {/* Widescreen Full-Width Mode Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsWideMode(!isWideMode)}
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+              isWideMode 
+                ? 'bg-[#C9A24B] text-white ring-2 ring-[#C9A24B]/30' 
+                : 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+            }`}
+            title={isWideMode ? 'العودة للعرض العادي' : 'توسيع الجدول وعرض لاين كامل بدون سحب أو تمرير'}
+          >
+            {isWideMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5 text-[#B38A34]" />}
+            <span>{isWideMode ? 'العرض العادي' : 'توسيع لاين كامل ↔'}</span>
+          </button>
+
           {/* Export Button (Permission Controlled) */}
           {hasPermission(currentUser, adminRoles, 'hotels', 'export') && (
             <button
@@ -515,14 +540,14 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto w-full">
-            <table className="w-full text-right text-xs">
-              <thead className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold whitespace-nowrap">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full text-right text-xs table-auto">
+              <thead className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold">
                 <tr>
-                  <th className="py-3 px-3 text-center w-14">
+                  <th className="py-2.5 px-1.5 text-center w-10 whitespace-nowrap">
                     <span 
                       onClick={() => handleSort('order')} 
-                      className="cursor-pointer inline-flex items-center gap-1 hover:text-[#B38A34]"
+                      className="cursor-pointer inline-flex items-center gap-0.5 hover:text-[#B38A34]"
                       title="ترتيب الظهور"
                     >
                       # {getSortIcon('order')}
@@ -530,11 +555,11 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                   </th>
 
                   {columnVisibility.thumbnail && (
-                    <th className="py-3 px-3 text-center w-16">الصورة</th>
+                    <th className="py-2.5 px-1.5 text-center w-12 whitespace-nowrap">الصورة</th>
                   )}
 
                   {columnVisibility.name && (
-                    <th className="py-3 px-3 min-w-[200px]">
+                    <th className="py-2.5 px-2 min-w-[150px]">
                       <span 
                         onClick={() => handleSort('name')} 
                         className="cursor-pointer inline-flex items-center gap-1 hover:text-[#B38A34]"
@@ -545,7 +570,7 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                   )}
 
                   {columnVisibility.city && (
-                    <th className="py-3 px-3 min-w-[130px]">
+                    <th className="py-2.5 px-2 whitespace-nowrap w-24">
                       <span 
                         onClick={() => handleSort('city')} 
                         className="cursor-pointer inline-flex items-center gap-1 hover:text-[#B38A34]"
@@ -556,26 +581,26 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                   )}
 
                   {columnVisibility.branch && (
-                    <th className="py-3 px-3 min-w-[140px]">الفرع والحي</th>
+                    <th className="py-2.5 px-2 whitespace-nowrap w-28">الفرع والحي</th>
                   )}
 
                   {columnVisibility.stars && (
-                    <th className="py-3 px-3 text-center min-w-[100px]">
+                    <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-24">
                       <span 
                         onClick={() => handleSort('stars')} 
-                        className="cursor-pointer inline-flex items-center gap-1 hover:text-[#B38A34]"
+                        className="cursor-pointer inline-flex items-center gap-0.5 hover:text-[#B38A34]"
                       >
-                        النجوم والتصنيف {getSortIcon('stars')}
+                        النجوم {getSortIcon('stars')}
                       </span>
                     </th>
                   )}
 
                   {columnVisibility.categories && (
-                    <th className="py-3 px-3 min-w-[160px]">نوع الفندق والتصنيفات</th>
+                    <th className="py-2.5 px-2 min-w-[130px]">نوع الفندق والتصنيف</th>
                   )}
 
                   {columnVisibility.status && (
-                    <th className="py-3 px-3 text-center min-w-[170px]">
+                    <th className="py-2.5 px-2 text-center whitespace-nowrap min-w-[150px]">
                       <span 
                         onClick={() => handleSort('status')} 
                         className="cursor-pointer inline-flex items-center gap-1 hover:text-[#B38A34]"
@@ -586,22 +611,22 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                   )}
 
                   {columnVisibility.roomsSummary && (
-                    <th className="py-3 px-3 min-w-[160px]">الغرف والتوفر اللحظي</th>
+                    <th className="py-2.5 px-2 whitespace-nowrap w-28">الغرف والتوفر</th>
                   )}
 
                   {columnVisibility.lastUpdated && (
-                    <th className="py-3 px-3 min-w-[120px]">
+                    <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-20">
                       <span 
                         onClick={() => handleSort('updatedAt')} 
-                        className="cursor-pointer inline-flex items-center gap-1 hover:text-[#B38A34]"
+                        className="cursor-pointer inline-flex items-center gap-0.5 hover:text-[#B38A34]"
                       >
-                        آخر تحديث {getSortIcon('updatedAt')}
+                        التحديث {getSortIcon('updatedAt')}
                       </span>
                     </th>
                   )}
 
                   {columnVisibility.actions && (
-                    <th className="py-3 px-3 text-left pl-4 min-w-[130px]">الإجراءات</th>
+                    <th className="py-2.5 px-2 text-center whitespace-nowrap w-28">الإجراءات</th>
                   )}
                 </tr>
               </thead>
@@ -620,27 +645,27 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                       }`}
                     >
                       {/* Order and reorder buttons */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1 bg-stone-100 px-2 py-0.5 rounded-lg border border-stone-200">
-                          <span className="font-mono font-bold text-[11px] text-stone-700">
+                      <td className="py-2 px-1 text-center whitespace-nowrap">
+                        <div className="inline-flex items-center gap-0.5 bg-stone-100 px-1.5 py-0.5 rounded-lg border border-stone-200">
+                          <span className="font-mono font-bold text-[10px] text-stone-700">
                             #{hotel.order ?? (index + 1)}
                           </span>
-                          <div className="flex flex-col">
+                          <div className="flex flex-col -my-0.5">
                             <button
                               type="button"
                               onClick={() => onMoveOrder(hotel.id, 'up')}
-                              className="text-stone-500 hover:text-[#B38A34] cursor-pointer"
+                              className="text-stone-400 hover:text-[#B38A34] cursor-pointer p-0.5"
                               title="تقديم ترتيب الفندق لأعلى"
                             >
-                              <ChevronUp className="w-3 h-3" />
+                              <ChevronUp className="w-2.5 h-2.5" />
                             </button>
                             <button
                               type="button"
                               onClick={() => onMoveOrder(hotel.id, 'down')}
-                              className="text-stone-500 hover:text-[#B38A34] cursor-pointer"
+                              className="text-stone-400 hover:text-[#B38A34] cursor-pointer p-0.5"
                               title="تأخير ترتيب الفندق لأسفل"
                             >
-                              <ChevronDown className="w-3 h-3" />
+                              <ChevronDown className="w-2.5 h-2.5" />
                             </button>
                           </div>
                         </div>
@@ -648,8 +673,8 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
                       {/* Image Thumbnail */}
                       {columnVisibility.thumbnail && (
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
-                          <div className="w-12 h-12 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 shadow-2xs mx-auto">
+                        <td className="py-2 px-1 text-center whitespace-nowrap">
+                          <div className="w-10 h-10 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 shadow-2xs mx-auto">
                             <img 
                               src={hotel.mainImage} 
                               alt={hotel.name}
@@ -662,27 +687,27 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
                       {/* Hotel Name */}
                       {columnVisibility.name && (
-                        <td className="py-3 px-3">
-                          <div className="flex flex-col">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <strong className="text-stone-900 font-bold text-xs sm:text-sm">
+                        <td className="py-2 px-2">
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <strong className="text-stone-900 font-bold text-xs truncate max-w-[190px]">
                                 {hotel.name}
                               </strong>
                               {hotel.featured && (
-                                <span className="text-[10px] bg-[#C9A24B]/15 text-[#B38A34] px-1.5 py-0.2 rounded font-bold">
+                                <span className="text-[9px] bg-[#C9A24B]/15 text-[#B38A34] px-1 py-0.2 rounded font-bold shrink-0">
                                   مميز ★
                                 </span>
                               )}
                             </div>
                             {hotel.nameEn && (
-                              <span className="text-[11px] text-stone-400 font-medium">
+                              <span className="text-[10px] text-stone-400 font-medium truncate max-w-[190px]">
                                 {hotel.nameEn}
                               </span>
                             )}
-                            <div className="flex items-center gap-1 text-[10px] text-stone-500 mt-0.5">
-                              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                              <span>{hotel.rating || 4.8}</span>
-                              <span>({hotel.reviewCount || 0} تقييم)</span>
+                            <div className="flex items-center gap-1 text-[9px] text-stone-500 mt-0.5">
+                              <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0" />
+                              <span className="font-bold">{hotel.rating || 4.8}</span>
+                              <span>({hotel.reviewCount || 0})</span>
                             </div>
                           </div>
                         </td>
@@ -690,8 +715,8 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
                       {/* City */}
                       {columnVisibility.city && (
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                        <td className="py-2 px-2 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             isMakkah 
                               ? 'bg-amber-50 text-amber-900 border border-amber-200' 
                               : 'bg-emerald-50 text-emerald-900 border border-emerald-200'
@@ -704,14 +729,14 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
                       {/* Branch and District */}
                       {columnVisibility.branch && (
-                        <td className="py-3 px-3 whitespace-nowrap">
+                        <td className="py-2 px-2 whitespace-nowrap">
                           <div className="flex flex-col">
-                            <span className="text-stone-900 font-bold text-xs">
-                              {isMakkah ? 'فرع مكة المكرمة' : 'فرع المدينة المنورة'}
+                            <span className="text-stone-900 font-bold text-[11px]">
+                              {isMakkah ? 'فرع مكة' : 'فرع المدينة'}
                             </span>
-                            <span className="text-[11px] text-[#B38A34] font-medium flex items-center gap-0.5">
-                              <MapPin className="w-3 h-3" />
-                              <span>حي {hotel.district}</span>
+                            <span className="text-[10px] text-[#B38A34] font-medium flex items-center gap-0.5">
+                              <MapPin className="w-2.5 h-2.5 shrink-0" />
+                              <span className="truncate max-w-[110px]">حي {hotel.district}</span>
                             </span>
                           </div>
                         </td>
@@ -719,36 +744,32 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
                       {/* Stars & Classification */}
                       {columnVisibility.stars && (
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
-                          <div className="flex flex-col items-center gap-1">
-                            <div className="inline-flex items-center justify-center gap-0.5 text-amber-400">
-                              {Array.from({ length: Math.max(0, Math.min(7, typeof hotel.stars === 'number' ? hotel.stars : (parseInt(hotel.stars as any, 10) || 0))) }).map((_, i) => (
-                                <Star key={i} className="w-3 h-3 fill-amber-400" />
-                              ))}
+                        <td className="py-2 px-1 text-center whitespace-nowrap">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <div className="inline-flex items-center justify-center gap-0.5 text-amber-500">
+                              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                              <span className="text-[11px] font-bold text-stone-800 font-mono">{hotel.stars ?? 5}</span>
+                              <span className="text-[10px] text-stone-500">نجوم</span>
                             </div>
-                            <span className="block text-[10px] text-stone-500 font-bold">
-                              {hotel.stars ?? 5} نجوم {hotel.customClassification ? `• ${hotel.customClassification}` : ''}
-                            </span>
                             {onToggleStarsBadge && (
                               <button
                                 type="button"
                                 onClick={() => onToggleStarsBadge(hotel)}
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border transition-all cursor-pointer ${
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[8px] font-bold border transition-all cursor-pointer ${
                                   hotel.showStars !== false
                                     ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
                                     : 'bg-stone-100 text-stone-400 border-stone-200 hover:bg-stone-200'
                                 }`}
-                                title={hotel.showStars !== false ? 'النجوم معروضة بالبطاقة (اضغط للإخفاء التام)' : 'النجوم مخفية بالبطاقة (اضغط للإظهار)'}
+                                title={hotel.showStars !== false ? 'النجوم معروضة بالبطاقة (اضغط للإخفاء)' : 'النجوم مخفية بالبطاقة (اضغط للإظهار)'}
                               >
-                                <Star className="w-2.5 h-2.5 fill-current" />
-                                <span>{hotel.showStars !== false ? 'النجوم: ظاهرة' : 'النجوم: مخفية'}</span>
+                                <span>{hotel.showStars !== false ? 'ظاهرة' : 'مخفية'}</span>
                               </button>
                             )}
                           </div>
                         </td>
                       )}
 
-                      {/* Categories (عمرة، رمضان، سنوي، حج، الخ) */}
+                      {/* Categories */}
                       {columnVisibility.categories && (() => {
                         const cats = (Array.isArray(hotel.categories) 
                           ? hotel.categories 
@@ -756,34 +777,39 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                         ).map((c: any) => String(c).trim()).filter(Boolean);
 
                         return (
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            <div className="flex flex-col gap-1 items-start">
-                              <div className="flex flex-wrap gap-1 max-w-[200px]">
-                                {cats.map((cat, catIdx) => (
+                          <td className="py-2 px-2">
+                            <div className="flex flex-col gap-0.5 items-start">
+                              <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                {cats.slice(0, 2).map((cat, catIdx) => (
                                   <span
                                     key={`${cat}-${catIdx}`}
-                                    className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#EFE6D8]/60 text-stone-800 border border-[#EFE6D8]"
+                                    className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#EFE6D8]/60 text-stone-800 border border-[#EFE6D8] truncate max-w-[70px]"
                                   >
                                     {cat}
                                   </span>
                                 ))}
+                                {cats.length > 2 && (
+                                  <span className="px-1 py-0.2 rounded text-[8px] font-bold bg-stone-200 text-stone-600">
+                                    +{cats.length - 2}
+                                  </span>
+                                )}
                                 {cats.length === 0 && (
-                                  <span className="text-[10px] text-stone-400 font-medium">بدون تصنيف</span>
+                                  <span className="text-[9px] text-stone-400 font-medium">بدون تصنيف</span>
                                 )}
                               </div>
                               {onToggleCategoriesBadge && (
                                 <button
                                   type="button"
                                   onClick={() => onToggleCategoriesBadge(hotel)}
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border transition-all cursor-pointer ${
+                                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[8px] font-bold border transition-all cursor-pointer ${
                                     hotel.showCategories !== false
                                       ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
                                       : 'bg-stone-100 text-stone-400 border-stone-200 hover:bg-stone-200'
                                   }`}
-                                  title={hotel.showCategories !== false ? 'وسوم التصنيف معروضة بالبطاقة (اضغط للإخفاء التام)' : 'وسوم التصنيف مخفية بالبطاقة (اضغط للإظهار)'}
+                                  title={hotel.showCategories !== false ? 'وسوم التصنيف معروضة بالبطاقة' : 'وسوم التصنيف مخفية بالبطاقة'}
                                 >
-                                  <Tag className="w-2.5 h-2.5" />
-                                  <span>{hotel.showCategories !== false ? 'الوسوم: ظاهرة' : 'الوسوم: مخفية'}</span>
+                                  <Tag className="w-2 h-2" />
+                                  <span>{hotel.showCategories !== false ? 'الوسوم: ظاهرة' : 'مخفية'}</span>
                                 </button>
                               )}
                             </div>
@@ -793,68 +819,70 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
                       {/* Status & Online Booking Toggles */}
                       {columnVisibility.status && (
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <td className="py-2 px-2 text-center whitespace-nowrap">
                           <div className="flex flex-col items-center gap-1">
-                            {/* Active Toggle */}
-                            <button
-                              type="button"
-                              onClick={() => onToggleActive(hotel)}
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
-                                hotel.isActive !== false
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                  : 'bg-stone-100 text-stone-500 border-stone-200 hover:bg-stone-200'
-                              }`}
-                              title={hotel.isActive !== false ? 'الفندق مفعّل ومعروض للزوار' : 'الفندق مخفي من الموقع'}
-                            >
-                              {hotel.isActive !== false ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                              <span>{hotel.isActive !== false ? 'مفعل (ظاهر)' : 'مخفي'}</span>
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              {/* Active Toggle */}
+                              <button
+                                type="button"
+                                onClick={() => onToggleActive(hotel)}
+                                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold border transition-all cursor-pointer ${
+                                  hotel.isActive !== false
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                    : 'bg-stone-100 text-stone-500 border-stone-200 hover:bg-stone-200'
+                                }`}
+                                title={hotel.isActive !== false ? 'الفندق مفعّل ومعروض للزوار' : 'الفندق مخفي من الموقع'}
+                              >
+                                {hotel.isActive !== false ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+                                <span>{hotel.isActive !== false ? 'مفعل' : 'مخفي'}</span>
+                              </button>
 
-                            {/* Online Booking Mode Toggle */}
-                            <button
-                              type="button"
-                              onClick={() => onToggleOnlineBooking(hotel)}
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
-                                hotel.onlineBookingEnabled === true
-                                  ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                                  : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'
-                              }`}
-                              title={hotel.onlineBookingEnabled === true ? 'الحجز متاح أونلاين عبر الموقع' : 'الحجز عبر واتساب فقط'}
-                            >
-                              {hotel.onlineBookingEnabled === true ? (
-                                <>
-                                  <BedDouble className="w-3 h-3 text-[#B38A34]" />
-                                  <span>حجز أونلاين</span>
-                                </>
-                              ) : (
-                                <>
-                                  <WhatsAppIcon className="w-3 h-3" />
-                                  <span>واتساب فقط</span>
-                                </>
-                              )}
-                            </button>
+                              {/* Online Booking Mode Toggle */}
+                              <button
+                                type="button"
+                                onClick={() => onToggleOnlineBooking(hotel)}
+                                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold border transition-all cursor-pointer ${
+                                  hotel.onlineBookingEnabled === true
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                                    : 'bg-stone-100 text-stone-600 border-stone-200 hover:bg-stone-200'
+                                }`}
+                                title={hotel.onlineBookingEnabled === true ? 'الحجز متاح أونلاين عبر الموقع' : 'الحجز عبر واتساب فقط'}
+                              >
+                                {hotel.onlineBookingEnabled === true ? (
+                                  <>
+                                    <BedDouble className="w-2.5 h-2.5 text-[#B38A34]" />
+                                    <span>أونلاين</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <WhatsAppIcon className="w-2.5 h-2.5" />
+                                    <span>واتساب</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
 
                             {/* Distance Badge Toggle */}
                             {onToggleDistanceBadge && (
                               <button
                                 type="button"
                                 onClick={() => onToggleDistanceBadge(hotel)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[8px] font-bold border transition-all cursor-pointer ${
                                   hotel.showDistanceBadge !== false && hotel.showTransportInfo !== false
                                     ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                                    : 'bg-stone-100 text-stone-500 border-stone-200 hover:bg-stone-200'
+                                    : 'bg-stone-100 text-stone-400 border-stone-200 hover:bg-stone-200'
                                 }`}
                                 title={
                                   hotel.showDistanceBadge !== false && hotel.showTransportInfo !== false
-                                    ? 'عداد ودقائق السير ظاهرة بالبطاقة (اضغط للإخفاء التام)'
-                                    : 'عداد ودقائق السير مخفية تماماً من البطاقة (اضغط للإظهار)'
+                                    ? 'عداد ودقائق السير ظاهرة بالبطاقة'
+                                    : 'عداد ودقائق السير مخفية من البطاقة'
                                 }
                               >
-                                <Footprints className="w-3 h-3 text-[#B38A34]" />
+                                <Footprints className="w-2 h-2 text-[#B38A34]" />
                                 <span>
                                   {hotel.showDistanceBadge !== false && hotel.showTransportInfo !== false
-                                    ? 'شارة السير: ظاهرة'
-                                    : 'شارة السير: مخفية'}
+                                    ? 'السير: ظاهر'
+                                    : 'السير: مخفي'}
                                 </span>
                               </button>
                             )}
@@ -864,17 +892,17 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
                       {/* Rooms & Availability Summary */}
                       {columnVisibility.roomsSummary && (
-                        <td className="py-3 px-3 whitespace-nowrap">
+                        <td className="py-2 px-2 whitespace-nowrap">
                           <div className="flex flex-col">
-                            <span className="text-stone-900 font-bold text-xs">
+                            <span className="text-stone-900 font-bold text-[11px]">
                               {hotelRooms.length > 0 ? `${hotelRooms.length} فئات غرف` : 'غرف قياسية'}
                             </span>
-                            <span className={`text-[11px] font-medium ${
+                            <span className={`text-[10px] font-medium ${
                               totalAvailRooms <= 0 ? 'text-red-600 font-bold' : totalAvailRooms <= 5 ? 'text-amber-600' : 'text-emerald-600'
                             }`}>
                               {hotelRooms.length > 0 
-                                ? `📦 متاح ${totalAvailRooms} غرفة بالمستودع` 
-                                : 'متاح للحجز المباشر'}
+                                ? `📦 متاح ${totalAvailRooms} غرفة` 
+                                : 'متاح للحجز'}
                             </span>
                           </div>
                         </td>
@@ -882,31 +910,28 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
 
                       {/* Last Updated */}
                       {columnVisibility.lastUpdated && (
-                        <td className="py-3 px-3 whitespace-nowrap text-[11px] text-stone-500">
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-stone-400" />
-                            <span>
-                              {hotel.createdAt 
-                                ? new Date(hotel.createdAt).toLocaleDateString('ar-SA')
-                                : 'محدث تلقائياً'}
-                            </span>
-                          </div>
+                        <td className="py-2 px-1 text-center whitespace-nowrap text-[10px] text-stone-500">
+                          <span>
+                            {hotel.createdAt 
+                              ? new Date(hotel.createdAt).toLocaleDateString('ar-SA')
+                              : 'تلقائي'}
+                          </span>
                         </td>
                       )}
 
                       {/* Actions Column */}
                       {columnVisibility.actions && (
-                        <td className="py-3 px-3 pl-4 text-left whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
+                        <td className="py-2 px-2 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1">
                             {/* View Public Page */}
                             <a
                               href={`/#/hotels/${hotel.id}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="p-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 transition-colors"
+                              className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 flex items-center justify-center transition-colors"
                               title="معاينة صفحة الفندق العامة"
                             >
-                              <ExternalLink className="w-3.5 h-3.5" />
+                              <ExternalLink className="w-3 h-3" />
                             </a>
 
                             {/* Album Manager Button */}
@@ -914,10 +939,10 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => onOpenAlbum(hotel)}
-                                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B38A34] transition-colors cursor-pointer"
+                                className="w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-[#B38A34] flex items-center justify-center transition-colors cursor-pointer"
                                 title="إدارة ألبوم الصور والفيديوهات"
                               >
-                                <Images className="w-3.5 h-3.5" />
+                                <Images className="w-3 h-3" />
                               </button>
                             )}
 
@@ -926,10 +951,10 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => onEditHotel(hotel)}
-                                className="p-1.5 rounded-lg bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors cursor-pointer"
+                                className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 flex items-center justify-center transition-colors cursor-pointer"
                                 title="تعديل بيانات الفندق"
                               >
-                                <Edit3 className="w-3.5 h-3.5" />
+                                <Edit3 className="w-3 h-3" />
                               </button>
                             )}
 
@@ -938,10 +963,10 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => onDeleteHotel(hotel)}
-                                className="p-1.5 rounded-lg bg-stone-100 hover:bg-red-500 hover:text-white text-stone-600 transition-colors cursor-pointer"
+                                className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-red-500 hover:text-white text-stone-600 flex items-center justify-center transition-colors cursor-pointer"
                                 title="حذف الفندق"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3 h-3" />
                               </button>
                             )}
                           </div>
