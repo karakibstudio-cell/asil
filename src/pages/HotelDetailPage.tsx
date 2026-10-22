@@ -284,19 +284,34 @@ export const HotelDetailPage: React.FC<HotelDetailPageProps> = ({
         {/* Hotel Main Title Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold border border-[#C9A24B]/30 flex items-center gap-1">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="px-3 py-1 rounded-full bg-[#C9A24B]/15 text-[#B38A34] text-xs font-bold border border-[#C9A24B]/30 flex items-center gap-1 shrink-0">
                 <MapPin className="w-3.5 h-3.5" />
                 {translateDynamic(hotel.city)} - {language === 'en' ? `${translateDynamic(hotel.district)} District` : `حي ${hotel.district}`}
               </span>
-              <div className="flex items-center gap-1">
-                {[...Array(Math.max(1, Math.min(5, Number(hotel.stars) || 5)))].map((_, i) => (
-                  <Star key={i} className="w-4 h-4 fill-[#C9A24B] text-[#C9A24B]" />
-                ))}
-              </div>
-              <span className="text-xs text-stone-500">
-                ({hotel.rating} {language === 'en' ? 'out of 5 stars' : 'من 5 نجوم'})
-              </span>
+
+              {/* Hotel Classification Stars */}
+              {hotel.showStars !== false && (
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-0.5">
+                    {[...Array(Math.max(1, Math.min(7, typeof hotel.stars === 'number' ? hotel.stars : (parseInt(hotel.stars as any, 10) || 4))))].map((_, i) => (
+                      <Star key={i} className="w-4 h-4 fill-[#C9A24B] text-[#C9A24B]" />
+                    ))}
+                  </div>
+                  <span className="text-xs text-stone-600 font-semibold whitespace-nowrap">
+                    ({hotel.stars ?? 4} {language === 'en' ? (Number(hotel.stars) === 1 ? 'Star' : 'Stars') : 'نجوم'})
+                  </span>
+                </div>
+              )}
+
+              {/* Guest Review Rating Score */}
+              {hotel.showRating !== false && hotel.rating && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#C9A24B]/10 text-[#B38A34] text-xs font-bold border border-[#C9A24B]/30 whitespace-nowrap shrink-0">
+                  <span>★</span>
+                  <span>{hotel.rating}</span>
+                  <span className="text-[10px] text-stone-500 font-normal">/ 5 {language === 'en' ? 'Guest Rating' : 'تقييم النزلاء'}</span>
+                </span>
+              )}
             </div>
 
             <h1 className="text-2xl sm:text-4xl font-cairo font-extrabold text-stone-900 tracking-tight">
