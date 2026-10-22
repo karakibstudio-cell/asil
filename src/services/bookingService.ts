@@ -2693,13 +2693,26 @@ I would like to confirm my booking request submitted via the website:
 
 Please confirm my reservation and issue the official certified invoice.`;
   } else {
+    const isGrp = booking.isGroupBooking;
+    const roomsDetails = booking.groupRoomsBreakdown && booking.groupRoomsBreakdown.length > 0
+      ? `• الغرف المطلوبة:\n` + booking.groupRoomsBreakdown.map(b => `  - ${b.roomsCount}x ${b.roomName}`).join('\n')
+      : `• الغرفة: ${booking.roomsCount}x ${booking.roomName}`;
+    const groupInfo = isGrp && booking.companyOrGroupName
+      ? `• نوع الحجز: حجز مجموعة (${booking.companyOrGroupName})\n`
+      : '';
+    const mealInfo = booking.mealPlanName && booking.mealPlanName !== 'بدون وجبات'
+      ? `• باقة الوجبات: ${booking.mealPlanName}\n`
+      : `• الوجبات: إقامة بدون وجبات\n`;
+
     msg = `السلام عليكم شركة برستيج لإدارة الفنادق،
 أرغب بتأكيد طلبي للحجز المباشر عبر الموقع الإلكتروني:
 • رقم الحجز المرجعي: #${booking.bookingCode}
 • كود التأكيد (٤ أرقام): ${confirmationCode}
-• اسم النزيل: ${booking.guestName}
+${groupInfo}• اسم النزيل / المسؤول: ${booking.guestName}
 • الفندق: ${booking.hotelName}
-• تاريخ الوصول: ${booking.checkIn}
+${roomsDetails}
+${mealInfo}• تاريخ الوصول: ${booking.checkIn}
+• تاريخ المغادرة: ${booking.checkOut} (${booking.nights} ليالٍ)
 • الإجمالي: ${booking.totalAmount.toLocaleString()} ر.س
 
 أرجو اعتماد وتأكيد الحجز وتزويدي بالفاتورة الرسمية المعتمدة. شكراً لكم.`;

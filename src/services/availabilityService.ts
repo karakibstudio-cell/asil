@@ -334,6 +334,24 @@ export interface CreateAtomicBookingParams {
   preferredView?: 'haram' | 'city' | 'panoramic' | 'quiet' | 'any';
   preferredFloor?: 'high' | 'mid' | 'low' | 'any';
   expressCheckInOptIn?: boolean;
+
+  // Group Booking & Multi-Room Support
+  isGroupBooking?: boolean;
+  companyOrGroupName?: string;
+  groupLeaderName?: string;
+  groupLeaderPhone?: string;
+  busCount?: number;
+  roomingList?: string;
+  groupRoomsBreakdown?: Array<{
+    roomId: string;
+    roomName: string;
+    roomsCount: number;
+    adultsPerRoom?: number;
+    pricePerNight?: number;
+    totalAmount?: number;
+  }>;
+  customGrandTotal?: number;
+  customRoomPricePerNight?: number;
 }
 
 /**
@@ -461,8 +479,8 @@ export async function createBookingAtomicTransaction(
     mealPlanId: mealPlan?.id || 'meal_none',
     mealPlanName: mealPlan?.name || 'بدون وجبات',
     mealPlanPrice: pricingResult.mealPricePerPerson,
-    roomPricePerNight: pricingResult.averageNightlyRate,
-    totalAmount: pricingResult.grandTotal,
+    roomPricePerNight: params.customRoomPricePerNight !== undefined ? params.customRoomPricePerNight : pricingResult.averageNightlyRate,
+    totalAmount: params.customGrandTotal !== undefined ? params.customGrandTotal : pricingResult.grandTotal,
     specialRequests: specialRequests?.trim() || undefined,
     status: 'pending_confirmation',
     createdAt: Date.now(),
@@ -485,66 +503,104 @@ export async function createBookingAtomicTransaction(
     emailStatus: 'queued',
     preferredView: params.preferredView || 'any',
     preferredFloor: params.preferredFloor || 'any',
-    expressCheckInOptIn: params.expressCheckInOptIn ?? true
+    expressCheckInOptIn: params.expressCheckInOptIn ?? true,
+    // Group & Multi-room metadata
+    isGroupBooking: Boolean(params.isGroupBooking),
+    companyOrGroupName: params.companyOrGroupName?.trim() || undefined,
+    groupLeaderName: params.groupLeaderName?.trim() || undefined,
+    groupLeaderPhone: params.groupLeaderPhone?.trim() || undefined,
+    busCount: params.busCount,
+    roomingList: params.roomingList?.trim() || undefined,
+    groupRoomsBreakdown: params.groupRoomsBreakdown
   };
 
   // 3. FIRESTORE ATOMIC TRANSACTION
   if (db) {
     await runTransaction(db, async (tx) => {
-      // Step A: Read month docs inside transaction
-      const monthRefs = months.map(ym => doc(db, 'availability', getAvailabilityDocId(hotel.id, room.id, ym)));
-      const monthSnaps = await Promise.all(monthRefs.map(ref => tx.get(ref)));
+      // Determine room inventory breakdown to verify and deduct
+      const roomsToDeduct = (params.groupRoomsBreakdown && params.groupRoomsBreakdown.length > 0)
+        ? params.groupRoomsBreakdown.map(g => ({ roomId: g.roomId, count: g.roomsCount, roomName: g.roomName }))
+        : [{ roomId: room.id, count: roomsCount, roomName: room.name }];
 
+      // Step A: Read month docs inside transaction for all involved rooms
+      interface MonthKey {
+        roomId: string;
+        ym: string;
+      }
+      const allReadKeys: MonthKey[] = [];
+      const allMonthRefs: { ref: any; roomId: string; ym: string }[] = [];
+
+      for (const item of roomsToDeduct) {
+        for (const ym of months) {
+          allReadKeys.push({ roomId: item.roomId, ym });
+          allMonthRefs.push({
+            ref: doc(db, 'availability', getAvailabilityDocId(hotel.id, item.roomId, ym)),
+            roomId: item.roomId,
+            ym
+          });
+        }
+      }
+
+      const allSnaps = await Promise.all(allMonthRefs.map(m => tx.get(m.ref)));
       const monthDocsMap = new Map<string, MonthAvailabilityDoc>();
 
-      for (let i = 0; i < months.length; i++) {
-        const ym = months[i];
-        const snap = monthSnaps[i];
+      for (let i = 0; i < allMonthRefs.length; i++) {
+        const item = allMonthRefs[i];
+        const snap = allSnaps[i];
+        const key = `${item.roomId}_${item.ym}`;
+
         if (snap.exists()) {
-          monthDocsMap.set(ym, snap.data() as MonthAvailabilityDoc);
+          monthDocsMap.set(key, snap.data() as MonthAvailabilityDoc);
         } else {
           // Initialize in-memory copy
-          const days = initializeMonthDays(ym, room, freshPeriods, []);
-          monthDocsMap.set(ym, {
-            id: getAvailabilityDocId(hotel.id, room.id, ym),
+          const currentRoomObj = room;
+          const days = initializeMonthDays(item.ym, currentRoomObj, freshPeriods, []);
+          monthDocsMap.set(key, {
+            id: getAvailabilityDocId(hotel.id, item.roomId, item.ym),
             hotelId: hotel.id,
-            roomId: room.id,
-            yearMonth: ym,
+            roomId: item.roomId,
+            yearMonth: item.ym,
             days,
             updatedAt: Date.now()
           });
         }
       }
 
-      // Step B: Verify availability for every night
-      for (const dateStr of nights) {
-        const ym = getYearMonth(dateStr);
-        const mDoc = monthDocsMap.get(ym);
-        const day = mDoc?.days?.[dateStr];
+      // Step B: Verify availability for every night and every room type
+      for (const item of roomsToDeduct) {
+        for (const dateStr of nights) {
+          const ym = getYearMonth(dateStr);
+          const key = `${item.roomId}_${ym}`;
+          const mDoc = monthDocsMap.get(key);
+          const day = mDoc?.days?.[dateStr];
 
-        if (!day || day.isClosed || day.available < roomsCount) {
-          throw new OverbookingError(
-            `عذراً، نفدت الغرف المتاحة في تاريخ ${dateStr} (المتبقي: ${day ? day.available : 0}، المطلوب: ${roomsCount}). نرجو اختيار تاريخ أو غرفة بديلة.`
-          );
+          if (!day || day.isClosed || day.available < item.count) {
+            throw new OverbookingError(
+              `عذراً، نفدت الغرف المتاحة لنوع "${item.roomName}" في تاريخ ${dateStr} (المتبقي: ${day ? day.available : 0}، المطلوب: ${item.count}). نرجو اختيار غرفة أو تاريخ بديل.`
+            );
+          }
         }
       }
 
-      // Step C: Decrement availability atomically
-      for (const dateStr of nights) {
-        const ym = getYearMonth(dateStr);
-        const mDoc = monthDocsMap.get(ym)!;
-        const day = mDoc.days[dateStr];
-        day.available -= roomsCount;
-        day.booked += roomsCount;
+      // Step C: Decrement availability atomically for every room
+      for (const item of roomsToDeduct) {
+        for (const dateStr of nights) {
+          const ym = getYearMonth(dateStr);
+          const key = `${item.roomId}_${ym}`;
+          const mDoc = monthDocsMap.get(key)!;
+          const day = mDoc.days[dateStr];
+          day.available -= item.count;
+          day.booked += item.count;
+        }
       }
 
       // Step D: Write updated month availability docs
-      for (let i = 0; i < months.length; i++) {
-        const ym = months[i];
-        const ref = monthRefs[i];
-        const mDoc = monthDocsMap.get(ym)!;
+      for (let i = 0; i < allMonthRefs.length; i++) {
+        const item = allMonthRefs[i];
+        const key = `${item.roomId}_${item.ym}`;
+        const mDoc = monthDocsMap.get(key)!;
         mDoc.updatedAt = Date.now();
-        tx.set(ref, mDoc);
+        tx.set(item.ref, mDoc);
         // Invalidate/update local memory cache
         memoryCache.set(mDoc.id, { doc: mDoc, expiresAt: Date.now() + 60000 });
       }
