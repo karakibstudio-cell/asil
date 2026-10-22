@@ -16,11 +16,18 @@ export function updateFavicon(iconUrl?: string | null): void {
     // 2. Create standard icon link
     const newIcon = document.createElement('link');
     newIcon.rel = 'icon';
-    newIcon.type = iconUrl.endsWith('.svg') 
-      ? 'image/svg+xml' 
-      : iconUrl.endsWith('.png') 
-        ? 'image/png' 
-        : 'image/x-icon';
+    const lower = iconUrl.toLowerCase();
+    if (lower.startsWith('data:image/svg+xml') || lower.includes('.svg')) {
+      newIcon.type = 'image/svg+xml';
+    } else if (lower.startsWith('data:image/webp') || lower.includes('.webp')) {
+      newIcon.type = 'image/webp';
+    } else if (lower.startsWith('data:image/png') || lower.includes('.png')) {
+      newIcon.type = 'image/png';
+    } else if (lower.startsWith('data:image/jpeg') || lower.startsWith('data:image/jpg') || lower.includes('.jpg') || lower.includes('.jpeg')) {
+      newIcon.type = 'image/jpeg';
+    } else {
+      newIcon.type = 'image/x-icon';
+    }
     newIcon.href = iconUrl;
     head.appendChild(newIcon);
 

@@ -1014,22 +1014,6 @@ export async function fetchSiteSettingsFromSupabase(): Promise<SiteSettings | nu
     if (error || !data) return null;
     const raw = typeof data.settings_data === 'object' ? data.settings_data : JSON.parse(data.settings_data);
     if (raw) {
-      if (typeof raw.logoUrl === 'string' && raw.logoUrl.startsWith('data:') && raw.logoUrl.length > 20000) {
-        raw.logoUrl = '/images/brand/logo.webp';
-      }
-      if (typeof raw.faviconUrl === 'string' && raw.faviconUrl.startsWith('data:') && raw.faviconUrl.length > 20000) {
-        raw.faviconUrl = '/favicon.svg';
-      }
-      if (raw.aboutUs && typeof raw.aboutUs.logoUrl === 'string' && raw.aboutUs.logoUrl.startsWith('data:') && raw.aboutUs.logoUrl.length > 20000) {
-        raw.aboutUs.logoUrl = '/images/brand/about_logo.webp';
-      }
-      if (Array.isArray(raw.heroSlides)) {
-        raw.heroSlides.forEach((slide: any, idx: number) => {
-          if (slide && typeof slide.imageUrl === 'string' && slide.imageUrl.startsWith('data:') && slide.imageUrl.length > 20000) {
-            slide.imageUrl = idx === 1 ? '/images/slides/slide_1.webp' : '/images/slides/slide_0.webp';
-          }
-        });
-      }
       if (raw.introVideo) {
         if (typeof raw.introVideo.videoUrl === 'object' && raw.introVideo.videoUrl !== null) {
           raw.introVideo.videoUrl = (raw.introVideo.videoUrl as any).url || (raw.introVideo.videoUrl as any).src || '';

@@ -35,6 +35,7 @@ import { optimizeImageFile } from '../utils/imageOptimizer';
 import { PillarIcon, ICON_OPTIONS } from './PillarIcon';
 import { DEFAULT_VALUE_PILLARS } from '../data/aboutPillars';
 import { Lightbox } from './Lightbox';
+import { uploadMediaToSupabase, uploadBase64ToSupabase } from '../services/supabase';
 
 interface AdminAboutManagerProps {
   aboutUs?: AboutPageSettings;
@@ -173,8 +174,22 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
         maxHeight: 512,
         forcePng: isPng
       });
-      setCurrentLogo(logoData);
-      setForm((prev) => ({ ...prev, logoUrl: logoData }));
+
+      let finalLogo = logoData;
+      try {
+        const uploadRes = await uploadMediaToSupabase(file, 'images', `brand/about_logo_${Date.now()}.${isPng ? 'png' : 'webp'}`);
+        if (uploadRes.success && uploadRes.url) {
+          finalLogo = uploadRes.url;
+        } else {
+          const base64Url = await uploadBase64ToSupabase(logoData, 'images');
+          if (base64Url) finalLogo = base64Url;
+        }
+      } catch (storageErr) {
+        console.warn('Storage upload fallback to base64:', storageErr);
+      }
+
+      setCurrentLogo(finalLogo);
+      setForm((prev) => ({ ...prev, logoUrl: finalLogo }));
       onShowToast('تم رفع ومعالجة شعار الشركة الجديد بنجاح (مع الحفاظ على الشفافية)', 'success');
     } catch (err) {
       console.error('Error optimizing logo:', err);
@@ -1685,6 +1700,20 @@ export const AdminAboutManager: React.FC<AdminAboutManagerProps> = ({
                       <span>معاينة مكبرة</span>
                     </button>
                   )}
+                </div>
+
+                <div>
+                  <span className="text-xs text-stone-600 block mb-1 font-semibold">أو رابط صورة الشعار:</span>
+                  <input
+                    type="url"
+                    value={currentLogo}
+                    onChange={(e) => {
+                      setCurrentLogo(e.target.value);
+                      setForm((prev) => ({ ...prev, logoUrl: e.target.value }));
+                    }}
+                    placeholder="https://example.com/logo.png"
+                    className="w-full px-3.5 py-2 rounded-xl bg-white border border-stone-300 text-stone-900 text-xs font-mono focus:border-[#C9A24B] focus:outline-none"
+                  />
                 </div>
 
                 <p className="text-[11px] text-stone-500">

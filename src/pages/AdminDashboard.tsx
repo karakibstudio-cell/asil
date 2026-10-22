@@ -123,7 +123,8 @@ import {
   saveSupabaseConfig, 
   testSupabaseConnection, 
   isSupabaseConfigured,
-  uploadMediaToSupabase
+  uploadMediaToSupabase,
+  uploadBase64ToSupabase
 } from '../services/supabase';
 import { 
   parseDistanceInput, 
@@ -456,7 +457,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Automatic Debounced Save for Settings & Intro Video
   const triggerAutoSaveSettings = (newSettings: SiteSettings) => {
     setSettingsForm(newSettings);
-    if (!initialSettingsLoadedRef.current) return;
     if (settingsTimerRef.current) clearTimeout(settingsTimerRef.current);
     setAutoSaveStatus('saving');
     settingsTimerRef.current = setTimeout(async () => {
@@ -605,12 +605,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         forcePng: isPng
       });
 
+      // Try uploading directly to Supabase Storage first for permanent CDN URL
+      let finalLogoUrl = optimizedLogo;
+      try {
+        const uploadRes = await uploadMediaToSupabase(file, 'images', `brand/logo_${Date.now()}.${isPng ? 'png' : 'webp'}`);
+        if (uploadRes.success && uploadRes.url) {
+          finalLogoUrl = uploadRes.url;
+        } else {
+          const base64Url = await uploadBase64ToSupabase(optimizedLogo, 'images');
+          if (base64Url) finalLogoUrl = base64Url;
+        }
+      } catch (storageErr) {
+        console.warn('Storage upload fallback to base64:', storageErr);
+      }
+
       const updated: SiteSettings = {
         ...settingsForm,
-        logoUrl: optimizedLogo,
+        logoUrl: finalLogoUrl,
         aboutUs: {
           ...(settingsForm.aboutUs || {}),
-          logoUrl: optimizedLogo
+          logoUrl: finalLogoUrl
         }
       };
 
@@ -658,15 +672,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!file) return;
 
     try {
-      const optimizedFavicon = await optimizeImageFile(file, {
-        maxWidth: 128,
-        maxHeight: 128,
-        forcePng: true
-      });
+      const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+      let finalFaviconUrl = '';
+
+      if (isSvg) {
+        try {
+          const uploadRes = await uploadMediaToSupabase(file, 'images', `brand/favicon_${Date.now()}.svg`);
+          if (uploadRes.success && uploadRes.url) {
+            finalFaviconUrl = uploadRes.url;
+          }
+        } catch {}
+      }
+
+      if (!finalFaviconUrl) {
+        const optimizedFavicon = await optimizeImageFile(file, {
+          maxWidth: 128,
+          maxHeight: 128,
+          forcePng: true
+        });
+
+        finalFaviconUrl = optimizedFavicon;
+        try {
+          const ext = isSvg ? 'svg' : 'png';
+          const uploadRes = await uploadMediaToSupabase(file, 'images', `brand/favicon_${Date.now()}.${ext}`);
+          if (uploadRes.success && uploadRes.url) {
+            finalFaviconUrl = uploadRes.url;
+          } else {
+            const base64Url = await uploadBase64ToSupabase(optimizedFavicon, 'images');
+            if (base64Url) finalFaviconUrl = base64Url;
+          }
+        } catch (storageErr) {
+          console.warn('Storage upload fallback to base64:', storageErr);
+        }
+      }
 
       const updated: SiteSettings = {
         ...settingsForm,
-        faviconUrl: optimizedFavicon
+        faviconUrl: finalFaviconUrl
       };
 
       setSettingsForm(updated);
@@ -4192,21 +4234,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                       </div>
 
+                      {/* Custom Favicon URL & Direct Upload */}
+                      <div className="space-y-2 bg-stone-800/60 p-4 rounded-xl border border-stone-700">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-stone-200">
+                            أيقونة علامة التبويب (Favicon):
+                          </label>
+                          {settingsForm.faviconUrl && (
+                            <button
+                              type="button"
+                              onClick={() => triggerAutoSaveSettings({ ...settingsForm, faviconUrl: '' })}
+                              className="text-[11px] text-[#DFBE72] hover:underline"
+                            >
+                              استعادة شعار الموقع كأيقونة
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <input
+                            type="url"
+                            value={settingsForm.faviconUrl || ''}
+                            onChange={(e) => triggerAutoSaveSettings({ ...settingsForm, faviconUrl: e.target.value })}
+                            placeholder="https://example.com/favicon.png أو ارفع ملف من الزر المجاور"
+                            className="flex-1 px-3.5 py-2.5 rounded-xl bg-stone-900 border border-stone-600 text-stone-100 text-xs font-mono focus:border-[#C9A24B] focus:outline-none"
+                          />
+                          <label className="cursor-pointer inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#C9A24B] hover:bg-[#d8b054] text-stone-900 text-xs font-bold transition-colors shrink-0 shadow-sm">
+                            <UploadCloud className="w-4 h-4" />
+                            <span>رفع أيقونة Favicon</span>
+                            <input
+                              type="file"
+                              accept="image/png, image/x-icon, image/svg+xml, image/webp, .ico, .png, .svg, .webp, image/*"
+                              onChange={handleFaviconFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                        <p className="text-[11px] text-stone-400">
+                          يمكنك رفع أيقونة مخصصة (PNG شفاف، ICO، SVG، WebP) أو وضع رابط مباشر. إذا تركتها فارغة سيتم استخدام شعار الموقع تلقائياً.
+                        </p>
+                      </div>
+
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
                         <p className="text-[11px] text-stone-400 leading-relaxed">
-                          أي تغيير في الشعار، الأيقونة، أو اسم علامة التبويب يتم تحديثه لحظياً لدى جميع زوار الموقع.
+                          أي تغيير في الشعار، الأيقونة، أو اسم علامة التبويب يتم حفظه وتحديثه لحظياً لدى جميع زوار الموقع.
                         </p>
-
-                        <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-[#C9A24B] text-stone-300 hover:text-white text-xs font-bold transition-colors shrink-0">
-                          <UploadCloud className="w-3.5 h-3.5" />
-                          <span>رفع أيقونة Favicon مخصصة</span>
-                          <input
-                            type="file"
-                            accept="image/png, image/x-icon, image/svg+xml, .ico, .png, .svg"
-                            onChange={handleFaviconFileUpload}
-                            className="hidden"
-                          />
-                        </label>
                       </div>
                     </div>
                   </div>
