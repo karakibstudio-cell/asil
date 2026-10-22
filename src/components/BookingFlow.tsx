@@ -112,6 +112,7 @@ export interface BookingFlowProps {
   initialRooms?: number;
   initialAdults?: number;
   initialChildren?: number;
+  initialBookingType?: 'individual' | 'group';
   siteSettings?: SiteSettings;
   onNavigateHome?: () => void;
   onSelectAnotherHotel?: (hotelId: string) => void;
@@ -128,6 +129,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
   initialRooms = 1,
   initialAdults = 2,
   initialChildren = 0,
+  initialBookingType,
   siteSettings,
   onNavigateHome,
   onSelectAnotherHotel,
@@ -173,8 +175,19 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
     if (initialChildren !== undefined) setChildrenCount(initialChildren);
   }, [initialChildren]);
 
-  // Booking Mode: Individual / Family vs Group / Campaign
-  const [bookingType, setBookingType] = useState<'individual' | 'group'>('individual');
+  // Booking Mode: Individual / Family vs Group / Campaign (Tied to parent top choices)
+  const [bookingType, setBookingType] = useState<'individual' | 'group'>(() => {
+    return initialBookingType || 'individual';
+  });
+
+  useEffect(() => {
+    if (initialBookingType) {
+      setBookingType(initialBookingType);
+      if (initialBookingType === 'group') {
+        setRoomsCount(prev => (prev < 3 ? 3 : prev));
+      }
+    }
+  }, [initialBookingType]);
 
   // Step 2 State: Multi-room selection map (roomId -> quantity) & Selected Meal
   const [selectedRoomsMap, setSelectedRoomsMap] = useState<Record<string, number>>(() => {
@@ -712,9 +725,9 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
     nightsCount
   ]);
 
-  // Step 1 Validation
+  // Step 1 Validation (Never blocks user from seeing availability or proceeding)
   const isStep1Valid = useMemo(() => {
-    const basicValid = (
+    return Boolean(
       checkIn && 
       checkOut && 
       checkOut > checkIn && 
@@ -722,21 +735,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
       (roomsCount >= 1 || totalSelectedRoomsCount >= 1) && 
       adultsCount >= 1
     );
-    if (!basicValid) return false;
-
-    // If hotel is configured as periods_only, ensure stay is completely inside active periods
-    if (hotel.onlineAvailabilityMode === 'periods_only') {
-      const activePeriods = pricingPeriods.filter(p => p.isActive !== false);
-      if (activePeriods.length === 0) return false;
-      const stayDates = getStayNightDates(checkIn, checkOut);
-      const allNightsCovered = stayDates.every(d => 
-        activePeriods.some(p => d >= p.startDate && d <= p.endDate)
-      );
-      if (!allNightsCovered) return false;
-    }
-
-    return true;
-  }, [checkIn, checkOut, nightsCount, roomsCount, totalSelectedRoomsCount, adultsCount, hotel.onlineAvailabilityMode, pricingPeriods]);
+  }, [checkIn, checkOut, nightsCount, roomsCount, totalSelectedRoomsCount, adultsCount]);
 
   // Check if dates are outside active periods
   const isOutsideActivePeriods = useMemo(() => {
@@ -773,6 +772,33 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
     const clean = guestPhoneNumber.replace(/^0+/, '').replace(/\D/g, '');
     return `${selectedCountry.dialCode}${clean}`;
   }, [selectedCountry, guestPhoneNumber]);
+
+  // Quick Period Switchers (تبديل الفترة)
+  const handleSelectPeriod = (startDate: string, endDate: string) => {
+    setCheckIn(startDate);
+    setCheckOut(endDate);
+  };
+
+  const handleQuickWeekend = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diffToThursday = (4 - day + 7) % 7 || 7;
+    const thurs = new Date(d);
+    thurs.setDate(d.getDate() + diffToThursday);
+    const sat = new Date(thurs);
+    sat.setDate(thurs.getDate() + 2);
+    setCheckIn(thurs.toISOString().split('T')[0]);
+    setCheckOut(sat.toISOString().split('T')[0]);
+  };
+
+  const handleQuickNextWeek = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    const outD = new Date(d);
+    outD.setDate(d.getDate() + 3);
+    setCheckIn(d.toISOString().split('T')[0]);
+    setCheckOut(outD.toISOString().split('T')[0]);
+  };
 
   // Transition handlers with analytics tracking
   const handleProceedToStep2 = () => {
@@ -1085,40 +1111,87 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
             </p>
           </div>
 
-          {/* Periods-only notice banner */}
-          {hotel.onlineAvailabilityMode === 'periods_only' && (
-            <div className="mb-6 p-4 rounded-2xl bg-amber-50/80 border border-amber-200/90 text-right">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-950 mb-2">
-                <Calendar className="w-4 h-4 text-amber-600" />
-                <span>هذا الفندق متاح للحجز أونلاين حصرياً خلال الفترات والمواسم التالية:</span>
+          {/* ── PERIOD SWITCHER COMPONENT (تبديل الفترة والمواسم المتاحة) ── */}
+          <div className="mb-6 p-4 rounded-2xl bg-stone-50 border border-stone-200/90 text-right space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-stone-800">
+                <Calendar className="w-4 h-4 text-[#B38A34]" />
+                <span>تبديل الفترة والمواسم المتاحة للفندق:</span>
               </div>
-              {pricingPeriods.filter(p => p.isActive !== false).length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {pricingPeriods.filter(p => p.isActive !== false).map(p => (
-                    <div key={p.id} className="px-3 py-1.5 rounded-xl bg-white border border-amber-300/80 text-xs text-amber-950 font-semibold shadow-2xs">
-                      <span className="font-bold">{p.name}:</span>{' '}
-                      <span dir="ltr" className="font-mono text-[11px] text-[#8C6D23] font-bold">{p.startDate} ~ {p.endDate}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-stone-500">لا توجد فترات نشطة مضافة حالياً. يرجى التواصل عبر الواتساب للاستفسار عن الحجز.</p>
-              )}
+              <span className="text-[11px] text-stone-500">
+                اضغط على أي موسم أو فترة لتحديث التواريخ فوراً
+              </span>
             </div>
-          )}
 
-          {/* Alert if selected dates fall outside active periods */}
-          {isOutsideActivePeriods && (
-            <div className="p-4 rounded-2xl bg-amber-100/70 border border-amber-300 text-amber-950 text-xs mb-5 flex items-start gap-2.5">
-              <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-              <div>
-                <strong className="block font-bold">التواريخ المحددة خارج الفترات المتاحة لهذا الفندق</strong>
-                <p className="mt-1 text-amber-800 leading-relaxed">
-                  هذا الفندق متاح للحجز فقط خلال الفترات والمواسم المعتمدة الموضحة بالأعلى. يرجى اختيار تاريخ يقع داخل إحدى تلك الفترات للمتابعة إلى الخطوة التالية.
-                </p>
+            {/* Hotel Defined Pricing Periods */}
+            {pricingPeriods.filter(p => p.isActive !== false).length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {pricingPeriods.filter(p => p.isActive !== false).map(p => {
+                  const isCurrent = checkIn === p.startDate && checkOut === p.endDate;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleSelectPeriod(p.startDate, p.endDate)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                        isCurrent
+                          ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-xs'
+                          : 'bg-white hover:bg-amber-50 text-stone-800 border-stone-200 hover:border-[#C9A24B]/50'
+                      }`}
+                    >
+                      <Sparkles className={`w-3 h-3 ${isCurrent ? 'text-white' : 'text-[#B38A34]'}`} />
+                      <span>{p.name}:</span>
+                      <span dir="ltr" className="font-mono text-[11px]">{p.startDate} ~ {p.endDate}</span>
+                      {isCurrent && <span className="text-[10px] bg-white/20 px-1 rounded">المحدد حالياً ✓</span>}
+                    </button>
+                  );
+                })}
               </div>
+            ) : null}
+
+            {/* Quick Shortcuts: Weekend & Next Week */}
+            <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-stone-200/60">
+              <span className="text-[11px] text-stone-500 font-bold">اختصارات سريعة:</span>
+              <button
+                type="button"
+                onClick={handleQuickWeekend}
+                className="px-2.5 py-1 rounded-lg bg-white border border-stone-200 hover:border-[#C9A24B] text-[11px] font-bold text-stone-700 transition-colors cursor-pointer"
+              >
+                عطلة نهاية الأسبوع (خميس - سبت) ⚡
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickNextWeek}
+                className="px-2.5 py-1 rounded-lg bg-white border border-stone-200 hover:border-[#C9A24B] text-[11px] font-bold text-stone-700 transition-colors cursor-pointer"
+              >
+                الأسبوع القادم (3 ليالٍ) ⚡
+              </button>
             </div>
-          )}
+
+            {/* Friendly Non-Blocking Advisory if outside active periods */}
+            {isOutsideActivePeriods && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-stone-800 text-xs flex items-center justify-between flex-wrap gap-2 animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    التواريخ الحالية خارج المواسم المجدولة للفندق. يمكنك المتابعة أو تبديل الفترة لأحد المواسم المعتمدة.
+                  </span>
+                </div>
+                {pricingPeriods.filter(p => p.isActive !== false).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const firstP = pricingPeriods.find(p => p.isActive !== false);
+                      if (firstP) handleSelectPeriod(firstP.startDate, firstP.endDate);
+                    }}
+                    className="px-3 py-1 rounded-lg bg-[#C9A24B] text-white font-bold text-[11px] hover:bg-[#B38A34] transition-colors cursor-pointer shrink-0"
+                  >
+                    تبديل لأقرب موسم متاح الآن ⚡
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
             {/* Check-In Date */}
@@ -1385,15 +1458,26 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
                         {/* Quantity Increment/Decrement Controls */}
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           {currentQty === 0 ? (
-                            <button
-                              type="button"
-                              disabled={isRoomSoldOut}
-                              onClick={() => handleRoomQuantityChange(room.id, 1)}
-                              className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 font-extrabold text-xs transition-all flex items-center gap-1.5 border border-stone-200 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95 shadow-sm"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>إضافة للحجز</span>
-                            </button>
+                            isRoomSoldOut ? (
+                              <button
+                                type="button"
+                                onClick={() => setCurrentStep(1)}
+                                className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#8C6D23] font-extrabold text-[11px] transition-all flex items-center gap-1.5 border border-amber-300 cursor-pointer shadow-xs active:scale-95"
+                                title="تبديل الفترة لتحديث تواريخ الإقامة"
+                              >
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span>تبديل الفترة 🔄</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleRoomQuantityChange(room.id, 1)}
+                                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 font-extrabold text-xs transition-all flex items-center gap-1.5 border border-stone-200 cursor-pointer active:scale-95 shadow-sm"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>إضافة للحجز</span>
+                              </button>
+                            )
                           ) : (
                             <div className="flex items-center gap-2 bg-white border border-[#C9A24B]/50 p-1 rounded-xl shadow-sm">
                               <button

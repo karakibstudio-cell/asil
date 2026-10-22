@@ -26,7 +26,10 @@ import {
   BedDouble,
   ArrowRight,
   Filter,
-  CheckCircle
+  CheckCircle,
+  Briefcase,
+  UsersRound,
+  MessageCircle
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { INITIAL_HOTELS } from '../data/mockHotels';
@@ -171,10 +174,11 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     return matchedHotels.filter(h => h.onlineBookingEnabled !== false && h.isActive !== false);
   }, [matchedHotels]);
 
-  // Tab: 'book' vs 'manage'
-  const [activeTab, setActiveTab] = useState<'book' | 'manage'>(() => {
+  // Tab: 'book-individual' | 'book-corporate' | 'manage'
+  // (Directly ties individual vs group booking to the top choices)
+  const [activeTab, setActiveTab] = useState<'book-individual' | 'book-corporate' | 'manage'>(() => {
     if (prefillManageCode) return 'manage';
-    return isCreationAllowed ? 'book' : 'manage';
+    return isCreationAllowed ? 'book-individual' : 'manage';
   });
 
   // Manage Booking Tab State
@@ -213,6 +217,64 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  // Period Switcher Quick Helpers
+  const handleSelectQuickPeriod = (startDate: string, endDate: string) => {
+    setSearchCheckIn(startDate);
+    setSearchCheckOut(endDate);
+  };
+
+  const handleQuickWeekend = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diffToThursday = (4 - day + 7) % 7 || 7;
+    const thurs = new Date(d);
+    thurs.setDate(d.getDate() + diffToThursday);
+    const sat = new Date(thurs);
+    sat.setDate(thurs.getDate() + 2);
+    setSearchCheckIn(thurs.toISOString().split('T')[0]);
+    setSearchCheckOut(sat.toISOString().split('T')[0]);
+  };
+
+  const handleQuickNextWeek = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    const outD = new Date(d);
+    outD.setDate(d.getDate() + 3);
+    setSearchCheckIn(d.toISOString().split('T')[0]);
+    setSearchCheckOut(outD.toISOString().split('T')[0]);
+  };
+
+  // Direct WhatsApp Link Builder for any Hotel (Syncs with admin settings)
+  const buildHotelDirectWhatsAppLink = (h: Hotel) => {
+    const rawPhone = (
+      (h.showHotelWhatsApp !== false && h.hotelWhatsApp?.trim()) ||
+      siteSettings?.bookingModule?.bookingWhatsApp ||
+      siteSettings?.channels?.find(c => c.type === 'whatsapp')?.value ||
+      '+966544076726'
+    );
+    const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+    const bookingModeText = activeTab === 'book-corporate' ? 'حجز شركات ومجموعات' : 'حجز إقامة فندقية';
+    const msg = `السلام عليكم ورحمة الله،\nأود الاستفسار وطلب *${bookingModeText}* في فندق:\n🏨 *${h.name}*\n📍 المدينة: ${h.city} - حي ${h.district || 'المنطقة المركزية'}\n📅 فترة الإقامة: من ${searchCheckIn} إلى ${searchCheckOut} (${nightsCount} ليالٍ)\nعبر منظومة برستيج الفندقية المعتمدة.\nيرجى تزويدي بأفضل الأسعار والإتاحة المباشرة.`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  };
+
+  // Featured and WhatsApp Connected Hotels List (Controlled by Admin Settings)
+  const featuredAndWhatsAppHotels = useMemo(() => {
+    return availableHotels.filter(h => {
+      if (h.isActive === false) return false;
+      const isFeatured = h.featured === true;
+      const hasWhatsApp = Boolean(h.hotelWhatsApp?.trim()) || h.showHotelWhatsApp !== false;
+      return isFeatured || hasWhatsApp;
+    }).sort((a, b) => {
+      if (a.featured && !b.featured) return -1;
+      if (!a.featured && b.featured) return 1;
+      const orderA = typeof a.order === 'number' && a.order > 0 ? a.order : 999;
+      const orderB = typeof b.order === 'number' && b.order > 0 ? b.order : 999;
+      if (orderA !== orderB) return orderA - orderB;
+      return (b.rating || 0) - (a.rating || 0);
+    });
+  }, [availableHotels]);
+
   // Handle Search & Refresh Button
   const handleTriggerSearch = () => {
     setIsUpdatingSearch(true);
@@ -249,45 +311,67 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
         </div>
 
         <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-stone-900 tracking-tight">
-          {activeTab === 'book'
+          {activeTab === 'book-individual'
             ? 'احجز إقامتك الفاخرة بجوار الحرمين الشريفين'
+            : activeTab === 'book-corporate'
+            ? 'حجوزات الشركات والبعثات والحملات الكبرى'
             : 'إدارة ومتابعة الحجز الفندقي والمفتاح الرقمي'}
         </h1>
         <p className="text-xs sm:text-sm text-stone-600 max-w-3xl mx-auto leading-relaxed">
-          {activeTab === 'book'
-            ? 'استعرض الفنادق المتاحة لحظياً، حدد التواريخ واحجز مباشرة بأفضل سعر معتمد وبدون أي عمولات أو وسطاء.'
+          {activeTab === 'book-individual'
+            ? 'استعرض الفنادق المتاحة لحظياً، حدد التواريخ واحجز إقامتك الفردية والعائلية مباشرة بأفضل سعر معتمد وبدون أي عمولات أو وسطاء.'
+            : activeTab === 'book-corporate'
+            ? 'منظومة متكاملة لخدمة الشركات والحملات والوفود: تسكين متعدد للغرف، باصات النقل، باقات الإعاشة، وفواتير ضريبية معتمدة.'
             : 'استعلم برقم الحجز أو رقم الجوال للاطلاع على تفاصيل إقامتك، كود التسكين الذكي، وتحميل سند الحجز الرسمي.'}
         </p>
 
-        {/* Tab Switcher: Book Room vs Manage Booking */}
+        {/* Tab Switcher: 1. حجز فندق (فردي / عائلي) - 2. حجز شركات (مجموعات) - 3. إدارة ومتابعة حجز */}
         <div className="pt-2 flex items-center justify-center">
-          <div className="inline-flex p-1.5 rounded-2xl bg-white border border-stone-200 shadow-xs gap-2">
+          <div className="inline-flex p-1.5 rounded-2xl bg-white border border-stone-200 shadow-xs gap-1.5 sm:gap-2 flex-wrap justify-center">
             {isCreationAllowed && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('book')}
-                className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
-                  activeTab === 'book'
-                    ? 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] text-white shadow-sm'
-                    : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
-                }`}
-              >
-                <Search className="w-4 h-4" />
-                <span>حجز فندقي جديد</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('book-individual')}
+                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'book-individual'
+                      ? 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] text-white shadow-sm'
+                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>حجز فندق (فردي / عائلي)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('book-corporate')}
+                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+                    activeTab === 'book-corporate'
+                      ? 'bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 text-[#DFBE72] border border-[#C9A24B]/50 shadow-md'
+                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+                  }`}
+                >
+                  <Briefcase className="w-4 h-4 text-[#C9A24B]" />
+                  <span>حجز شركات (مجموعات وحملات)</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#C9A24B]/20 text-[#8C6D23] font-bold hidden md:inline">
+                    عروض خاصة
+                  </span>
+                </button>
+              </>
             )}
 
             <button
               type="button"
               onClick={() => setActiveTab('manage')}
-              className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
                 activeTab === 'manage'
                   ? 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] text-white shadow-sm'
                   : 'text-stone-600 hover:text-stone-900 hover:bg-stone-50'
               }`}
             >
               <ShieldCheck className="w-4 h-4 text-[#F4B400]" />
-              <span>إدارة ومتابعة حجز</span>
+              <span>إدارة / متابعة حجز</span>
             </button>
           </div>
         </div>
@@ -295,9 +379,9 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
 
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* ========================================================================= */}
-        {/* TAB 1: LUXURY SEARCH BAR & BOOKING FLOW                                   */}
+        {/* TAB 1: LUXURY SEARCH BAR & BOOKING FLOW (INDIVIDUAL & CORPORATE)          */}
         {/* ========================================================================= */}
-        {activeTab === 'book' && (
+        {(activeTab === 'book-individual' || activeTab === 'book-corporate') && (
           <div className="space-y-6 animate-fadeIn">
             {/* ── UNIFIED LUXURY SEARCH BAR (Apple Glassmorphism Design) ── */}
             <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-4 sm:p-6 border border-[#C9A24B]/30 shadow-lg relative z-20">
@@ -521,8 +605,64 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                 </div>
               </div>
 
+              {/* Quick Period Shortcuts Bar (تبديل الفترة) */}
+              <div className="pt-3 mt-3 border-t border-stone-100 flex items-center justify-between flex-wrap gap-2 text-xs">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-extrabold text-stone-600 flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-[#B38A34]" />
+                    <span>تبديل الفترة:</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleQuickWeekend}
+                    className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-[#C9A24B]/15 hover:text-[#8C6D23] text-stone-700 text-[11px] font-bold transition-colors cursor-pointer border border-stone-200"
+                  >
+                    عطلة نهاية الأسبوع (خميس - سبت) ⚡
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleQuickNextWeek}
+                    className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-[#C9A24B]/15 hover:text-[#8C6D23] text-stone-700 text-[11px] font-bold transition-colors cursor-pointer border border-stone-200"
+                  >
+                    الأسبوع القادم (3 ليالٍ) ⚡
+                  </button>
+
+                  {/* Show hotel active seasons if selectedHotel has pricing periods */}
+                  {selectedHotel?.pricingPeriods && selectedHotel.pricingPeriods.filter(p => p.isActive !== false).map(p => {
+                    const isSelected = searchCheckIn === p.startDate && searchCheckOut === p.endDate;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleSelectQuickPeriod(p.startDate, p.endDate)}
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-2xs'
+                            : 'bg-white hover:bg-amber-50 text-stone-700 border-amber-300'
+                        }`}
+                      >
+                        <span>{p.name}: {p.startDate} ~ {p.endDate}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {activeTab === 'book-corporate' ? (
+                  <span className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2.5 py-0.5 rounded-lg border border-amber-200 flex items-center gap-1">
+                    <Briefcase className="w-3 h-3 text-[#B38A34]" />
+                    <span>حجز الشركات: تسكين متعدد + حافلات وعروض حملات</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-stone-500">
+                    أفضل سعر معتمد بدون أي وسيط
+                  </span>
+                )}
+              </div>
+
               {/* View Mode Toggle: Selected Hotel Wizard vs Explore Available Hotels */}
-              <div className="pt-4 mt-3 border-t border-stone-100 flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div className="pt-3 mt-2 border-t border-stone-100/70 flex items-center justify-between flex-wrap gap-2 text-xs">
                 <div className="flex items-center gap-2 text-stone-600">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span>
@@ -695,9 +835,10 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                     allHotels={activeHotels}
                     initialCheckIn={searchCheckIn}
                     initialCheckOut={searchCheckOut}
-                    initialRooms={prefillRooms}
+                    initialRooms={activeTab === 'book-corporate' ? Math.max(3, prefillRooms) : prefillRooms}
                     initialAdults={prefillAdults}
                     initialChildren={prefillChildren}
+                    initialBookingType={activeTab === 'book-corporate' ? 'group' : 'individual'}
                     siteSettings={siteSettings}
                     onNavigateHome={() => onNavigate('home')}
                     onSelectAnotherHotel={(hId) => {
@@ -887,6 +1028,169 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                 <p className="text-[11px] text-stone-400">يرجى التأكد من كود الحجز أو رقم الهاتف المدخل</p>
               </div>
             ) : null}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* FEATURED & WHATSAPP-LINKED HOTELS SHOWCASE                                 */}
+        {/* (يظهر الفنادق المميزة والمتصلة بالواتساب مع إمكانية التعديل من الإعدادات)   */}
+        {/* ========================================================================= */}
+        {featuredAndWhatsAppHotels.length > 0 && (
+          <div className="pt-12 mt-12 border-t border-stone-200/90 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#C9A24B]/15 text-[#8C6D23] text-xs font-bold border border-[#C9A24B]/30 mb-2 shadow-2xs">
+                  <Star className="w-3.5 h-3.5 fill-[#DFBE72] text-[#DFBE72]" />
+                  <span>فنادق مختارة ومميزة • حجز فوري وتواصل مباشر</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-stone-900 font-cairo">
+                  فنادق برستيج المميزة والموصى بها
+                </h2>
+                <p className="text-xs sm:text-sm text-stone-500 mt-1 max-w-2xl leading-relaxed">
+                  فنادق مميزة متصلة برقم الواتساب المعتمد أو مؤهلة للحجز الإلكتروني المباشر، ويمكن تعديل خياراتها وربطها بالكامل من إعدادات لوحة التحكم.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-stone-600 bg-white px-3.5 py-2 rounded-2xl border border-stone-200 shadow-2xs">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>متصلة بالواتساب ومتاحة للحجز ({featuredAndWhatsAppHotels.length} فندقاً)</span>
+              </div>
+            </div>
+
+            {/* Grid of Featured & WhatsApp Hotels */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {featuredAndWhatsAppHotels.map((h) => {
+                const isSelected = selectedHotel?.id === h.id;
+                const isMakkah = h.city === 'مكة المكرمة';
+                const hasWhatsApp = Boolean(h.hotelWhatsApp?.trim()) || h.showHotelWhatsApp !== false;
+                const isOnline = h.onlineBookingEnabled !== false;
+
+                return (
+                  <div
+                    key={`showcase-${h.id}`}
+                    className={`rounded-3xl border bg-white overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col justify-between group ${
+                      isSelected
+                        ? 'border-[#C9A24B] ring-2 ring-[#C9A24B]/40 shadow-md'
+                        : 'border-stone-200/90 hover:border-[#C9A24B]/50'
+                    }`}
+                  >
+                    <div>
+                      {/* Photo Container */}
+                      <div className="relative aspect-video bg-stone-100 overflow-hidden">
+                        <img
+                          src={h.mainImage}
+                          alt={h.name}
+                          loading="lazy"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
+
+                        {/* Top Badges */}
+                        <div className="absolute top-3 right-3 flex items-center gap-1.5 flex-wrap z-10">
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-black/70 backdrop-blur-md text-white border border-white/20">
+                            {isMakkah ? '🕋 مكة المكرمة' : '🕌 المدينة المنورة'}
+                          </span>
+                          {h.featured && (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#C9A24B] text-white shadow-sm flex items-center gap-1">
+                              <Star className="w-3 h-3 fill-white text-white" />
+                              <span>مميز</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Bottom Info inside image */}
+                        <div className="absolute bottom-3 inset-x-3 flex items-center justify-between text-white text-[11px] font-bold z-10">
+                          <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/15">
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <span>{h.stars ?? 5} نجوم</span>
+                            <span className="text-stone-300">• {h.rating || 4.8} ★</span>
+                          </div>
+
+                          {h.distanceText && (
+                            <div className="bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/15 truncate max-w-[150px]">
+                              {h.distanceText}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Content */}
+                      <div className="p-4 sm:p-5 space-y-2.5">
+                        <div>
+                          <h3 className="font-extrabold text-base sm:text-lg text-stone-900 group-hover:text-[#B38A34] transition-colors line-clamp-1">
+                            {h.name}
+                          </h3>
+                          {h.nameEn && (
+                            <span className="text-[11px] text-stone-400 font-medium block truncate">
+                              {h.nameEn}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-stone-500 flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-[#B38A34] shrink-0" />
+                          <span>حي {h.district} • {h.city}</span>
+                        </p>
+
+                        {/* Status Badges */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          {hasWhatsApp && (
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                              <MessageCircle className="w-3 h-3 text-emerald-600" />
+                              <span>واتساب مباشر {h.hotelWhatsApp ? `(${h.hotelWhatsApp})` : ''}</span>
+                            </span>
+                          )}
+                          {isOnline ? (
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-[#8C6D23] border border-amber-200 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-[#B38A34]" />
+                              <span>حجز إلكتروني متاح</span>
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-stone-100 text-stone-600 border border-stone-200">
+                              حجز عبر الإدارة
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dual Action Buttons */}
+                    <div className="p-4 sm:p-5 pt-0 grid grid-cols-2 gap-2">
+                      {/* WhatsApp Button */}
+                      <a
+                        href={buildHotelDirectWhatsAppLink(h)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-2.5 px-3 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer text-center"
+                        title="تواصل مباشرة عبر واتساب الفندق"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>حجز واتساب</span>
+                      </a>
+
+                      {/* Online Book Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedHotel(h);
+                          setViewMode('wizard');
+                          if (activeTab === 'manage') setActiveTab('book-individual');
+                          window.scrollTo({ top: 180, behavior: 'smooth' });
+                        }}
+                        className={`py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-stone-900 text-white shadow-xs'
+                            : 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] hover:from-[#9E782B] hover:to-[#B38A34] text-white shadow-xs active:scale-95'
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{isSelected ? 'المحدد حالياً ✓' : 'احجز أونلاين'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
