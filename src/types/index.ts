@@ -228,6 +228,14 @@ export interface ContactChannel {
   order: number;
 }
 
+export type HeroButtonAction = 
+  | ActivePage 
+  | 'whatsapp' 
+  | 'hotels-makkah' 
+  | 'hotels-madinah' 
+  | 'hotel-detail' 
+  | string;
+
 export interface HeroSlide {
   id: string;
   mediaType?: 'image' | 'video';
@@ -242,10 +250,14 @@ export interface HeroSlide {
   showSubtitle?: boolean;
   showPrimaryButton?: boolean;
   primaryButtonText?: string;
-  primaryButtonAction?: ActivePage | 'whatsapp';
+  primaryButtonAction?: HeroButtonAction;
+  primaryButtonHotelId?: string;
+  primaryButtonWhatsApp?: string;
   showSecondaryButton?: boolean;
   secondaryButtonText?: string;
-  secondaryButtonAction?: ActivePage | 'whatsapp';
+  secondaryButtonAction?: HeroButtonAction;
+  secondaryButtonHotelId?: string;
+  secondaryButtonWhatsApp?: string;
   order: number;
   isActive: boolean;
 }

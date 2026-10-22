@@ -25,7 +25,7 @@ import { Lightbox, LightboxMediaItem } from './Lightbox';
 
 interface HeroSliderProps {
   slides?: HeroSlide[];
-  onNavigate: (page: ActivePage, hotelIdOrSlug?: string) => void;
+  onNavigate: (page: ActivePage | 'hotels-makkah' | 'hotels-madinah' | string, hotelIdOrSlug?: string) => void;
   siteSettings: SiteSettings;
   onScrollToNext?: () => void;
 }
@@ -57,12 +57,23 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
   const primaryWhatsApp = getFirstActiveWhatsApp(siteSettings?.channels);
   const targetWhatsApp = primaryWhatsApp?.value || siteSettings?.officeWhatsApp || siteSettings?.primaryPhone || '';
   const defaultWhatsAppMsg = `السلام عليكم ورحمة الله، أود الاستفسار عن عروض وتسكين الفنادق في مكة والمدينة عبر ${siteSettings?.siteTitle || 'برستيج لإدارة وتشغيل الفنادق'}.`;
-  const whatsAppBookingUrl = buildWhatsAppLink(targetWhatsApp, defaultWhatsAppMsg);
 
-  const handleAction = (action?: ActivePage | 'whatsapp' | 'hotels-makkah' | 'hotels-madinah' | string) => {
+  const handleAction = (
+    action?: string,
+    customWhatsApp?: string,
+    hotelId?: string
+  ) => {
     if (!action) return;
     if (action === 'whatsapp') {
-      window.open(whatsAppBookingUrl, '_blank', 'noopener,noreferrer');
+      const phoneToUse = customWhatsApp?.trim() || targetWhatsApp;
+      const url = buildWhatsAppLink(phoneToUse, defaultWhatsAppMsg);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (action === 'hotel-detail' && hotelId) {
+      onNavigate('hotel-detail', hotelId);
+    } else if (action === 'hotels-makkah') {
+      onNavigate('hotels-makkah');
+    } else if (action === 'hotels-madinah') {
+      onNavigate('hotels-madinah');
     } else {
       onNavigate(action as ActivePage);
     }
@@ -430,7 +441,11 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
                     id="hero-slider-primary-cta"
                     whileHover={{ scale: 1.05, boxShadow: "0 20px 35px -10px rgba(201, 162, 75, 0.55)" }}
                     whileTap={{ scale: 0.96 }}
-                    onClick={() => handleAction(currentSlide.primaryButtonAction || 'hotels')}
+                    onClick={() => handleAction(
+                      currentSlide.primaryButtonAction || 'hotels',
+                      currentSlide.primaryButtonWhatsApp,
+                      currentSlide.primaryButtonHotelId
+                    )}
                     className="w-full sm:w-auto px-8 py-4 rounded-full bg-gradient-to-r from-[#DFBE72] via-[#C9A24B] to-[#B38A34] text-white font-bold text-base shadow-xl shadow-[#C9A24B]/35 transition-all duration-300 flex items-center justify-center gap-3 group cursor-pointer"
                   >
                     <span>
@@ -449,7 +464,11 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
                     id="hero-slider-secondary-cta"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.96 }}
-                    onClick={() => handleAction(currentSlide.secondaryButtonAction || 'contact')}
+                    onClick={() => handleAction(
+                      currentSlide.secondaryButtonAction || 'contact',
+                      currentSlide.secondaryButtonWhatsApp,
+                      currentSlide.secondaryButtonHotelId
+                    )}
                     className="w-full sm:w-auto px-8 py-4 rounded-full bg-white/95 hover:bg-white text-stone-900 border border-stone-300 hover:border-[#C9A24B] font-bold text-base backdrop-blur-md shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2.5 cursor-pointer"
                   >
                     {currentSlide.secondaryButtonAction === 'whatsapp' ? (

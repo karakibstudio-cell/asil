@@ -3151,6 +3151,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {activeTab === 'slides' && (
               <div id="admin-slides-section">
                 <AdminHeroSlidesManager
+                  hotels={hotels}
                   siteSettings={siteSettings}
                   onUpdateSiteSettings={onUpdateSiteSettings}
                   onShowToast={onShowToast}

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { HeroSlide, SiteSettings, ActivePage } from '../types';
+import React, { useState, useMemo } from 'react';
+import { HeroSlide, SiteSettings, ActivePage, Hotel } from '../types';
+import { INITIAL_HOTELS } from '../data/mockHotels';
 import { 
   Plus, 
   Trash2, 
@@ -17,7 +18,9 @@ import {
   Film,
   Play,
   Sliders,
-  CheckCircle2
+  CheckCircle2,
+  MessageCircle,
+  Phone
 } from 'lucide-react';
 import { SafeVideoPlayer } from './SafeVideoPlayer';
 import { optimizeImageFile } from '../utils/imageOptimizer';
@@ -73,12 +76,14 @@ function extractVideoThumbnail(file: File): Promise<string> {
 }
 
 interface AdminHeroSlidesManagerProps {
+  hotels?: Hotel[];
   siteSettings: SiteSettings;
   onUpdateSiteSettings: (settings: SiteSettings) => Promise<void>;
   onShowToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
+  hotels,
   siteSettings,
   onUpdateSiteSettings,
   onShowToast
@@ -120,6 +125,103 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
     setLightboxOpen(true);
   };
 
+  const availableHotels = useMemo(() => {
+    if (hotels && Array.isArray(hotels) && hotels.length > 0) return hotels;
+    try {
+      const saved = localStorage.getItem('diy_hotels');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as Hotel[];
+      }
+    } catch {}
+    return INITIAL_HOTELS;
+  }, [hotels]);
+
+  const quickWhatsAppOptions = useMemo(() => {
+    const list: { label: string; number: string }[] = [];
+    const seen = new Set<string>();
+
+    const addNum = (num?: string, label?: string) => {
+      const clean = num?.trim();
+      if (clean && !seen.has(clean)) {
+        seen.add(clean);
+        list.push({ label: label || 'رقم معتمد', number: clean });
+      }
+    };
+
+    if (siteSettings?.officeWhatsApp) {
+      addNum(siteSettings.officeWhatsApp, 'واتساب الإدارة');
+    }
+    if (siteSettings?.primaryPhone) {
+      addNum(siteSettings.primaryPhone, 'الهاتف الرئيسي');
+    }
+    if (Array.isArray(siteSettings?.channels)) {
+      siteSettings.channels.forEach(ch => {
+        if (ch.type === 'whatsapp' && ch.value) {
+          addNum(ch.value, ch.label || 'قناة واتساب');
+        }
+      });
+    }
+    if (Array.isArray(siteSettings?.departmentContacts)) {
+      siteSettings.departmentContacts.forEach(dep => {
+        if (dep.whatsapp) {
+          addNum(dep.whatsapp, dep.department || dep.name || 'جهة اتصال');
+        }
+      });
+    }
+    return list;
+  }, [siteSettings]);
+
+  const getActionLabel = (action?: string, hotelId?: string, customPhone?: string) => {
+    switch (action) {
+      case 'hotels':
+        return 'جميع الفنادق';
+      case 'hotels-makkah':
+        return 'فنادق مكة المكرمة';
+      case 'hotels-madinah':
+        return 'فنادق المدينة المنورة';
+      case 'hotel-detail': {
+        const h = availableHotels.find(x => x.id === hotelId);
+        return h ? `فندق: ${h.name}` : 'فندق محدد';
+      }
+      case 'offers':
+        return 'صفحة العروض';
+      case 'contact':
+        return 'صفحة تواصل معنا';
+      case 'about':
+        return 'صفحة من نحن';
+      case 'whatsapp':
+        return customPhone ? `واتساب (${customPhone})` : 'واتساب مباشر';
+      default:
+        return action || 'صفحة الفنادق';
+    }
+  };
+
+  const getDefaultButtonText = (action: string, hotelId?: string) => {
+    switch (action) {
+      case 'hotels':
+        return 'استعرض الفنادق المتاحة';
+      case 'hotels-makkah':
+        return 'فنادق مكة المكرمة';
+      case 'hotels-madinah':
+        return 'فنادق المدينة المنورة';
+      case 'hotel-detail': {
+        const h = availableHotels.find(x => x.id === hotelId);
+        return h ? `فندق ${h.name}` : 'استعراض الفندق';
+      }
+      case 'offers':
+        return 'استكشف أحدث العروض';
+      case 'contact':
+        return 'تواصل معنا';
+      case 'about':
+        return 'من نحن';
+      case 'whatsapp':
+        return 'تواصل عبر الواتساب';
+      default:
+        return 'استعرض الفنادق';
+    }
+  };
+
   const [slideForm, setSlideForm] = useState<HeroSlide>({
     id: '',
     mediaType: 'image',
@@ -135,12 +237,66 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
     showPrimaryButton: true,
     primaryButtonText: 'استعرض الفنادق المتاحة',
     primaryButtonAction: 'hotels',
+    primaryButtonHotelId: '',
+    primaryButtonWhatsApp: '',
     showSecondaryButton: true,
     secondaryButtonText: 'تواصل مع مستشار الحجز',
     secondaryButtonAction: 'contact',
+    secondaryButtonHotelId: '',
+    secondaryButtonWhatsApp: '',
     order: 0,
     isActive: true
   });
+
+  const handlePrimaryActionChange = (newAction: string) => {
+    let targetHotelId = slideForm.primaryButtonHotelId;
+    if (newAction === 'hotel-detail') {
+      if (!targetHotelId && availableHotels.length > 0) {
+        targetHotelId = availableHotels[0].id;
+      }
+    }
+    const suggestedText = getDefaultButtonText(newAction, targetHotelId);
+    setSlideForm(prev => ({
+      ...prev,
+      primaryButtonAction: newAction,
+      primaryButtonHotelId: targetHotelId,
+      primaryButtonText: suggestedText
+    }));
+  };
+
+  const handlePrimaryHotelChange = (hotelId: string) => {
+    const suggestedText = getDefaultButtonText('hotel-detail', hotelId);
+    setSlideForm(prev => ({
+      ...prev,
+      primaryButtonHotelId: hotelId,
+      primaryButtonText: suggestedText
+    }));
+  };
+
+  const handleSecondaryActionChange = (newAction: string) => {
+    let targetHotelId = slideForm.secondaryButtonHotelId;
+    if (newAction === 'hotel-detail') {
+      if (!targetHotelId && availableHotels.length > 0) {
+        targetHotelId = availableHotels[0].id;
+      }
+    }
+    const suggestedText = getDefaultButtonText(newAction, targetHotelId);
+    setSlideForm(prev => ({
+      ...prev,
+      secondaryButtonAction: newAction,
+      secondaryButtonHotelId: targetHotelId,
+      secondaryButtonText: suggestedText
+    }));
+  };
+
+  const handleSecondaryHotelChange = (hotelId: string) => {
+    const suggestedText = getDefaultButtonText('hotel-detail', hotelId);
+    setSlideForm(prev => ({
+      ...prev,
+      secondaryButtonHotelId: hotelId,
+      secondaryButtonText: suggestedText
+    }));
+  };
 
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
@@ -249,9 +405,13 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
       showPrimaryButton: true,
       primaryButtonText: 'استعرض الفنادق المتاحة',
       primaryButtonAction: 'hotels',
+      primaryButtonHotelId: availableHotels[0]?.id || '',
+      primaryButtonWhatsApp: '',
       showSecondaryButton: true,
-      secondaryButtonText: 'تواصل معنا',
+      secondaryButtonText: 'تواصل مع مستشار الحجز',
       secondaryButtonAction: 'contact',
+      secondaryButtonHotelId: availableHotels[0]?.id || '',
+      secondaryButtonWhatsApp: '',
       order: slides.length,
       isActive: true
     });
@@ -269,7 +429,15 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
       showTitle: slide.showTitle !== false,
       showSubtitle: slide.showSubtitle !== false,
       showPrimaryButton: slide.showPrimaryButton !== false,
-      showSecondaryButton: slide.showSecondaryButton !== false
+      primaryButtonText: slide.primaryButtonText || 'استعرض الفنادق المتاحة',
+      primaryButtonAction: slide.primaryButtonAction || 'hotels',
+      primaryButtonHotelId: slide.primaryButtonHotelId || availableHotels[0]?.id || '',
+      primaryButtonWhatsApp: slide.primaryButtonWhatsApp || '',
+      showSecondaryButton: slide.showSecondaryButton !== false,
+      secondaryButtonText: slide.secondaryButtonText || 'تواصل معنا',
+      secondaryButtonAction: slide.secondaryButtonAction || 'contact',
+      secondaryButtonHotelId: slide.secondaryButtonHotelId || availableHotels[0]?.id || '',
+      secondaryButtonWhatsApp: slide.secondaryButtonWhatsApp || ''
     });
     if (hasBlob) {
       onShowToast('تم تنبيهك: الرابط السابق كان مؤقتاً (blob). يرجى اختيار أحد نماذج الفيديو الدائمة أو رفع الفيديو.', 'info');
@@ -319,7 +487,11 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
       mediaType: isVid ? 'video' : 'image',
       videoUrl: isVid ? (slideForm.videoUrl || '').trim() : '',
       videoThumbnail: isVid ? (slideForm.videoThumbnail || slideForm.imageUrl || '').trim() : '',
-      imageUrl: (slideForm.imageUrl || slideForm.videoThumbnail || '').trim()
+      imageUrl: (slideForm.imageUrl || slideForm.videoThumbnail || '').trim(),
+      primaryButtonHotelId: slideForm.primaryButtonAction === 'hotel-detail' ? slideForm.primaryButtonHotelId : undefined,
+      primaryButtonWhatsApp: slideForm.primaryButtonAction === 'whatsapp' ? (slideForm.primaryButtonWhatsApp || '').trim() : undefined,
+      secondaryButtonHotelId: slideForm.secondaryButtonAction === 'hotel-detail' ? slideForm.secondaryButtonHotelId : undefined,
+      secondaryButtonWhatsApp: slideForm.secondaryButtonAction === 'whatsapp' ? (slideForm.secondaryButtonWhatsApp || '').trim() : undefined
     };
 
     let updated: HeroSlide[];
@@ -522,7 +694,7 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                   )}
 
                   {/* Badges for Elements Display */}
-                  <div className="flex items-center gap-3 text-[11px] text-stone-500 pt-1 flex-wrap">
+                  <div className="flex items-center gap-2 text-[11px] text-stone-500 pt-1 flex-wrap">
                     <span className="flex items-center gap-1">
                       <span className={`w-2 h-2 rounded-full ${hasText ? 'bg-emerald-500' : 'bg-stone-300'}`} />
                       <span>{hasText ? 'النصوص مفعلة' : 'نصوص مخفية'}</span>
@@ -531,6 +703,20 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                       <span className={`w-2 h-2 rounded-full ${hasBtns ? 'bg-emerald-500' : 'bg-stone-300'}`} />
                       <span>{hasBtns ? 'الأزرار مفعلة' : 'أزرار مخفية'}</span>
                     </span>
+                    {slide.showPrimaryButton !== false && slide.primaryButtonText && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#C9A24B]/10 text-[#967123] border border-[#C9A24B]/30 text-[10px] font-semibold">
+                        <span>الذهبي:</span>
+                        <span>"{slide.primaryButtonText}"</span>
+                        <span className="text-[9px] text-stone-500 font-normal">({getActionLabel(slide.primaryButtonAction, slide.primaryButtonHotelId, slide.primaryButtonWhatsApp)})</span>
+                      </span>
+                    )}
+                    {slide.showSecondaryButton !== false && slide.secondaryButtonText && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-stone-100 text-stone-700 border border-stone-200 text-[10px] font-semibold">
+                        <span>الثانوي:</span>
+                        <span>"{slide.secondaryButtonText}"</span>
+                        <span className="text-[9px] text-stone-500 font-normal">({getActionLabel(slide.secondaryButtonAction, slide.secondaryButtonHotelId, slide.secondaryButtonWhatsApp)})</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -932,9 +1118,12 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                 </div>
 
                 {/* Primary Button */}
-                <div className="space-y-2 p-3 rounded-xl bg-white border border-stone-200">
+                <div className="space-y-3 p-3.5 rounded-xl bg-white border border-stone-200 shadow-2xs">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-[#B38A34]">الزر الذهبي الرئيسي:</label>
+                    <label className="text-xs font-bold text-[#B38A34] flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#C9A24B]" />
+                      <span>الزر الذهبي الرئيسي (Primary CTA):</span>
+                    </label>
                     <label className="flex items-center gap-1.5 text-xs text-stone-600 font-semibold cursor-pointer">
                       <input
                         type="checkbox"
@@ -947,37 +1136,131 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                   </div>
 
                   {slideForm.showPrimaryButton !== false && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      <div>
-                        <input
-                          type="text"
-                          value={slideForm.primaryButtonText || ''}
-                          onChange={(e) => setSlideForm({ ...slideForm, primaryButtonText: e.target.value })}
-                          placeholder="نص الزر (مثل: استعرض الفنادق)"
-                          className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B]"
-                        />
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Action Dropdown */}
+                        <div>
+                          <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                            نوع الوجهة / الإجراء المطلوب:
+                          </label>
+                          <select
+                            value={slideForm.primaryButtonAction || 'hotels'}
+                            onChange={(e) => handlePrimaryActionChange(e.target.value)}
+                            className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                          >
+                            <option value="hotels">صفحة الفنادق (جميع الفنادق)</option>
+                            <option value="hotels-makkah">فنادق مكة المكرمة فقط</option>
+                            <option value="hotels-madinah">فنادق المدينة المنورة فقط</option>
+                            <option value="hotel-detail">اختيار فندق محدد مباشرة</option>
+                            <option value="offers">صفحة العروض والخصومات</option>
+                            <option value="contact">صفحة تواصل معنا</option>
+                            <option value="about">صفحة من نحن</option>
+                            <option value="whatsapp">محادثة واتساب مباشرة</option>
+                          </select>
+                        </div>
+
+                        {/* Button Text (Auto-filled & Editable) */}
+                        <div>
+                          <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                            نص الزر (يُقترح تلقائياً ويمكنك تخصيصه):
+                          </label>
+                          <input
+                            type="text"
+                            value={slideForm.primaryButtonText || ''}
+                            onChange={(e) => setSlideForm({ ...slideForm, primaryButtonText: e.target.value })}
+                            placeholder="نص الزر (مثل: استعرض الفنادق)"
+                            className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <select
-                          value={slideForm.primaryButtonAction || 'hotels'}
-                          onChange={(e) => setSlideForm({ ...slideForm, primaryButtonAction: e.target.value as any })}
-                          className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B]"
-                        >
-                          <option value="hotels">صفحة الفنادق (Hotels)</option>
-                          <option value="offers">صفحة العروض (Offers)</option>
-                          <option value="contact">صفحة تواصل معنا (Contact)</option>
-                          <option value="about">صفحة من نحن (About)</option>
-                          <option value="whatsapp">محادثة واتساب مباشرة</option>
-                        </select>
-                      </div>
+
+                      {/* Hotel Picker (if hotel-detail is selected) */}
+                      {slideForm.primaryButtonAction === 'hotel-detail' && (
+                        <div className="p-3 rounded-xl bg-[#C9A24B]/10 border border-[#C9A24B]/30 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-stone-800 flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-[#B38A34]" />
+                              <span>اختر الفندق المطلوب توجيه الزائر لصفحته: *</span>
+                            </label>
+                            <span className="text-[10px] text-stone-500">ينتقل الزائر لصفحة الفندق وتفاصيله فوراً</span>
+                          </div>
+                          <select
+                            value={slideForm.primaryButtonHotelId || (availableHotels[0]?.id || '')}
+                            onChange={(e) => handlePrimaryHotelChange(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-[#C9A24B]/50 rounded-lg text-xs font-semibold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#C9A24B]"
+                          >
+                            <optgroup label="فنادق مكة المكرمة">
+                              {availableHotels.filter(h => h.city?.includes('مكة')).map(h => (
+                                <option key={h.id} value={h.id}>
+                                  {h.name} ({h.district || 'مكة'} - {h.stars} نجوم)
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="فنادق المدينة المنورة">
+                              {availableHotels.filter(h => h.city?.includes('المدينة')).map(h => (
+                                <option key={h.id} value={h.id}>
+                                  {h.name} ({h.district || 'المدينة'} - {h.stars} نجوم)
+                                </option>
+                              ))}
+                            </optgroup>
+                            {availableHotels.filter(h => !h.city?.includes('مكة') && !h.city?.includes('المدينة')).length > 0 && (
+                              <optgroup label="فنادق أخرى">
+                                {availableHotels.filter(h => !h.city?.includes('مكة') && !h.city?.includes('المدينة')).map(h => (
+                                  <option key={h.id} value={h.id}>{h.name}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* WhatsApp Phone Customizer (if whatsapp is selected) */}
+                      {slideForm.primaryButtonAction === 'whatsapp' && (
+                        <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
+                              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>رقم الواتساب المستهدف لهذا الزر:</span>
+                            </label>
+                            <span className="text-[10px] text-emerald-700">اختياري - اتركه فارغاً لاستخدام الرقم الرئيسي للموقع</span>
+                          </div>
+                          <input
+                            type="tel"
+                            dir="ltr"
+                            value={slideForm.primaryButtonWhatsApp || ''}
+                            onChange={(e) => setSlideForm({ ...slideForm, primaryButtonWhatsApp: e.target.value })}
+                            placeholder="مثال: 966501234567 أو +966501234567"
+                            className="w-full px-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-mono text-stone-900 focus:outline-none focus:border-emerald-500 text-left"
+                          />
+                          {quickWhatsAppOptions.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                              <span className="text-[10px] text-stone-500 font-semibold">أرقام مقترحة جاهزة:</span>
+                              {quickWhatsAppOptions.map((opt, i) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => setSlideForm({ ...slideForm, primaryButtonWhatsApp: opt.number })}
+                                  className="px-2 py-0.5 rounded-md bg-white border border-emerald-200 text-emerald-800 text-[10px] hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                                >
+                                  <span>{opt.label}:</span>
+                                  <span className="font-mono dir-ltr">{opt.number}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
                 {/* Secondary Button */}
-                <div className="space-y-2 p-3 rounded-xl bg-white border border-stone-200">
+                <div className="space-y-3 p-3.5 rounded-xl bg-white border border-stone-200 shadow-2xs">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-stone-700">الزر الثانوي الأبيض:</label>
+                    <label className="text-xs font-bold text-stone-700 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-stone-400" />
+                      <span>الزر الثانوي الأبيض (Secondary CTA):</span>
+                    </label>
                     <label className="flex items-center gap-1.5 text-xs text-stone-600 font-semibold cursor-pointer">
                       <input
                         type="checkbox"
@@ -990,29 +1273,120 @@ export const AdminHeroSlidesManager: React.FC<AdminHeroSlidesManagerProps> = ({
                   </div>
 
                   {slideForm.showSecondaryButton !== false && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                      <div>
-                        <input
-                          type="text"
-                          value={slideForm.secondaryButtonText || ''}
-                          onChange={(e) => setSlideForm({ ...slideForm, secondaryButtonText: e.target.value })}
-                          placeholder="نص الزر (مثل: تواصل معنا)"
-                          className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B]"
-                        />
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Action Dropdown */}
+                        <div>
+                          <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                            نوع الوجهة / الإجراء المطلوب:
+                          </label>
+                          <select
+                            value={slideForm.secondaryButtonAction || 'contact'}
+                            onChange={(e) => handleSecondaryActionChange(e.target.value)}
+                            className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                          >
+                            <option value="contact">صفحة تواصل معنا</option>
+                            <option value="whatsapp">محادثة واتساب مباشرة</option>
+                            <option value="hotels">صفحة الفنادق (جميع الفنادق)</option>
+                            <option value="hotels-makkah">فنادق مكة المكرمة فقط</option>
+                            <option value="hotels-madinah">فنادق المدينة المنورة فقط</option>
+                            <option value="hotel-detail">اختيار فندق محدد مباشرة</option>
+                            <option value="offers">صفحة العروض والخصومات</option>
+                            <option value="about">صفحة من نحن</option>
+                          </select>
+                        </div>
+
+                        {/* Button Text (Auto-filled & Editable) */}
+                        <div>
+                          <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                            نص الزر (يُقترح تلقائياً ويمكنك تخصيصه):
+                          </label>
+                          <input
+                            type="text"
+                            value={slideForm.secondaryButtonText || ''}
+                            onChange={(e) => setSlideForm({ ...slideForm, secondaryButtonText: e.target.value })}
+                            placeholder="نص الزر (مثل: تواصل معنا)"
+                            className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs font-semibold text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <select
-                          value={slideForm.secondaryButtonAction || 'contact'}
-                          onChange={(e) => setSlideForm({ ...slideForm, secondaryButtonAction: e.target.value as any })}
-                          className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#C9A24B]"
-                        >
-                          <option value="contact">صفحة تواصل معنا (Contact)</option>
-                          <option value="whatsapp">محادثة واتساب مباشرة</option>
-                          <option value="hotels">صفحة الفنادق (Hotels)</option>
-                          <option value="offers">صفحة العروض (Offers)</option>
-                          <option value="about">صفحة من نحن (About)</option>
-                        </select>
-                      </div>
+
+                      {/* Hotel Picker (if hotel-detail is selected) */}
+                      {slideForm.secondaryButtonAction === 'hotel-detail' && (
+                        <div className="p-3 rounded-xl bg-[#C9A24B]/10 border border-[#C9A24B]/30 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-stone-800 flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-[#B38A34]" />
+                              <span>اختر الفندق المطلوب توجيه الزائر لصفحته: *</span>
+                            </label>
+                            <span className="text-[10px] text-stone-500">ينتقل الزائر لصفحة الفندق وتفاصيله فوراً</span>
+                          </div>
+                          <select
+                            value={slideForm.secondaryButtonHotelId || (availableHotels[0]?.id || '')}
+                            onChange={(e) => handleSecondaryHotelChange(e.target.value)}
+                            className="w-full px-3 py-2 bg-white border border-[#C9A24B]/50 rounded-lg text-xs font-semibold text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#C9A24B]"
+                          >
+                            <optgroup label="فنادق مكة المكرمة">
+                              {availableHotels.filter(h => h.city?.includes('مكة')).map(h => (
+                                <option key={h.id} value={h.id}>
+                                  {h.name} ({h.district || 'مكة'} - {h.stars} نجوم)
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="فنادق المدينة المنورة">
+                              {availableHotels.filter(h => h.city?.includes('المدينة')).map(h => (
+                                <option key={h.id} value={h.id}>
+                                  {h.name} ({h.district || 'المدينة'} - {h.stars} نجوم)
+                                </option>
+                              ))}
+                            </optgroup>
+                            {availableHotels.filter(h => !h.city?.includes('مكة') && !h.city?.includes('المدينة')).length > 0 && (
+                              <optgroup label="فنادق أخرى">
+                                {availableHotels.filter(h => !h.city?.includes('مكة') && !h.city?.includes('المدينة')).map(h => (
+                                  <option key={h.id} value={h.id}>{h.name}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* WhatsApp Phone Customizer (if whatsapp is selected) */}
+                      {slideForm.secondaryButtonAction === 'whatsapp' && (
+                        <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
+                              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>رقم الواتساب المستهدف لهذا الزر:</span>
+                            </label>
+                            <span className="text-[10px] text-emerald-700">اختياري - اتركه فارغاً لاستخدام الرقم الرئيسي للموقع</span>
+                          </div>
+                          <input
+                            type="tel"
+                            dir="ltr"
+                            value={slideForm.secondaryButtonWhatsApp || ''}
+                            onChange={(e) => setSlideForm({ ...slideForm, secondaryButtonWhatsApp: e.target.value })}
+                            placeholder="مثال: 966501234567 أو +966501234567"
+                            className="w-full px-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-mono text-stone-900 focus:outline-none focus:border-emerald-500 text-left"
+                          />
+                          {quickWhatsAppOptions.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                              <span className="text-[10px] text-stone-500 font-semibold">أرقام مقترحة جاهزة:</span>
+                              {quickWhatsAppOptions.map((opt, i) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => setSlideForm({ ...slideForm, secondaryButtonWhatsApp: opt.number })}
+                                  className="px-2 py-0.5 rounded-md bg-white border border-emerald-200 text-emerald-800 text-[10px] hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                                >
+                                  <span>{opt.label}:</span>
+                                  <span className="font-mono dir-ltr">{opt.number}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
