@@ -53,39 +53,8 @@
     <link rel="preconnect" href="https://images.unsplash.com" crossorigin />
     <link rel="dns-prefetch" href="https://images.unsplash.com" />
 
-    <!-- Critical Asset Preloading: Self-Hosted Font & Route-Aware LCP Hero Image -->
+    <!-- Critical Asset Preloading: Self-Hosted Font -->
     <link rel="preload" href="/fonts/cairo-arabic.woff2" as="font" type="font/woff2" crossorigin />
-    <script>
-      (function() {
-        var p = window.location.pathname;
-        var topHotelImg = 'https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791378975751_bhxard.webp';
-        if (p === '/' || p === '/ar' || p === '/en' || p === '' || p === '/index.html') {
-          var l = document.createElement('link');
-          l.rel = 'preload';
-          l.as = 'image';
-          l.href = '/images/slides/slide_0.webp';
-          l.type = 'image/webp';
-          l.setAttribute('fetchpriority', 'high');
-          document.head.appendChild(l);
-
-          var l2 = document.createElement('link');
-          l2.rel = 'preload';
-          l2.as = 'image';
-          l2.href = topHotelImg;
-          l2.type = 'image/webp';
-          l2.setAttribute('fetchpriority', 'high');
-          document.head.appendChild(l2);
-        } else if (p.indexOf('hotel') !== -1) {
-          var lh = document.createElement('link');
-          lh.rel = 'preload';
-          lh.as = 'image';
-          lh.href = topHotelImg;
-          lh.type = 'image/webp';
-          lh.setAttribute('fetchpriority', 'high');
-          document.head.appendChild(lh);
-        }
-      })();
-    </script>
 
     <!-- Self-Hosted High Performance Typography (Zero Third-Party Latency) & CLS Baseline -->
     <style>

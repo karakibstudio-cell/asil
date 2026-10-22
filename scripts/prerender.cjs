@@ -215,12 +215,6 @@ function buildPageHtml(baseTemplate, config) {
     html = html.replace('</head>', `${jsonLdScript}\n  </head>`);
   }
 
-  // Inject static hero slide preload for homepages to maximize crawler & Lighthouse LCP score
-  if (canonicalPath === '/' || canonicalPath === '/ar' || canonicalPath === '/en') {
-    if (!html.includes('href="/images/slides/slide_0.webp"')) {
-      html = html.replace('</head>', '    <link rel="preload" as="image" href="/images/slides/slide_0.webp" type="image/webp" fetchpriority="high" />\n  </head>');
-    }
-  }
 
   // 8. Inject Semantic Crawler-Visible Content inside <div id="root">
   if (bodyHtml) {

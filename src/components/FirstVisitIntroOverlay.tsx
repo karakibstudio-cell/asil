@@ -25,7 +25,6 @@ export const FirstVisitIntroOverlay: React.FC<FirstVisitIntroOverlayProps> = ({
   }, []);
 
   const hasIntroVideo = (siteSettings?.introVideo?.enabled !== false) && Boolean(siteSettings?.introVideo?.videoUrl);
-  if (hasIntroVideo) return null;
 
   const isEnabled = config?.enabled !== false && (siteSettings?.displaySettings?.introEnabled !== false);
   const resetVersion = config?.resetVersion || 1;
@@ -57,7 +56,7 @@ export const FirstVisitIntroOverlay: React.FC<FirstVisitIntroOverlayProps> = ({
   };
 
   const [shouldShow, setShouldShow] = useState<boolean>(() => {
-    if (typeof window === 'undefined' || isCrawler || !isEnabled) return false;
+    if (typeof window === 'undefined' || isCrawler || !isEnabled || hasIntroVideo) return false;
     try {
       // If user reloaded the page via Ctrl+Shift+R, F5, or browser refresh, repeat the intro!
       if (isPageReload()) {
@@ -205,7 +204,14 @@ export const FirstVisitIntroOverlay: React.FC<FirstVisitIntroOverlayProps> = ({
     return () => clearTimeout(readyTimer);
   }, [shouldShow, isReady, minDurationMs]);
 
-  if (!shouldShow) return null;
+  useEffect(() => {
+    if (hasIntroVideo && shouldShow) {
+      setShouldShow(false);
+      onFinished?.();
+    }
+  }, [hasIntroVideo, shouldShow, onFinished]);
+
+  if (!shouldShow || hasIntroVideo) return null;
 
   const logoUrl = config?.logoUrl || siteSettings?.logoUrl || '/images/brand/logo.png';
   const title = language === 'en' 
