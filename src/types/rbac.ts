@@ -139,25 +139,99 @@ export const SUPER_ADMIN_ROLE: AdminRole = {
   createdAt: 1704067200000 // 2024-01-01
 };
 
-// Seed Example Role: Bookings Staff (موظف حجوزات)
+// Seed Role 1: General Manager (مدير)
+export const GENERAL_MANAGER_ROLE_ID = 'role_general_manager';
+
+export const GENERAL_MANAGER_ROLE: AdminRole = {
+  id: GENERAL_MANAGER_ROLE_ID,
+  name: 'مدير (General Manager)',
+  nameEn: 'General Manager',
+  description: 'صلاحيات إدارية شاملة على كافة أقسام النظام والعمليات باستثناء إنشاء أو تعديل المشرفين والصلاحيات',
+  isSystem: true,
+  permissions: {
+    hotels: { view: true, create: true, edit: true, delete: true, export: true },
+    branches: { view: true, create: true, edit: true, delete: true, export: true },
+    availability_pricing: { view: true, create: true, edit: true, delete: true, export: true },
+    booking_settings: { view: true, create: true, edit: true, delete: true, export: true },
+    bookings_log: { view: true, create: true, edit: true, delete: true, export: true },
+    invoices_policies: { view: true, create: true, edit: true, delete: true, export: true },
+    site_content: { view: true, create: true, edit: true, delete: true, export: true },
+    users_roles: { view: true, create: false, edit: false, delete: false, export: true },
+    system_settings: { view: true, create: true, edit: true, delete: false, export: true }
+  },
+  createdAt: 1704067200000
+};
+
+// Seed Role 2: Bookings Staff (موظف حجوزات)
 export const BOOKINGS_STAFF_ROLE_ID = 'role_bookings_staff';
 
 export const BOOKINGS_STAFF_ROLE: AdminRole = {
   id: BOOKINGS_STAFF_ROLE_ID,
   name: 'موظف حجوزات (Bookings Staff)',
   nameEn: 'Bookings Staff',
-  description: 'صلاحية استعراض سجل الحجوزات وتحديث حالاتها وإصدار سندات الحجز والفواتير',
-  isSystem: false,
+  description: 'متابعة سجل الحجوزات أونلاين وتحديث حالاتها وإصدار الفواتير وسندات القبض',
+  isSystem: true,
   permissions: {
     bookings_log: { view: true, create: false, edit: true, delete: false, export: true },
     invoices_policies: { view: true, create: false, edit: false, delete: false, export: true },
     hotels: { view: true, create: false, edit: false, delete: false, export: false },
-    availability_pricing: { view: true, create: false, edit: false, delete: false, export: false }
+    availability_pricing: { view: false, create: false, edit: false, delete: false, export: false },
+    booking_settings: { view: false, create: false, edit: false, delete: false, export: false },
+    branches: { view: false, create: false, edit: false, delete: false, export: false },
+    site_content: { view: false, create: false, edit: false, delete: false, export: false },
+    users_roles: { view: false, create: false, edit: false, delete: false, export: false },
+    system_settings: { view: false, create: false, edit: false, delete: false, export: false }
   },
   createdAt: 1704067200000
 };
 
-// Seed Example Role: Availability Manager (مدير التوفر والأسعار)
+// Seed Role 3: Reservations Manager (مدير حجوزات)
+export const RESERVATIONS_MANAGER_ROLE_ID = 'role_reservations_manager';
+
+export const RESERVATIONS_MANAGER_ROLE: AdminRole = {
+  id: RESERVATIONS_MANAGER_ROLE_ID,
+  name: 'مدير حجوزات (Reservations Manager)',
+  nameEn: 'Reservations Manager',
+  description: 'إدارة الحجوزات أونلاين، فتح وإغلاق الفنادق أونلاين، وضبط الإتاحة اليومية والمخزون وأنواع الغرف والأسعار',
+  isSystem: true,
+  permissions: {
+    bookings_log: { view: true, create: true, edit: true, delete: false, export: true },
+    availability_pricing: { view: true, create: true, edit: true, delete: true, export: true },
+    hotels: { view: true, create: false, edit: true, delete: false, export: true },
+    booking_settings: { view: true, create: false, edit: true, delete: false, export: true },
+    invoices_policies: { view: true, create: true, edit: true, delete: false, export: true },
+    branches: { view: true, create: false, edit: false, delete: false, export: false },
+    site_content: { view: false, create: false, edit: false, delete: false, export: false },
+    users_roles: { view: false, create: false, edit: false, delete: false, export: false },
+    system_settings: { view: false, create: false, edit: false, delete: false, export: false }
+  },
+  createdAt: 1704067200000
+};
+
+// Seed Role 4: Supervisor (مشرف)
+export const SUPERVISOR_ROLE_ID = 'role_supervisor';
+
+export const SUPERVISOR_ROLE: AdminRole = {
+  id: SUPERVISOR_ROLE_ID,
+  name: 'مشرف (Supervisor)',
+  nameEn: 'Supervisor',
+  description: 'تعديل البيانات وأرقام التواصل ومتابعة التعليقات والرسائل وإضافة الشرائح وتغيير الصور والإنترو ومتابعة الحجوزات (بدون إنشاء مستخدمين أو تغيير الشعار أو إدارة الإتاحة)',
+  isSystem: true,
+  permissions: {
+    site_content: { view: true, create: true, edit: true, delete: true, export: true },
+    branches: { view: true, create: true, edit: true, delete: true, export: true },
+    hotels: { view: true, create: false, edit: true, delete: false, export: true },
+    bookings_log: { view: true, create: false, edit: true, delete: false, export: true },
+    invoices_policies: { view: true, create: false, edit: false, delete: false, export: true },
+    booking_settings: { view: false, create: false, edit: false, delete: false, export: false },
+    availability_pricing: { view: false, create: false, edit: false, delete: false, export: false },
+    system_settings: { view: false, create: false, edit: false, delete: false, export: false },
+    users_roles: { view: false, create: false, edit: false, delete: false, export: false }
+  },
+  createdAt: 1704067200000
+};
+
+// Seed Role 5: Availability Manager (مدير التوفر والأسعار - للتوافقية السابقة)
 export const AVAILABILITY_MANAGER_ROLE_ID = 'role_availability_manager';
 
 export const AVAILABILITY_MANAGER_ROLE: AdminRole = {
@@ -165,7 +239,7 @@ export const AVAILABILITY_MANAGER_ROLE: AdminRole = {
   name: 'مدير التوفر والأسعار (Availability Manager)',
   nameEn: 'Availability Manager',
   description: 'إدارة كاملة لأسعار الغرف والتوفر والمخزون اليومي مع صلاحية تصدير التقارير',
-  isSystem: false,
+  isSystem: true,
   permissions: {
     availability_pricing: { view: true, create: true, edit: true, delete: true, export: true },
     hotels: { view: true, create: false, edit: false, delete: false, export: false },
@@ -176,7 +250,10 @@ export const AVAILABILITY_MANAGER_ROLE: AdminRole = {
 
 export const DEFAULT_ADMIN_ROLES: AdminRole[] = [
   SUPER_ADMIN_ROLE,
+  GENERAL_MANAGER_ROLE,
   BOOKINGS_STAFF_ROLE,
+  RESERVATIONS_MANAGER_ROLE,
+  SUPERVISOR_ROLE,
   AVAILABILITY_MANAGER_ROLE
 ];
 

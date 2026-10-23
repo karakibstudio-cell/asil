@@ -2,9 +2,9 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Building2, Bus, Utensils, FileCheck, ArrowLeft, Sparkles, CheckCircle2, Phone, Mail, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { ActivePage, IntegratedServicesSettings } from '../types';
+import { DEFAULT_INTEGRATED_SERVICES } from '../data/defaultSettings';
 import { EditableText } from './EditableText';
-import { ActivePage, IntegratedServicesSettings, IntegratedServiceItem } from '../types';
-import { DEFAULT_INTEGRATED_SERVICES } from '../services/firebase';
 
 interface IntegratedServicesProps {
   onNavigate?: (page: ActivePage) => void;

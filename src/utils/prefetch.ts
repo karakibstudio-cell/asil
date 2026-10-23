@@ -61,3 +61,22 @@ export function scheduleIdlePrefetch(): void {
     });
   }, 1200);
 }
+
+/**
+ * Prefetch hotel images on hover/touch without dragging in Firebase
+ */
+export function prefetchHotelDetails(hotelIdOrSlug: string): void {
+  if (typeof window === 'undefined' || !hotelIdOrSlug) return;
+  try {
+    const raw = localStorage.getItem('diy_hotels');
+    if (!raw) return;
+    const hotels = JSON.parse(raw);
+    if (!Array.isArray(hotels)) return;
+    const cleanId = hotelIdOrSlug.trim();
+    const h = hotels.find((item: any) => item.id === cleanId || item.slug === cleanId);
+    if (h && h.mainImage) {
+      const img = new Image();
+      img.src = h.mainImage;
+    }
+  } catch {}
+}

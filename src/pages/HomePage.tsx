@@ -9,7 +9,6 @@ import { IntroVideoSection } from '../components/IntroVideoSection';
 import { CompanyStoryTeaser } from '../components/CompanyStoryTeaser';
 import { IntegratedServices } from '../components/IntegratedServices';
 import { EditableText } from '../components/EditableText';
-import { getApprovedReviewsFromDb } from '../services/firebase';
 import { useLanguage } from '../context/LanguageContext';
 import { 
   Building2, 
@@ -85,6 +84,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const loadLiveReviews = async () => {
     try {
+      const { getApprovedReviewsFromDb } = await import('../services/firebase');
       const approved = await getApprovedReviewsFromDb(6);
       if (approved && approved.length > 0) {
         setLiveReviews(approved);

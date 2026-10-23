@@ -12,9 +12,10 @@ import {
   AuditLogEntry,
   SUPER_ADMIN_ROLE_ID,
   BOOKINGS_STAFF_ROLE_ID,
-  DEFAULT_ADMIN_ROLES
+  DEFAULT_ADMIN_ROLES,
+  UserRole
 } from '../types';
-import { safeSetLocalStorage, safeStringify } from './firebase';
+import { safeSetLocalStorage, safeStringify } from '../utils/storage';
 
 // Storage keys for dynamic Supabase settings
 export const SUPABASE_URL_KEY = 'diy_supabase_url';
@@ -717,17 +718,27 @@ export async function fetchAdminUsersFromSupabase(): Promise<AdminUser[] | null>
       } else if (typeof row.role_ids === 'string') {
         try { roleIds = JSON.parse(row.role_ids); } catch {}
       }
+
       if (roleIds.length === 0) {
-        roleIds = (row.role === 'admin' || row.username?.toLowerCase() === 'a.hesham')
-          ? [SUPER_ADMIN_ROLE_ID]
-          : [BOOKINGS_STAFF_ROLE_ID];
+        if (row.username?.toLowerCase() === 'a.hesham' || row.role === 'admin' || row.role === SUPER_ADMIN_ROLE_ID) {
+          roleIds = [SUPER_ADMIN_ROLE_ID];
+        } else if (row.role && row.role !== 'controller') {
+          roleIds = [row.role];
+        } else {
+          roleIds = [BOOKINGS_STAFF_ROLE_ID];
+        }
       }
+
+      const legacyRole: UserRole = (roleIds.includes(SUPER_ADMIN_ROLE_ID) || row.username?.toLowerCase() === 'a.hesham')
+        ? 'admin'
+        : 'controller';
+
       return {
         id: row.id,
         name: row.name,
         username: row.username || (row.email ? row.email.split('@')[0] : 'user'),
-        email: row.email,
-        role: row.role || (roleIds.includes(SUPER_ADMIN_ROLE_ID) ? 'admin' : 'controller'),
+        email: row.email || `${(row.username || 'user').toLowerCase()}@prestige.local`,
+        role: legacyRole,
         roleIds,
         password: row.password || '',
         status: row.status || 'active',
@@ -745,21 +756,42 @@ export async function upsertAdminUserToSupabase(user: AdminUser): Promise<boolea
   if (!client) return false;
 
   try {
+    const cleanUsername = (user.username || (user.email ? user.email.split('@')[0] : 'user')).trim();
+    const isSuper = cleanUsername.toLowerCase() === 'a.hesham' || 
+                    user.role === 'admin' || 
+                    user.roleIds?.includes(SUPER_ADMIN_ROLE_ID) ||
+                    user.id === 'usr_super_admin_hesham';
+
+    // Primary role stored in Postgres `role` column
+    const primaryRole = isSuper 
+      ? 'admin' 
+      : (user.roleIds && user.roleIds.length > 0 ? user.roleIds[0] : (user.role || 'role_bookings_staff'));
+
+    // Safe email fallback (email is optional for user, but Postgres admin_users has NOT NULL constraint)
+    const safeEmail = (user.email && user.email.trim())
+      ? user.email.trim()
+      : `${cleanUsername.toLowerCase()}@prestige.local`;
+
     const payload = {
       id: user.id,
-      name: user.name,
-      username: user.username || user.email.split('@')[0],
-      email: user.email,
-      role: user.role || (user.roleIds?.includes(SUPER_ADMIN_ROLE_ID) ? 'admin' : 'controller'),
-      role_ids: user.roleIds || [],
+      name: user.name.trim(),
+      username: cleanUsername,
+      email: safeEmail,
+      role: primaryRole,
       password: user.password || '',
       status: user.status || 'active',
       notes: user.notes || '',
       updated_at: new Date().toISOString()
     };
+
     const { error } = await client.from('admin_users').upsert(payload);
-    return !error;
-  } catch {
+    if (error) {
+      console.error('Supabase admin_users upsert error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Supabase admin_users upsert exception:', err);
     return false;
   }
 }

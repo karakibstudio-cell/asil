@@ -132,150 +132,20 @@ try {
 
 export { app, db, auth };
 
-// Helper to detect DOM nodes, Elements, Fiber nodes, Window, and non-plain data objects
-function isDomOrNonSerializable(val: any): boolean {
-  if (!val || typeof val !== 'object') return false;
+// Re-export storage utilities from storage.ts
+import { 
+  safeSetLocalStorage, 
+  safeStringify, 
+  deepSanitizeData, 
+  safeGetLocalStorage 
+} from '../utils/storage';
 
-  // 1. Check constructor name
-  const name = val?.constructor?.name;
-  if (
-    name && 
-    (name.includes('Element') || 
-     name.includes('Node') || 
-     name.includes('Fiber') || 
-     name.includes('Window') || 
-     name.includes('Document') || 
-     name.includes('Event') ||
-     name === 'HTMLVideoElement' ||
-     name === 'HTMLMediaElement' ||
-     name === 'HTMLElement')
-  ) {
-    return true;
-  }
-
-  // 2. Check standard DOM properties
-  if (
-    typeof val.nodeType === 'number' || 
-    typeof val.tagName === 'string' ||
-    'ownerDocument' in val ||
-    ('play' in val && typeof val.play === 'function' && 'pause' in val)
-  ) {
-    return true;
-  }
-
-  // 3. Check React internal keys (Fiber / Props / Events)
-  try {
-    for (const key of Object.getOwnPropertyNames(val)) {
-      if (key.startsWith('__reactFiber') || key.startsWith('__reactProps') || key.startsWith('__reactEvents')) {
-        return true;
-      }
-    }
-  } catch {}
-
-  // 4. Check prototype: For data objects in JSON, prototype must be Object.prototype or null (or Array)
-  if (!Array.isArray(val)) {
-    try {
-      const proto = Object.getPrototypeOf(val);
-      if (proto !== null && proto !== Object.prototype) {
-        return true;
-      }
-    } catch {}
-  }
-
-  return false;
-}
-
-// Deeply sanitize an object to strip non-serializable properties and break cycles
-function deepSanitizeData(data: any, seen = new WeakSet()): any {
-  if (data === null || typeof data !== 'object') {
-    return data;
-  }
-  if (isDomOrNonSerializable(data) || seen.has(data)) {
-    return undefined;
-  }
-  seen.add(data);
-
-  if (Array.isArray(data)) {
-    return data
-      .map(item => deepSanitizeData(item, seen))
-      .filter(item => item !== undefined);
-  }
-
-  const result: Record<string, any> = {};
-  try {
-    for (const [k, v] of Object.entries(data)) {
-      if (k.startsWith('__reactFiber') || k.startsWith('__reactProps') || k.startsWith('__reactEvents')) continue;
-      const sanitizedVal = deepSanitizeData(v, seen);
-      if (sanitizedVal !== undefined) {
-        result[k] = sanitizedVal;
-      }
-    }
-  } catch {
-    return {};
-  }
-  return result;
-}
-
-// Safe JSON stringify helper that handles circular structures, DOM elements, React nodes & functions safely
-export function safeStringify(obj: any, replacer?: (key: string, value: any) => any): string {
-  try {
-    const seen = new WeakSet();
-    return JSON.stringify(obj, (key, value) => {
-      if (typeof value === 'object' && value !== null) {
-        if (isDomOrNonSerializable(value) || seen.has(value)) {
-          return undefined;
-        }
-        seen.add(value);
-      }
-      if (replacer) {
-        return replacer(key, value);
-      }
-      return value;
-    });
-  } catch (err) {
-    console.warn('[safeStringify] Caught stringify error, falling back to deepSanitizeData:', err);
-    try {
-      const sanitized = deepSanitizeData(obj);
-      return JSON.stringify(sanitized, replacer);
-    } catch {
-      return '{}';
-    }
-  }
-}
-
-// Safe LocalStorage setter that handles QuotaExceededError and circular references gracefully
-export function safeSetLocalStorage(key: string, value: any): boolean {
-  try {
-    const serialized = typeof value === 'string' ? value : safeStringify(value);
-    localStorage.setItem(key, serialized);
-    return true;
-  } catch (_err) {
-    try {
-      // Clear non-critical caches first to free up space
-      try {
-        localStorage.removeItem('diy_messages_cache');
-        localStorage.removeItem('diy_reviews_cache');
-        localStorage.removeItem('diy_offers_cache');
-      } catch {}
-
-      if (typeof value === 'object' && value !== null) {
-        // Strip out huge data URLs / base64 images from the local cache copy
-        const maxLen = key === 'diy_site_settings' ? 500000 : 50000;
-        const strippedStr = safeStringify(value, (_k, v) => {
-          if (typeof v === 'string' && (v.startsWith('data:image/') || v.startsWith('data:video/') || v.startsWith('blob:')) && v.length > maxLen) {
-            return '';
-          }
-          return v;
-        });
-        localStorage.setItem(key, strippedStr);
-        return true;
-      }
-    } catch (_innerErr) {
-      // Gracefully handle storage quota limit - data is safe in Supabase/Firebase
-    }
-    return false;
-  }
-}
+export { 
+  safeSetLocalStorage, 
+  safeStringify, 
+  deepSanitizeData, 
+  safeGetLocalStorage 
+};
 
 // Collection references
 const HOTELS_COLLECTION = 'hotels';
@@ -640,589 +510,29 @@ export async function saveBatchToDb(
   await batch.commit();
 }
 
-export const DEFAULT_HERO_SLIDES: HeroSlide[] = [];
-
-export const DEFAULT_CHANNELS: ContactChannel[] = [
-  {
-    id: 'ch_whatsapp',
-    type: 'whatsapp',
-    title: 'واتساب إدارة وحجوزات برستيج',
-    value: '+966501234567',
-    isActive: true,
-    order: 0,
-  },
-  {
-    id: 'ch_phone',
-    type: 'phone',
-    title: 'رقم الهاتف المباشر',
-    value: '+966501234567',
-    isActive: true,
-    order: 1,
-  },
-  {
-    id: 'ch_email',
-    type: 'email',
-    title: 'البريد الإلكتروني الرسمي',
-    value: 'info@prestigehotels.sa',
-    isActive: true,
-    order: 2,
-  },
-  {
-    id: 'ch_instagram',
-    type: 'instagram',
-    title: 'حسابنا على إنستقرام',
-    value: 'https://instagram.com/prestige_hospitality',
-    isActive: true,
-    order: 3,
-  },
-  {
-    id: 'ch_facebook',
-    type: 'facebook',
-    title: 'صفحتنا على فيسبوك',
-    value: 'https://facebook.com/prestige.hospitality',
-    isActive: true,
-    order: 4,
-  },
-  {
-    id: 'ch_tiktok',
-    type: 'tiktok',
-    title: 'تيك توك',
-    value: 'https://tiktok.com/@prestige_hospitality',
-    isActive: true,
-    order: 5,
-  }
-];
-
-export const DEFAULT_BRANCHES: BranchLocation[] = [
-  {
-    id: 'branch_makkah',
-    name: 'فرع مكة المكرمة (المقر الرئيسي)',
-    nameEn: 'Makkah Branch (HQ)',
-    city: 'مكة المكرمة',
-    cityEn: 'Makkah',
-    address: 'أبراج وقف الملك عبدالعزيز (الصفوة)، شارع أجياد، المنطقة المركزية، مكة المكرمة',
-    addressEn: 'King Abdulaziz Endowment Towers (Al Safwah), Ajyad St, Central Area, Makkah',
-    mapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah',
-    phone: '+966560580250',
-    whatsapp: '+966560580250',
-    email: 'prestigeksa.umrah@gmail.com',
-    workingHours: 'على مدار الساعة 24/7',
-    workingHoursEn: '24/7 Around the Clock',
-    isMainBranch: true,
-    showContactInfo: true,
-    isActive: true,
-    order: 1,
-    contacts: [
-      {
-        id: 'cnt_mk_1',
-        label: 'استقبال الفندق والتسكين',
-        labelEn: 'Hotel Reception & Housing',
-        value: '+966560580250',
-        type: 'call',
-        order: 1,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      },
-      {
-        id: 'cnt_mk_2',
-        label: 'واتساب الحجوزات المباشرة',
-        labelEn: 'Direct Bookings WhatsApp',
-        value: '+966560580250',
-        type: 'whatsapp',
-        order: 2,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      },
-      {
-        id: 'cnt_mk_3',
-        label: 'البريد الإلكتروني للإدارة',
-        labelEn: 'HQ Official Email',
-        value: 'prestigeksa.umrah@gmail.com',
-        type: 'email',
-        order: 3,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      }
-    ]
-  },
-  {
-    id: 'branch_madinah',
-    name: 'فرع المدينة المنورة',
-    nameEn: 'Madinah Branch',
-    city: 'المدينة المنورة',
-    cityEn: 'Madinah',
-    address: 'المنطقة المركزية الشمالية، أمام بوابة الملك فهد، طريق الملك فهد، المدينة المنورة',
-    addressEn: 'Northern Central Area, Facing King Fahd Gate, Madinah',
-    mapUrl: 'https://maps.google.com/?q=Northern+Central+Area+Madinah',
-    phone: '+966501234568',
-    whatsapp: '+966501234568',
-    email: 'madinah@prestigehotels.sa',
-    workingHours: 'على مدار الساعة 24/7',
-    workingHoursEn: '24/7 Around the Clock',
-    isMainBranch: false,
-    showContactInfo: false,
-    isActive: true,
-    order: 2,
-    contacts: [
-      {
-        id: 'cnt_md_1',
-        label: 'هاتف الاستقبال والاستفسارات',
-        labelEn: 'Inquiries & Reception Phone',
-        value: '+966501234568',
-        type: 'call',
-        order: 1,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      },
-      {
-        id: 'cnt_md_2',
-        label: 'واتساب التسكين بالمدينة',
-        labelEn: 'Madinah Housing WhatsApp',
-        value: '+966501234568',
-        type: 'whatsapp',
-        order: 2,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      }
-    ]
-  },
-  {
-    id: 'branch_cairo',
-    name: 'فرع القاهرة (مصر)',
-    nameEn: 'Cairo Branch (Egypt)',
-    city: 'القاهرة',
-    cityEn: 'Cairo',
-    address: 'شارع عباس العقاد، مدينة نصر، القاهرة، جمهورية مصر العربية',
-    addressEn: 'Abbas El-Akkad St, Nasr City, Cairo, Egypt',
-    mapUrl: 'https://maps.google.com/?q=Nasr+City+Cairo+Egypt',
-    phone: '+201012345678',
-    whatsapp: '+201012345678',
-    email: 'cairo@prestigehotels.sa',
-    workingHours: 'السبت - الخميس ٩ ص - ٨ م',
-    workingHoursEn: 'Sat - Thu 9 AM - 8 PM',
-    isMainBranch: false,
-    showContactInfo: false,
-    isActive: true,
-    order: 3,
-    contacts: [
-      {
-        id: 'cnt_cr_1',
-        label: 'هاتف تنسيق وكالات السياحة',
-        labelEn: 'Travel Agencies Phone',
-        value: '+201012345678',
-        type: 'call',
-        order: 1,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      },
-      {
-        id: 'cnt_cr_2',
-        label: 'واتساب مبيعات العمرة بمصر',
-        labelEn: 'Egypt Umrah Sales WhatsApp',
-        value: '+201012345678',
-        type: 'whatsapp',
-        order: 2,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      },
-      {
-        id: 'cnt_cr_3',
-        label: 'البريد الإلكتروني لمكتب مصر',
-        labelEn: 'Cairo Office Email',
-        value: 'cairo@prestigehotels.sa',
-        type: 'email',
-        order: 3,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      }
-    ]
-  },
-  {
-    id: 'branch_indonesia',
-    name: 'فرع إندونيسيا (جاكرتا)',
-    nameEn: 'Indonesia Branch (Jakarta)',
-    city: 'جاكرتا',
-    cityEn: 'Jakarta',
-    address: 'جاكرتا الجنوبية، إندونيسيا',
-    addressEn: 'South Jakarta, Special Capital Region of Jakarta, Indonesia',
-    mapUrl: 'https://maps.google.com/?q=Jakarta+Indonesia',
-    phone: '+6281234567890',
-    whatsapp: '+6281234567890',
-    email: 'indonesia@prestigehotels.sa',
-    workingHours: 'الإثنين - الجمعة ٩ ص - ٦ م',
-    workingHoursEn: 'Mon - Fri 9 AM - 6 PM',
-    isMainBranch: false,
-    showContactInfo: false,
-    isActive: true,
-    order: 4,
-    contacts: [
-      {
-        id: 'cnt_id_1',
-        label: 'هاتف التنسيق الدولي وجاكرتا',
-        labelEn: 'Jakarta International Phone',
-        value: '+6281234567890',
-        type: 'call',
-        order: 1,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      },
-      {
-        id: 'cnt_id_2',
-        label: 'واتساب وكالات الحج والعمرة',
-        labelEn: 'Hajj & Umrah Agencies WhatsApp',
-        value: '+6281234567890',
-        type: 'whatsapp',
-        order: 2,
-        isActive: true,
-        showInAbout: true,
-        showInContact: true,
-        showInFooter: true,
-        showInHotelDetail: true,
-        showInFloating: false
-      }
-    ]
-  }
-];
-
-export const DEFAULT_DEPARTMENT_CONTACTS: DepartmentContact[] = [
-  {
-    id: 'dept_sales',
-    department: 'إدارة المبيعات والشركات',
-    name: 'فريق المبيعات والتعاقدات',
-    roleTitle: 'مسؤول مبيعات الشركات وحجوزات المجموعات',
-    phone: '+966501234567',
-    whatsapp: '+966501234567',
-    workingHours: 'متاح 24/7 طوال أيام الأسبوع',
-    isActive: true,
-    order: 1
-  },
-  {
-    id: 'dept_bookings',
-    department: 'قسم الحجوزات والتسكين',
-    name: 'استشاري التسكين المباشر',
-    roleTitle: 'مسؤول تأكيد الغرف والأجنحة الفندقية',
-    phone: '+966501234568',
-    whatsapp: '+966501234568',
-    workingHours: 'على مدار الساعة 24/7',
-    isActive: true,
-    order: 2
-  },
-  {
-    id: 'dept_accounts',
-    department: 'قسم الحسابات والمالية',
-    name: 'الإدارة المالية والمدفوعات',
-    roleTitle: 'المسؤول المالي والفواتير والتحويلات',
-    phone: '+966501234569',
-    whatsapp: '+966501234569',
-    workingHours: '9:00 ص - 6:00 م',
-    isActive: true,
-    order: 3
-  }
-];
-
-export const DEFAULT_QUICK_LINKS: QuickLinkItem[] = [
-  {
-    id: 'link_home',
-    title: 'الرئيسية',
-    targetPage: 'home',
-    isActive: true,
-    order: 1,
-  },
-  {
-    id: 'link_hotels_makkah',
-    title: 'فنادق مكة المكرمة',
-    targetPage: 'hotels-makkah',
-    isActive: true,
-    order: 2,
-  },
-  {
-    id: 'link_hotels_madinah',
-    title: 'فنادق المدينة المنورة',
-    targetPage: 'hotels-madinah',
-    isActive: true,
-    order: 3,
-  },
-  {
-    id: 'link_hotels',
-    title: 'جميع الفنادق',
-    targetPage: 'hotels',
-    isActive: false,
-    order: 4,
-  },
-  {
-    id: 'link_offers',
-    title: 'الإعلانات والعروض',
-    targetPage: 'offers',
-    isActive: true,
-    order: 5,
-  },
-  {
-    id: 'link_packages',
-    title: 'باقات الحج والعمرة',
-    targetPage: 'packages',
-    isActive: false,
-    order: 6,
-  },
-  {
-    id: 'link_about',
-    title: 'من نحن',
-    targetPage: 'about',
-    isActive: true,
-    order: 7,
-  },
-  {
-    id: 'link_contact',
-    title: 'تواصل معنا',
-    targetPage: 'contact',
-    isActive: true,
-    order: 8,
-  }
-];
-
-export const DEFAULT_ABOUT_US: AboutPageSettings = {
-  title: 'برستيج.. حيث تلتقي فخامة الضيافة بروحانية المكان',
-  subtitle: 'منذ عام 2010، انطلقت "برستيج لإدارة وتشغيل الفنادق" من قلب العاصمة المقدسة لتُعيد صياغة مفهوم الضيافة وخدمة ضيوف الرحمن.',
-  badge: 'شرف خدمة ضيوف الرحمن',
-  missionTitle: 'مسيرتنا: صناعة تجارب إقامة استثنائية وشراكات استراتيجية',
-  missionText1: 'منذ عام 2010، انطلقت "برستيج لإدارة وتشغيل الفنادق" من قلب العاصمة المقدسة لتُعيد صياغة مفهوم الضيافة وخدمة ضيوف الرحمن. لم نكتفِ يوماً بتقديم مجرد غرف فندقية، بل أخذنا على عاتقنا صناعة تجارب إقامة استثنائية تمزج بين الرفاهية والراحة التامة.',
-  missionText2: 'بفضل الله ثم بثقة عملائنا من الشركات والمجموعات، امتدت مسيرة نجاحنا من مكة المكرمة إلى رحاب المدينة المنورة، لنعقد أضخم الشراكات السنوية في أهم المواقع الاستراتيجية (محبس الجن، أجياد، والمسفلة). واليوم، نتوج هذه المسيرة بفندقنا الخاص "برستيج أجياد"، إلى جانب إدارتنا وتشغيلنا لأكثر من 7 فنادق راقية ومجهزة بالكامل لاستقبال الحجاج والمعتمرين. مع "برستيج"، أنت لا تحجز إقامة فقط، بل تضمن منظومة خدمات متكاملة تليق بك وبضيوفك.',
-  visionTitle: 'رؤيتنا: الريادة في إدارة وتشغيل الفنادق والضيافة الروحانية',
-  visionText: 'أن نكون الخيار الأول والأكثر ثقة للمستثمرين وضيوف الرحمن ووكالات العمرة عالمياً من خلال تقديم أرقى معايير الإدارة والتشغيل الفندقي.',
-  yearsExperience: '١٥+ عاماً',
-  servedGuests: '١٢٠,٠٠٠+',
-  officeTitle: 'المقر الرئيسي لشركة برستيج لإدارة وتشغيل الفنادق',
-  officeCity: 'مكة المكرمة',
-  officeAddress: 'أبراج وقف الملك عبدالعزيز - مجمع أبراج البيت، طريق أجياد، مكة المكرمة',
-  officeMapUrl: 'https://maps.google.com/?q=King+Abdulaziz+Endowment+Towers+Makkah',
-  officePhone: '+966560580250',
-  officeWhatsApp: '+966560580250',
-  officeEmail: 'prestigeksa.umrah@gmail.com',
-  officeWorkingHours: 'على مدار الساعة 24/7 لخدمة ضيوف الرحمن',
-  licenseNumber: '73104928',
-  licenseAuthority: 'مرخصون من وزارة الحج والعمرة والهيئة السعودية للسياحة',
-  showLicense: true,
-  photos: [],
-  mainPhoto: '',
-  logoUrl: '',
-  valuePillars: DEFAULT_VALUE_PILLARS
-};
-
-export const DEFAULT_STORY_TEASER: StoryTeaserSettings = {
-  isEnabled: true,
-  badge: 'نبذة عن شركة برستيج',
-  title: 'برستيج.. حيث تلتقي فخامة الضيافة بروحانية المكان',
-  paragraph1: "منذ عام 2010، انطلقت 'برستيج لإدارة وتشغيل الفنادق' من قلب العاصمة المقدسة لتُعيد صياغة مفهوم الضيافة وخدمة ضيوف الرحمن. لم نكتفِ يوماً بتقديم مجرد غرف فندقية، بل أخذنا على عاتقنا صناعة تجارب إقامة استثنائية تمزج بين الرفاهية والراحة التامة.",
-  paragraph2: "بفضل الله ثم بثقة عملائنا من الشركات والمجموعات، امتدت مسيرة نجاحنا من مكة المكرمة إلى رحاب المدينة المنورة، لنعقد أضخم الشراكات السنوية في أهم المواقع الاستراتيجية (محبس الجن، أجياد، والمسفلة).",
-  paragraph3: "واليوم، نتوج هذه المسيرة بفندقنا الخاص 'برستيج أجياد'، إلى جانب إدارتنا وتشغيلنا لأكثر من 7 فنادق راقية ومجهزة بالكامل لاستقبال الحجاج والمعتمرين. مع 'برستيج'، أنت لا تحجز إقامة فقط، بل تضمن منظومة خدمات متكاملة تليق بك وبضيوفك.",
-  showExploreButton: true,
-  exploreButtonText: 'اقرأ المزيد عنا',
-  showContactButton: true,
-  contactButtonText: 'عروض الشركات والمجموعات',
-  showcaseEstablishedYear: 'منذ 2010 م',
-  showcaseBadge: 'شراكات استراتيجية موثوقة',
-  showcaseTitle: 'إدارة وتشغيل أكثر من 7 فنادق راقية بمكة والمدينة',
-  showcaseLicenseNote: 'شركة مرخصة ومعتمدة من وزارة الحج والعمرة والهيئة السعودية للسياحة',
-  locationTags: [
-    { id: 'tag_1', text: 'فندق برستيج أجياد (فندقنا الخاص)', iconName: 'MapPin', isActive: true },
-    { id: 'tag_2', text: 'فنادق محبس الجن للعمرة', iconName: 'Building2', isActive: true },
-    { id: 'tag_3', text: 'فنادق المسفلة وأجياد', iconName: 'Building2', isActive: true },
-    { id: 'tag_4', text: 'فنادق المدينة المنورة المركزية', iconName: 'Award', isActive: true }
-  ],
-  showcasePoints: [
-    { id: 'pt_1', title: 'فندق برستيج أجياد', description: 'الفندق الخاص للشركة بأرقى معايير الضيافة الفندقية في مكة.', isActive: true },
-    { id: 'pt_2', title: 'تغطية المواقع الحيوية', description: 'محبس الجن، أجياد، والمسفلة بمكة المكرمة والمنطقة المركزية بالمدينة.', isActive: true },
-    { id: 'pt_3', title: 'عقود سنوية وموسمية للشركات', description: 'تسكين فوري وأسعار خاصة لشركات السياحة وحملات الحج والعمرة.', isActive: true }
-  ]
-};
-
-export const DEFAULT_INTEGRATED_SERVICES: IntegratedServicesSettings = {
-  isEnabled: true,
-  badge: 'خدماتنا المتكاملة',
-  title: 'منظومة ضيافة متكاملة تحت سقف واحد',
-  subtitle: 'نقدم لعملائنا من الشركات والمجموعات وضيوف الرحمن باقة خدمات شاملة تضمن أعلى مستويات الراحة والتميز من الاستقبال وحتى المغادرة.',
-  services: [
-    {
-      id: 'service_hotel_management',
-      iconName: 'Building2',
-      badge: 'الخدمة الأساسية',
-      badgeEn: 'Core Service',
-      title: 'إدارة وتشغيل الفنادق',
-      titleEn: 'Hotel Management & Operations',
-      description: 'ريادة واحترافية في إدارة المرافق الفندقية وتشغيل الفنادق في مكة المكرمة والمدينة المنورة لضمان أعلى معايير الجودة والراحة للنزلاء وضيوف الرحمن.',
-      descriptionEn: 'Leadership and professionalism in hotel facilities management and hospitality operations in Makkah and Madinah.',
-      highlights: ['إدارة شاملة للأصول الفندقية', 'فندق برستيج أجياد وأكثر من 7 فنادق راقية', 'تسكين فوري ومباشر'],
-      buttonText: 'استكشف الفنادق',
-      buttonAction: 'hotels',
-      isActive: true,
-      order: 1
-    },
-    {
-      id: 'service_luxury_transport',
-      iconName: 'Bus',
-      badge: 'تنقلات آمنة ومريحة',
-      badgeEn: 'Safe & Luxury Fleet',
-      title: 'خدمات النقل الفاخر',
-      titleEn: 'Luxury Transport Services',
-      description: 'أسطول حديث ومتنوع لتأمين تنقلات مريحة، آمنة، وسلسة للحجاج والمعتمرين والمجموعات والشركات بين المطارات، الفنادق، والمشاعر المقدسة.',
-      descriptionEn: 'A modern and diverse fleet securing smooth, safe, and comfortable transfers for groups and corporate partners.',
-      highlights: ['حافلات وسيارات حديثة ومكيفة', 'سائقون محترفون وخبراء بطرق الحرمين', 'خدمة استقبال وتوديع بالمطارات'],
-      buttonText: 'طلب عرض خدمة',
-      buttonAction: 'contact',
-      isActive: true,
-      order: 2
-    },
-    {
-      id: 'service_catering',
-      iconName: 'Utensils',
-      badge: 'أعلى معايير الجودة',
-      badgeEn: 'Premium Quality',
-      title: 'خدمات الإعاشة (Catering)',
-      titleEn: 'Catering & Hospitality Food Services',
-      description: 'قوائم طعام متنوعة ومعدة بأعلى معايير الجودة والسلامة الغذائية لتناسب كافة الأذواق وتلبي احتياجات ضيوف الرحمن والمجموعات والشركات.',
-      descriptionEn: 'Diverse meal menus prepared with the highest quality and safety standards to suit all tastes for pilgrim groups.',
-      highlights: ['بوفيهات فندقية مفتوحة ووجبات مغلفة', 'مطابخ مركزية مرخصة ومجهزة', 'خيارات مخصصة للشركات والبعثات'],
-      buttonText: 'طلب عرض خدمة',
-      buttonAction: 'contact',
-      isActive: true,
-      order: 3
-    },
-    {
-      id: 'service_visas',
-      iconName: 'FileCheck',
-      badge: 'إجراءات سريعة ومضمونة',
-      badgeEn: 'Fast & Certified',
-      title: 'استخراج التأشيرات',
-      titleEn: 'Visa Issuance & Processing',
-      description: 'فريق متخصص لتسهيل وتسريع إجراءات تأشيرات الحج والعمرة وإصدار التصاريح النظامية لضمان رحلة سلسة وبلا عقبات لضيوف الرحمن.',
-      descriptionEn: 'A dedicated team facilitating and expediting Umrah & Hajj visa procedures ensuring a hassle-free journey.',
-      highlights: ['إصدار سريع لتأشيرات العمرة', 'تنسيق متكامل مع المنصات الرسمية', 'دعم فني واستشارات متواصلة'],
-      buttonText: 'طلب عرض خدمة',
-      buttonAction: 'contact',
-      isActive: true,
-      order: 4
-    }
-  ]
-};
-
-export const DEFAULT_HOME_SECTIONS: HomeSectionsSettings = {
-  showStats: true,
-  showFeaturedHotels: true,
-  featuredHotelsBadge: 'فخامة وروحانية',
-  featuredHotelsTitle: 'فنادقنا المميزة في مكة والمدينة',
-  featuredHotelsSubtitle: 'مجموعة مختارة بعناية من أفخم الفنادق المطلة على الكعبة المشرفة وساحات المسجد النبوي، تضمن لكم راحة لا تضاهى.',
-  showStoryTeaser: true,
-  showIntegratedServices: true,
-  showHotelsAccordion: true,
-  showOffersBanner: true,
-  showTestimonials: true,
-  showWhyChooseUs: true
-};
-
-export const DEFAULT_SITE_SETTINGS: SiteSettings = {
-  siteTitle: 'برستيج لإدارة وتشغيل الفنادق',
-  siteTitleEn: 'Prestige Hotels Management & Hospitality',
-  siteSubtitle: 'إدارة وتشغيل الفنادق والضيافة الفاخرة',
-  siteSubtitleEn: 'Hotel Management, Operations & Luxury Hospitality',
-  logoUrl: '',
-  showLicense: true,
-  channels: DEFAULT_CHANNELS,
-  contactsDirectory: DEFAULT_CONTACTS_DIRECTORY,
-  heroSlides: DEFAULT_HERO_SLIDES,
-  branches: DEFAULT_BRANCHES,
-  departmentContacts: DEFAULT_DEPARTMENT_CONTACTS,
-  quickLinks: DEFAULT_QUICK_LINKS,
-  aboutUs: DEFAULT_ABOUT_US,
-  storyTeaser: DEFAULT_STORY_TEASER,
-  integratedServices: DEFAULT_INTEGRATED_SERVICES,
-  homeSections: DEFAULT_HOME_SECTIONS,
-  actionButtons: DEFAULT_ACTION_BUTTONS,
-  footerBio: 'شركة برستيج الرائدة والمتخصصة في تقديم حلول إدارة وتشغيل الفنادق والتسكين الفاخر لحجاج بيت الله الحرام وزوار المسجد النبوي الشريف في مكة المكرمة والمدينة المنورة، بخبرة تمتد لأكثر من ١٥ عاماً من التميز والاحترافية.',
-  footerBioEn: 'Leading company dedicated to providing hotel management, operations, and luxury accommodation solutions for pilgrims and visitors to the Two Holy Mosques, with over 15 years of excellence.',
-  customerServiceTitle: 'خدمة العملاء والتواصل المباشر',
-  customerServiceTitleEn: 'Customer Service & Direct Contact',
-  customerServiceDesc: 'فريق الاستقبال والحجوزات متاح على مدار الساعة طوال أيام الأسبوع لخدمتكم واستقبال استفساراتكم.',
-  customerServiceDescEn: 'Our reception and booking team is available 24/7 to assist you and receive all inquiries.',
-  footerWhatsAppButtonText: 'تحدث مع مستشار التسكين واتساب',
-  footerWhatsAppButtonTextEn: 'Chat with Accommodation Consultant',
-  footerWhatsAppNumber: '+966560580250',
-  floatingWhatsAppBubbleText: 'تواصل مباشرة عبر واتساب',
-  floatingWhatsAppBubbleTextEn: 'Chat on WhatsApp',
-  copyrightText: 'لإدارة وتشغيل الفنادق والضيافة. جميع الحقوق محفوظة.',
-  copyrightTextEn: 'Hotel Management & Operations. All rights reserved.',
-  bookingModule: {
-    enabled: true,
-    allowPublicBookingCreation: true,
-    mode: 'full',
-    showInHeader: true,
-    showTrackBookingModal: true,
-    showInHero: true,
-    showInHotelDetail: true,
-    bookingEmail: 'prestigeksa.umrah@gmail.com',
-    bookingWhatsApp: '+966560580250',
-    enableWhatsAppRedirect: true,
-    enableEmailNotification: true,
-    autoAssignDigitalKey: true,
-    currency: 'ر.س',
-    invoiceCompanyName: 'شركة برستيج لإدارة وتشغيل الفنادق',
-    invoiceCompanySubtitle: 'للضيافة الفندقية وإدارة الإيواء السياحي بمكة والمدينة',
-    invoiceCompanyAddress: 'مكة المكرمة - المملكة العربية السعودية',
-    invoiceCrNumber: '4031258941',
-    showInvoiceCr: true,
-    invoiceTaxNumber: '310458921400003',
-    showInvoiceTaxNo: true,
-    invoiceSupportTitle: 'مجموعة برستيج الفندقية • المملكة العربية السعودية',
-    invoiceSupportName: 'إدارة الحجوزات والمبيعات',
-    invoiceSupportPhone: '+966544076726',
-    invoiceSupportEmail: 'prestigeksa.umrah@gmail.com',
-    showInvoiceSupportFooter: true,
-    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbwfdkkIfLBAg7KsaEA4QEjbMWnqqvwBs0GkjcOy9HQfMG4zKcui3rs-ANsByJ5zztnB/exec',
-    appsScriptSecret: 'prestige1478965236',
-    enableEmailSending: true,
-    companyEmail: 'prestigeksa.umrah@gmail.com'
-  },
-  displaySettings: {
-    headerBehavior: 'scroll_hide',
-    showFooterAdminLink: false,
-    introFrequency: 'session',
-    introEnabled: true
-  },
-  ...(INITIAL_SITE_SETTINGS || {})
+import {
+  DEFAULT_HERO_SLIDES,
+  DEFAULT_CHANNELS,
+  DEFAULT_BRANCHES,
+  DEFAULT_DEPARTMENT_CONTACTS,
+  DEFAULT_QUICK_LINKS,
+  DEFAULT_ABOUT_US,
+  DEFAULT_STORY_TEASER,
+  DEFAULT_INTEGRATED_SERVICES,
+  DEFAULT_HOME_SECTIONS,
+  DEFAULT_SITE_SETTINGS
+} from '../data/defaultSettings';
+export {
+  DEFAULT_HERO_SLIDES,
+  DEFAULT_CHANNELS,
+  DEFAULT_BRANCHES,
+  DEFAULT_DEPARTMENT_CONTACTS,
+  DEFAULT_QUICK_LINKS,
+  DEFAULT_ABOUT_US,
+  DEFAULT_STORY_TEASER,
+  DEFAULT_INTEGRATED_SERVICES,
+  DEFAULT_HOME_SECTIONS,
+  DEFAULT_SITE_SETTINGS
 };
 
 export async function getSiteSettingsFromDb(skipCache = false): Promise<SiteSettings> {
@@ -2206,13 +1516,22 @@ export async function saveAdminRoleToDb(role: AdminRole): Promise<void> {
   }
   safeSetLocalStorage('diy_admin_roles', updatedList);
 
-  await upsertAdminRoleToSupabase(role);
+  try {
+    await Promise.race([
+      upsertAdminRoleToSupabase(role),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase timeout')), 4000))
+    ]);
+  } catch (err) {
+    console.warn('Supabase role sync timeout or error (saved locally):', err);
+  }
 
   if (db) {
     try {
       const docRef = doc(db, ROLES_COLLECTION, role.id);
       const sanitized = JSON.parse(safeStringify(role));
-      await setDoc(docRef, sanitized, { merge: true });
+      setDoc(docRef, sanitized, { merge: true }).catch((err) => {
+        console.warn('Could not sync role to Firestore:', err);
+      });
     } catch (err) {
       console.warn('Could not sync role to Firestore:', err);
     }
@@ -2233,11 +1552,18 @@ export async function deleteAdminRoleFromDb(roleId: string): Promise<void> {
   const filtered = list.filter(r => r.id !== roleId);
   safeSetLocalStorage('diy_admin_roles', filtered);
 
-  await deleteAdminRoleFromSupabase(roleId);
+  try {
+    await Promise.race([
+      deleteAdminRoleFromSupabase(roleId),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase timeout')), 4000))
+    ]);
+  } catch (err) {
+    console.warn('Supabase role delete timeout or error:', err);
+  }
 
   if (db) {
     try {
-      await deleteDoc(doc(db, ROLES_COLLECTION, roleId));
+      deleteDoc(doc(db, ROLES_COLLECTION, roleId)).catch(() => {});
     } catch (err) {
       console.warn('Could not delete role from Firestore:', err);
     }
@@ -2340,6 +1666,11 @@ export async function getAdminUsersFromDb(): Promise<AdminUser[]> {
 }
 
 export async function saveAdminUserToDb(user: AdminUser): Promise<void> {
+  // Ensure email fallback
+  if (!user.email || !user.email.trim()) {
+    user.email = `${(user.username || 'user').trim().toLowerCase()}@prestige.local`;
+  }
+
   const list = await getAdminUsersFromDb();
 
   // Protect against demoting or deactivating the last Super Admin
@@ -2368,13 +1699,24 @@ export async function saveAdminUserToDb(user: AdminUser): Promise<void> {
   }
   safeSetLocalStorage('diy_admin_users', updatedList);
 
-  await upsertAdminUserToSupabase(user);
+  // Sync to Supabase with race timeout to prevent UI hanging
+  try {
+    await Promise.race([
+      upsertAdminUserToSupabase(user),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase timeout')), 4000))
+    ]);
+  } catch (err) {
+    console.warn('Supabase user sync timeout or error (saved locally):', err);
+  }
 
+  // Sync to Firestore in background without blocking UI
   if (db) {
     try {
       const docRef = doc(db, USERS_COLLECTION, user.id);
       const sanitized = JSON.parse(safeStringify(user));
-      await setDoc(docRef, sanitized, { merge: true });
+      setDoc(docRef, sanitized, { merge: true }).catch((err) => {
+        console.warn('Could not sync user to Firestore (saved locally):', err);
+      });
     } catch (err) {
       console.warn('Could not sync user to Firestore (saved locally):', err);
     }
@@ -2403,11 +1745,18 @@ export async function deleteAdminUserFromDb(userId: string): Promise<void> {
   const filtered = list.filter(u => u.id !== userId);
   safeSetLocalStorage('diy_admin_users', filtered);
 
-  await deleteAdminUserFromSupabase(userId);
+  try {
+    await Promise.race([
+      deleteAdminUserFromSupabase(userId),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase timeout')), 4000))
+    ]);
+  } catch (err) {
+    console.warn('Supabase user delete timeout or error:', err);
+  }
 
   if (db) {
     try {
-      await deleteDoc(doc(db, USERS_COLLECTION, userId));
+      deleteDoc(doc(db, USERS_COLLECTION, userId)).catch(() => {});
     } catch (err) {
       console.error('Error deleting admin user from Firestore:', err);
     }

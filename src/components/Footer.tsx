@@ -25,7 +25,7 @@ import {
   buildWhatsAppLink 
 } from '../utils/channels';
 import { ChannelIcon } from './ChannelIcon';
-import { DEFAULT_QUICK_LINKS } from '../services/firebase';
+import { DEFAULT_QUICK_LINKS } from '../data/defaultSettings';
 import { useLanguage } from '../context/LanguageContext';
 import { filterActionButtons, executeActionButton, getActionButtonHref } from '../utils/actionButtons';
 

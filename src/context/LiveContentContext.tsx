@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { subscribeToLiveContent, saveContentToDb, migrateInitialTextsToDatabase } from '../services/firebase';
 import { fetchLiveContentFromSupabase } from '../services/supabase';
 import { DICTIONARY } from './LanguageContext';
 import { ContentItem } from '../types';
@@ -91,24 +90,28 @@ export const LiveContentProvider: React.FC<LiveContentProviderProps> = ({
       };
     }
 
-    const unsubscribe = subscribeToLiveContent((updatedMap) => {
+    let unsubscribeFn: (() => void) | null = null;
+    import('../services/firebase').then(({ subscribeToLiveContent }) => {
       if (!isMounted) return;
-      setContentMap(prev => {
-        let hasChanges = false;
-        for (const [k, v] of Object.entries(updatedMap)) {
-          const p = prev[k];
-          if (!p || p.text !== v.text || p.ar !== v.ar || p.en !== v.en || p.color !== v.color) {
-            hasChanges = true;
-            break;
+      unsubscribeFn = subscribeToLiveContent((updatedMap) => {
+        if (!isMounted) return;
+        setContentMap(prev => {
+          let hasChanges = false;
+          for (const [k, v] of Object.entries(updatedMap)) {
+            const p = prev[k];
+            if (!p || p.text !== v.text || p.ar !== v.ar || p.en !== v.en || p.color !== v.color) {
+              hasChanges = true;
+              break;
+            }
           }
-        }
-        return hasChanges ? { ...prev, ...updatedMap } : prev;
+          return hasChanges ? { ...prev, ...updatedMap } : prev;
+        });
       });
     });
 
     return () => {
       isMounted = false;
-      unsubscribe();
+      if (unsubscribeFn) unsubscribeFn();
     };
   }, [isAdminLoggedIn, isEditMode]);
 
@@ -116,7 +119,9 @@ export const LiveContentProvider: React.FC<LiveContentProviderProps> = ({
   useEffect(() => {
     if (isAdminLoggedIn && !initialMigrationAttempted.current) {
       initialMigrationAttempted.current = true;
-      migrateInitialTextsToDatabase(DICTIONARY).catch(() => {});
+      import('../services/firebase').then(({ migrateInitialTextsToDatabase }) => {
+        migrateInitialTextsToDatabase(DICTIONARY).catch(() => {});
+      });
     }
   }, [isAdminLoggedIn]);
 
@@ -217,6 +222,7 @@ export const LiveContentProvider: React.FC<LiveContentProviderProps> = ({
     setContentMap((prev) => ({ ...prev, [key]: merged }));
 
     try {
+      const { saveContentToDb } = await import('../services/firebase');
       await saveContentToDb(key, merged, lang);
       if (onShowToast) {
         onShowToast(`تم حفظ وتحديث النص باللغة ${lang === 'ar' ? 'العربية' : 'الإنجليزية'} في قاعدة البيانات بنجاح`, 'success');

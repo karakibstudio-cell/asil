@@ -15,8 +15,7 @@ import {
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from './BookingIcons';
 import { HotelBookingModal } from './HotelBookingModal';
 import { useLanguage } from '../context/LanguageContext';
-import { prefetchHotelDetails } from '../services/firebase';
-import { prefetchRoute } from '../utils/prefetch';
+import { prefetchRoute, prefetchHotelDetails } from '../utils/prefetch';
 import { buildWhatsAppLink, getFirstActiveWhatsApp } from '../utils/channels';
 import { isBusTransportation, formatTransportText } from '../utils/hotelTransport';
 
@@ -52,12 +51,14 @@ export const HotelCard: React.FC<HotelCardProps> = ({
 
   const handleBookingClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isOnlineBookingActive) {
+    if (onOpenBookingModal) {
+      onOpenBookingModal(hotel);
+    } else if (isOnlineBookingActive) {
       window.location.hash = `#/bookings?hotel=${hotel.id}`;
     } else if (whatsAppUrl) {
       window.open(whatsAppUrl, '_blank', 'noopener,noreferrer');
     } else {
-      handleSelectHotel(e);
+      setIsBookingOpen(true);
     }
   };
 
@@ -398,7 +399,7 @@ export const HotelCard: React.FC<HotelCardProps> = ({
       </div>
 
       {/* Embedded Modal if parent didn't provide callback */}
-      {!onOpenBookingModal && (
+      {!onOpenBookingModal && isBookingOpen && (
         <HotelBookingModal
           isOpen={isBookingOpen}
           onClose={() => setIsBookingOpen(false)}

@@ -53,8 +53,9 @@
     <link rel="preconnect" href="https://images.unsplash.com" crossorigin />
     <link rel="dns-prefetch" href="https://images.unsplash.com" />
 
-    <!-- Critical Asset Preloading: Self-Hosted Font -->
+    <!-- Critical Asset Preloading: Self-Hosted Font & LCP Hero Image -->
     <link rel="preload" href="/fonts/cairo-arabic.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/images/slides/slide_0.webp" as="image" type="image/webp" fetchpriority="high" />
 
     <!-- Self-Hosted High Performance Typography (Zero Third-Party Latency) & CLS Baseline -->
     <style>
@@ -77,6 +78,7 @@
       html { scroll-behavior: smooth; }
       body { min-height: 100vh; overflow-x: hidden; font-family: 'Cairo', system-ui, -apple-system, sans-serif; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
       #root { min-height: 100vh; display: flex; flex-direction: column; }
+      #intro-video-section { min-height: 100dvh; contain: layout style; }
       #hero-slider-section { min-height: 100dvh; contain: layout style; }
     </style>
 

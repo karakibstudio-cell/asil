@@ -147,8 +147,11 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
     role: null
   });
 
-  // Check if current user is Super Admin
+  // Check if current user is Super Admin or has specific permissions
   const isCurrentSuperAdmin = isSuperAdminUser(currentUser, roles);
+  const canCreateUser = isCurrentSuperAdmin || hasPermission(currentUser, roles, 'users_roles', 'create');
+  const canEditUser = isCurrentSuperAdmin || hasPermission(currentUser, roles, 'users_roles', 'edit');
+  const canDeleteUser = isCurrentSuperAdmin || hasPermission(currentUser, roles, 'users_roles', 'delete');
   const canManageRoles = isCurrentSuperAdmin || hasPermission(currentUser, roles, 'users_roles', 'edit');
 
   // -------------------------------------------------------------
@@ -192,7 +195,8 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
     setShowPassword(false);
     setUserForm({ 
       ...user,
-      roleIds: user.roleIds || (user.role === 'admin' ? [SUPER_ADMIN_ROLE_ID] : [])
+      email: user.email?.endsWith('@prestige.local') ? '' : (user.email || ''),
+      roleIds: user.roleIds || (user.role === 'admin' || user.username?.toLowerCase() === 'a.hesham' ? [SUPER_ADMIN_ROLE_ID] : [])
     });
     setIsUserModalOpen(true);
   };
@@ -200,10 +204,11 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
   const handleToggleUserRole = (roleId: string) => {
     const currentRoleIds = userForm.roleIds || [];
     const isTargetLastSuper = editingUserId && isLastSuperAdmin(userForm, users, roles);
+    const isTargetRootHesham = editingUserId && (userForm.username?.toLowerCase() === 'a.hesham' || editingUserId === 'usr_super_admin_hesham');
 
-    // Prevent deselecting Super Admin if this is the last active Super Admin
-    if (roleId === SUPER_ADMIN_ROLE_ID && currentRoleIds.includes(SUPER_ADMIN_ROLE_ID) && isTargetLastSuper) {
-      onShowToast('لا يمكن إلغاء صلاحية المدير العام عن الحساب الأخير لمنع قفل النظام', 'error');
+    // Prevent deselecting Super Admin if this is the last active Super Admin or Ahmad Hesham root account
+    if (roleId === SUPER_ADMIN_ROLE_ID && currentRoleIds.includes(SUPER_ADMIN_ROLE_ID) && (isTargetLastSuper || isTargetRootHesham)) {
+      onShowToast('لا يمكن إلغاء صلاحية المدير العام عن حساب المدير العام الرئيسي الثابت لمنع قفل النظام', 'error');
       return;
     }
 
@@ -230,10 +235,6 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
       onShowToast('يرجى إدخال اسم المستخدم لتسجيل الدخول (Username)', 'error');
       return;
     }
-    if (!userForm.email.trim()) {
-      onShowToast('يرجى إدخال البريد الإلكتروني', 'error');
-      return;
-    }
     if (!editingUserId && !userForm.password?.trim()) {
       onShowToast('يرجى كتابة كلمة مرور للمستخدم الجديد', 'error');
       return;
@@ -245,17 +246,20 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
       return;
     }
 
+    const cleanUsername = userForm.username.trim();
+    const isRootHesham = cleanUsername.toLowerCase() === 'a.hesham' || editingUserId === 'usr_super_admin_hesham';
+
     // Check last super admin guard
-    const isSuperRoleSelected = assignedRoleIds.includes(SUPER_ADMIN_ROLE_ID);
+    const isSuperRoleSelected = assignedRoleIds.includes(SUPER_ADMIN_ROLE_ID) || isRootHesham;
     if (editingUserId) {
       const existingUser = users.find(u => u.id === editingUserId);
-      if (existingUser && isLastSuperAdmin(existingUser, users, roles)) {
+      if (isRootHesham || (existingUser && isLastSuperAdmin(existingUser, users, roles))) {
         if (!isSuperRoleSelected) {
-          onShowToast('لا يمكن إزالة رتبة المدير العام عن الحساب الأخير في النظام', 'error');
+          onShowToast('لا يمكن إزالة رتبة المدير العام عن حساب المدير العام الرئيسي في النظام', 'error');
           return;
         }
         if (userForm.status === 'inactive') {
-          onShowToast('لا يمكن تعطيل حساب المدير العام الأخير في النظام', 'error');
+          onShowToast('لا يمكن تعطيل حساب المدير العام الرئيسي في النظام', 'error');
           return;
         }
       }
@@ -263,11 +267,18 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
 
     const legacyRole: UserRole = isSuperRoleSelected ? 'admin' : 'controller';
 
+    // Safe email fallback (email is optional)
+    const cleanEmail = userForm.email?.trim();
+    const safeEmail = cleanEmail && !cleanEmail.endsWith('@prestige.local')
+      ? cleanEmail
+      : `${cleanUsername.toLowerCase()}@prestige.local`;
+
     setUserSaving(true);
     try {
       const finalUser: AdminUser = {
         ...userForm,
-        username: userForm.username.trim(),
+        username: cleanUsername,
+        email: safeEmail,
         role: legacyRole,
         roleIds: assignedRoleIds,
         password: userForm.password ? userForm.password.trim() : (editingUserId ? users.find(u => u.id === editingUserId)?.password : '123456')
@@ -275,10 +286,19 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
 
       const oldUser = editingUserId ? users.find(u => u.id === editingUserId) : null;
       await saveAdminUserToDb(finalUser);
-      await onRefreshUsers();
 
+      // Close modal and show success toast immediately
+      setIsUserModalOpen(false);
+      onShowToast(editingUserId ? 'تم تحديث بيانات المستخدم بنجاح' : 'تم إنشاء المستخدم وتعيين أدواره بنجاح', 'success');
+
+      // Refresh users list in background
+      if (onRefreshUsers) {
+        onRefreshUsers().catch(console.error);
+      }
+
+      // Record audit in background without blocking
       if (onRecordAudit) {
-        await onRecordAudit({
+        onRecordAudit({
           module: 'users_roles',
           action: editingUserId ? 'تعديل مستخدم' : 'إنشاء مستخدم',
           details: `${editingUserId ? 'تعديل بيانات المستخدم' : 'إنشاء مستخدم جديد'}: ${finalUser.name} (${finalUser.username})`,
@@ -286,11 +306,8 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
           newValue: { name: finalUser.name, username: finalUser.username, roles: finalUser.roleIds, status: finalUser.status },
           recordId: finalUser.id,
           recordTitle: finalUser.name
-        });
+        }).catch(console.error);
       }
-
-      setIsUserModalOpen(false);
-      onShowToast(editingUserId ? 'تم تحديث بيانات المستخدم بنجاح' : 'تم إنشاء المستخدم وتعيين أدواره بنجاح', 'success');
     } catch (err: any) {
       console.error(err);
       onShowToast(err.message || 'حدث خطأ أثناء حفظ بيانات المستخدم', 'error');
@@ -300,6 +317,10 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
   };
 
   const handleToggleUserStatus = async (user: AdminUser) => {
+    if (user.username?.toLowerCase() === 'a.hesham' || user.id === 'usr_super_admin_hesham') {
+      onShowToast('لا يمكن تعطيل حساب المدير العام الرئيسي الثابت (أحمد هشام)', 'error');
+      return;
+    }
     if (isLastSuperAdmin(user, users, roles) && user.status === 'active') {
       onShowToast('لا يمكن تعطيل حساب المدير العام الأخير في النظام لمنع قفل لوحة التحكم', 'error');
       return;
@@ -333,6 +354,10 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
   };
 
   const confirmDeleteUser = (user: AdminUser) => {
+    if (user.username?.toLowerCase() === 'a.hesham' || user.id === 'usr_super_admin_hesham') {
+      onShowToast('لا يمكن حذف حساب المدير العام الرئيسي الثابت (أحمد هشام) مطلقاً', 'error');
+      return;
+    }
     if (isLastSuperAdmin(user, users, roles)) {
       onShowToast('لا يمكن حذف حساب المدير العام الأخير في النظام لمنع قفل لوحة التحكم', 'error');
       return;
@@ -494,10 +519,16 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
     try {
       const oldRole = editingRoleId ? roles.find(r => r.id === editingRoleId) : null;
       await saveAdminRoleToDb(roleForm);
-      if (onRefreshRoles) await onRefreshRoles();
+
+      setIsRoleModalOpen(false);
+      onShowToast(editingRoleId ? 'تم تحديث الدور وصلاحياته بنجاح' : 'تم إنشاء الدور الجديد بنجاح', 'success');
+
+      if (onRefreshRoles) {
+        onRefreshRoles().catch(console.error);
+      }
 
       if (onRecordAudit) {
-        await onRecordAudit({
+        onRecordAudit({
           module: 'users_roles',
           action: editingRoleId ? 'تعديل دور مخصص' : 'إنشاء دور جديد',
           details: `${editingRoleId ? 'تعديل الدور' : 'إنشاء دور جديد'}: ${roleForm.name}`,
@@ -505,11 +536,8 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
           newValue: { name: roleForm.name, permissions: roleForm.permissions },
           recordId: roleForm.id,
           recordTitle: roleForm.name
-        });
+        }).catch(console.error);
       }
-
-      setIsRoleModalOpen(false);
-      onShowToast(editingRoleId ? 'تم تحديث الدور وصلاحياته بنجاح' : 'تم إنشاء الدور الجديد بنجاح', 'success');
     } catch (err: any) {
       console.error(err);
       onShowToast(err.message || 'حدث خطأ أثناء حفظ الدور', 'error');
@@ -653,7 +681,7 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
               </div>
             </div>
 
-            {canManageRoles && (
+            {canCreateUser && (
               <button
                 onClick={handleOpenAddUserModal}
                 id="admin-add-user-btn"
@@ -689,6 +717,7 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                 ) : (
                   filteredUsers.map((user, idx) => {
                     const userIsSuper = isSuperAdminUser(user, roles);
+                    const isRootHesham = user.username?.toLowerCase() === 'a.hesham' || user.id === 'usr_super_admin_hesham';
                     const userRoleObjects = (user.roleIds || [])
                       .map(id => roles.find(r => r.id === id))
                       .filter(Boolean) as AdminRole[];
@@ -705,8 +734,13 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                               {userIsSuper ? <ShieldCheck className="w-5 h-5" /> : <Shield className="w-5 h-5" />}
                             </div>
                             <div>
-                              <strong className="text-stone-900 font-bold block text-sm">
-                                {user.name}
+                              <strong className="text-stone-900 font-bold block text-sm flex items-center gap-1.5">
+                                <span>{user.name}</span>
+                                {isRootHesham && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                                    رئيسي ثابت
+                                  </span>
+                                )}
                               </strong>
                               {user.notes ? (
                                 <span className="text-[11px] text-stone-500 line-clamp-1">
@@ -722,11 +756,17 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                         </td>
 
                         <td className="py-4 px-3 font-mono text-xs font-bold text-[#B38A34] dir-ltr text-right">
-                          {user.username || user.email.split('@')[0]}
+                          {user.username || (user.email ? user.email.split('@')[0] : 'user')}
                         </td>
 
                         <td className="py-4 px-3 font-mono text-xs text-stone-600 dir-ltr text-right">
-                          {user.email}
+                          {user.email && !user.email.endsWith('@prestige.local') ? (
+                            user.email
+                          ) : (
+                            <span className="text-stone-400 font-sans text-[11px] italic bg-stone-100 px-2 py-0.5 rounded-md">
+                              تلقائي (اختياري)
+                            </span>
+                          )}
                         </td>
 
                         <td className="py-4 px-3">
@@ -734,7 +774,7 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                             {userIsSuper && (
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-[#98752B] border border-amber-200">
                                 <ShieldCheck className="w-3 h-3" />
-                                <span>Super Admin</span>
+                                <span>المدير العام (Super Admin)</span>
                               </span>
                             )}
                             {userRoleObjects
@@ -756,12 +796,13 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                         <td className="py-4 px-3 text-center">
                           <button
                             onClick={() => handleToggleUserStatus(user)}
+                            disabled={isRootHesham}
                             className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
                               user.status === 'active'
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                                 : 'bg-stone-100 text-stone-500 border-stone-200 hover:bg-stone-200'
-                            }`}
-                            title="اضغط لتغيير حالة الحساب"
+                            } ${isRootHesham ? 'cursor-default opacity-90' : 'cursor-pointer'}`}
+                            title={isRootHesham ? 'حساب المدير العام الرئيسي الثابت (دائماً نشط)' : 'اضغط لتغيير حالة الحساب'}
                           >
                             {user.status === 'active' ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
                             <span>{user.status === 'active' ? 'نشط' : 'معطل'}</span>
@@ -774,20 +815,24 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
 
                         <td className="py-4 pl-4 text-left">
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => handleOpenEditUserModal(user)}
-                              className="p-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors"
-                              title="تعديل المستخدم والأدوار"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => confirmDeleteUser(user)}
-                              className="p-2 rounded-xl bg-stone-100 hover:bg-red-500 hover:text-white text-stone-700 transition-colors"
-                              title="حذف المستخدم"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {canEditUser && (
+                              <button
+                                onClick={() => handleOpenEditUserModal(user)}
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 transition-colors"
+                                title="تعديل المستخدم والأدوار"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                            )}
+                            {canDeleteUser && !isRootHesham && (
+                              <button
+                                onClick={() => confirmDeleteUser(user)}
+                                className="p-2 rounded-xl bg-stone-100 hover:bg-red-500 hover:text-white text-stone-700 transition-colors"
+                                title="حذف المستخدم"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -832,7 +877,8 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
           {/* Roles Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredRoles.map(role => {
-              const isSuper = role.id === SUPER_ADMIN_ROLE_ID || role.isSystem;
+              const isSuper = role.id === SUPER_ADMIN_ROLE_ID;
+              const isDefaultRole = role.isSystem && !isSuper;
               const assignedCount = users.filter(u => 
                 (u.roleIds && u.roleIds.includes(role.id)) || (isSuper && isSuperAdminUser(u, roles))
               ).length;
@@ -843,6 +889,8 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                   className={`rounded-2xl border p-5 flex flex-col justify-between transition-all ${
                     isSuper 
                       ? 'bg-amber-50/50 border-amber-200' 
+                      : isDefaultRole
+                      ? 'bg-blue-50/30 border-blue-200/80 hover:border-blue-300'
                       : 'bg-stone-50/50 border-stone-200 hover:border-[#C9A24B]/50'
                   }`}
                 >
@@ -850,7 +898,11 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                          isSuper ? 'bg-[#C9A24B] text-white' : 'bg-stone-200 text-stone-700'
+                          isSuper 
+                            ? 'bg-[#C9A24B] text-white' 
+                            : isDefaultRole
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-stone-200 text-stone-700'
                         }`}>
                           <ShieldCheck className="w-4 h-4" />
                         </div>
@@ -866,6 +918,11 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900">
                           <Lock className="w-3 h-3" />
                           <span>نظامي ثابت</span>
+                        </span>
+                      ) : isDefaultRole ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-800">
+                          <ShieldCheck className="w-3 h-3" />
+                          <span>دور افتراضي</span>
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-200 text-stone-700">
@@ -966,22 +1023,26 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-stone-700 block mb-1">البريد الإلكتروني: *</label>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">
+                    البريد الإلكتروني: <span className="text-stone-400 font-normal">(اختياري)</span>
+                  </label>
                   <input
                     type="email"
-                    required
-                    value={userForm.email}
+                    value={userForm.email?.endsWith('@prestige.local') ? '' : (userForm.email || '')}
                     onChange={(e) => setUserForm(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="user@prestigehotels.sa"
+                    placeholder="اختياري - مثلاً: user@company.com"
                     className="w-full px-4 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-sm text-stone-900 focus:outline-none focus:bg-white focus:border-[#C9A24B] dir-ltr text-right font-mono"
                   />
+                  <span className="text-[10px] text-stone-400 mt-1 block">
+                    يمكنك تركه فارغاً وسيتم إنشاؤه تلقائياً.
+                  </span>
                 </div>
               </div>
 
               {/* Password Field */}
               <div>
                 <label className="text-xs font-bold text-stone-700 block mb-1">
-                  كلمة المرور: {editingUserId && '(اتركها فارغة إذا لم ترغب في تغييرها)'}
+                  كلمة المرور: * {editingUserId && '(اتركها فارغة إذا لم ترغب في تغييرها)'}
                 </label>
                 <div className="relative">
                   <input
@@ -1007,10 +1068,10 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                 <label className="text-xs font-bold text-stone-700 block mb-2">
                   تعيين الأدوار والصلاحيات: * (يمكن تعيين أكثر من دور)
                 </label>
-                <div className="space-y-2 border border-stone-200 rounded-2xl p-3 bg-stone-50 max-h-52 overflow-y-auto">
+                <div className="space-y-2 border border-stone-200 rounded-2xl p-3 bg-stone-50 max-h-56 overflow-y-auto">
                   {roles.map(role => {
                     const isChecked = (userForm.roleIds || []).includes(role.id);
-                    const isSuper = role.id === SUPER_ADMIN_ROLE_ID || role.isSystem;
+                    const isSuper = role.id === SUPER_ADMIN_ROLE_ID;
                     const isTargetLastSuper = editingUserId && isLastSuperAdmin(userForm, users, roles) && isSuper;
 
                     return (
@@ -1033,11 +1094,15 @@ export const AdminUsersManager: React.FC<AdminUsersManagerProps> = ({
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-xs text-stone-900">{role.name}</span>
-                            {isSuper && (
+                            {isSuper ? (
                               <span className="px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 text-[10px] font-bold">
                                 Super Admin
                               </span>
-                            )}
+                            ) : role.isSystem ? (
+                              <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 text-[10px] font-semibold">
+                                دور افتراضي
+                              </span>
+                            ) : null}
                             {isTargetLastSuper && (
                               <span className="px-1.5 py-0.2 rounded bg-red-100 text-red-700 text-[10px] font-bold">
                                 محمي (المدير الأخير)

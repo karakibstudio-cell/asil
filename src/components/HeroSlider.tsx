@@ -21,7 +21,9 @@ import { getFirstActiveWhatsApp, getChannelHref, buildWhatsAppLink } from '../ut
 import { SafeVideoPlayer } from './SafeVideoPlayer';
 import { EditableText } from './EditableText';
 import { useLanguage } from '../context/LanguageContext';
-import { Lightbox, LightboxMediaItem } from './Lightbox';
+import type { LightboxMediaItem } from './Lightbox';
+
+const Lightbox = React.lazy(() => import('./Lightbox').then(m => ({ default: m.Lightbox })));
 
 interface HeroSliderProps {
   slides?: HeroSlide[];
@@ -581,12 +583,14 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({
 
       {/* Fullscreen Lightbox for Welcoming Background Slides */}
       {lightboxOpen && (
-        <Lightbox
-          mediaItems={lightboxMediaItems}
-          initialIndex={currentIndex}
-          isOpen={lightboxOpen}
-          onClose={() => setLightboxOpen(false)}
-        />
+        <React.Suspense fallback={null}>
+          <Lightbox
+            mediaItems={lightboxMediaItems}
+            initialIndex={currentIndex}
+            isOpen={lightboxOpen}
+            onClose={() => setLightboxOpen(false)}
+          />
+        </React.Suspense>
       )}
     </section>
   );

@@ -2633,9 +2633,12 @@ export const INITIAL_OFFERS: Offer[] = [
   }
 ];
 
+import { DEFAULT_SITE_SETTINGS } from './defaultSettings';
+
 export const INITIAL_REVIEWS: HotelReview[] = [];
 
 export const INITIAL_SITE_SETTINGS: SiteSettings = {
+  ...DEFAULT_SITE_SETTINGS,
   siteTitle: 'برستيج لإدارة وتشغيل الفنادق',
   siteSubtitle: 'إدارة وتشغيل الفنادق والضيافة الفاخرة بمكة المكرمة والمدينة المنورة',
   primaryPhone: '+966544076726',

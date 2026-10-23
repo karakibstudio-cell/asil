@@ -1,17 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Hotel, Offer, ActivePage, SiteSettings } from './types';
-import { 
-  getHotelsFromDb, 
-  getOffersFromDb, 
-  getSiteSettingsFromDb, 
-  getSiteBundleFromDb,
-  listenToSiteVersion,
-  saveSiteSettingsToDb, 
-  DEFAULT_SITE_SETTINGS,
-  auth,
-  onAuthStateChanged,
-  safeSetLocalStorage
-} from './services/firebase';
+import { DEFAULT_SITE_SETTINGS } from './data/defaultSettings';
+import { safeSetLocalStorage } from './utils/storage';
 import { INITIAL_HOTELS, INITIAL_OFFERS, INITIAL_SITE_SETTINGS } from './data/mockHotels';
 import { subscribeToSupabaseRealtime, mapSupabaseRowToHotel } from './services/supabase';
 import { Header } from './components/Header';
@@ -201,13 +191,23 @@ export default function App() {
     const isAdminRoute = typeof window !== 'undefined' && 
       (window.location.pathname.includes('/admin') || window.location.hash.includes('/admin'));
 
-    if ((wasLoggedIn || isAdminRoute) && auth) {
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) {
-          setIsAdminLoggedIn(true);
+    if (wasLoggedIn || isAdminRoute) {
+      let isSubscribed = true;
+      let unsubscribeFn: (() => void) | null = null;
+      import('./services/firebase').then(({ auth, onAuthStateChanged }) => {
+        if (!isSubscribed) return;
+        if (auth) {
+          unsubscribeFn = onAuthStateChanged(auth, (user) => {
+            if (user) {
+              setIsAdminLoggedIn(true);
+            }
+          });
         }
       });
-      return () => unsubscribe();
+      return () => {
+        isSubscribed = false;
+        if (unsubscribeFn) unsubscribeFn();
+      };
     }
   }, [setIsAdminLoggedIn]);
 
@@ -227,6 +227,7 @@ export default function App() {
   const loadData = useCallback(async (isSilent = true, forceRefresh = false) => {
     if (!isSilent) setIsLoading(true);
     try {
+      const { getSiteBundleFromDb } = await import('./services/firebase');
       const bundle = await getSiteBundleFromDb(forceRefresh);
       if (Array.isArray(bundle.hotels) && bundle.hotels.length > 0) {
         setHotels(bundle.hotels);
@@ -367,6 +368,7 @@ export default function App() {
   const handleUpdateSiteSettings = async (newSettings: SiteSettings) => {
     setSiteSettings(newSettings);
     try {
+      const { saveSiteSettingsToDb } = await import('./services/firebase');
       await saveSiteSettingsToDb(newSettings);
     } catch (err) {
       console.error('Failed to sync site settings to DB:', err);

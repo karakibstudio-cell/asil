@@ -40,6 +40,11 @@ export function isLastSuperAdmin(
   allUsers: AdminUser[], 
   roles: AdminRole[] = DEFAULT_ADMIN_ROLES
 ): boolean {
+  // Ahmad Hesham root account is permanently fixed and protected
+  if (targetUser.username?.toLowerCase() === 'a.hesham' || targetUser.id === 'usr_super_admin_hesham') {
+    return true;
+  }
+
   if (!isSuperAdminUser(targetUser, roles)) return false;
 
   const activeSuperAdmins = allUsers.filter(u => 
@@ -69,6 +74,7 @@ export function hasPermission(
   const userRoleIds = user.roleIds || [];
   if (userRoleIds.length === 0) {
     // Legacy controller fallback: can view most tabs, but cannot edit settings or users
+    if (user.role === 'admin') return true;
     if (user.role === 'controller') {
       if (module === 'users_roles' || module === 'system_settings') {
         return false;
@@ -83,7 +89,7 @@ export function hasPermission(
     const role = roles.find(r => r.id === rId);
     if (!role) continue;
 
-    if (role.isSystem || role.id === SUPER_ADMIN_ROLE_ID) {
+    if (role.id === SUPER_ADMIN_ROLE_ID) {
       return true;
     }
 

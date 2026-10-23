@@ -2,9 +2,9 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Building2, Sparkles, MapPin, Award, ArrowLeft, CheckCircle2, PhoneCall, Phone, Mail, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
-import { EditableText } from './EditableText';
 import { ActivePage, StoryTeaserSettings } from '../types';
-import { DEFAULT_STORY_TEASER } from '../services/firebase';
+import { DEFAULT_STORY_TEASER } from '../data/defaultSettings';
+import { EditableText } from './EditableText';
 
 interface CompanyStoryTeaserProps {
   onNavigate?: (page: ActivePage, hotelId?: string) => void;
