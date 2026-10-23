@@ -290,7 +290,6 @@ export const SafeVideoPlayer: React.FC<SafeVideoPlayerProps> = ({
         className={className}
         controls={controls}
         playsInline={playsInline}
-        crossOrigin="anonymous"
         // @ts-ignore
         webkit-playsinline="true"
         x5-playsinline="true"

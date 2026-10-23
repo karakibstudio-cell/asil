@@ -224,7 +224,6 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
             className="w-full h-full object-cover"
             autoPlay
             playsInline
-            crossOrigin="anonymous"
             // @ts-ignore
             webkit-playsinline="true"
             x5-playsinline="true"
