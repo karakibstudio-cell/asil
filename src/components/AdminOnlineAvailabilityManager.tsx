@@ -17,6 +17,7 @@ import {
   checkPeriodOverlap
 } from '../services/bookingService';
 import { rebuildHotelAvailability } from '../services/availabilityService';
+import { saveHotelToDb } from '../services/firebase';
 import { 
   Building2, 
   Calendar, 
@@ -128,18 +129,22 @@ export const AdminOnlineAvailabilityManager: React.FC<AdminOnlineAvailabilityMan
       onlineAvailabilityMode: mode
     };
 
+    // Instant optimistic local update
+    onUpdateHotel(updatedHotel);
+    onShowToast(
+      mode === 'always'
+        ? `تم ضبط ${selectedHotel.name}: متاح للحجز أونلاين دائماً ✓`
+        : mode === 'periods_only'
+        ? `تم ضبط ${selectedHotel.name}: متاح حصرياً في الفترات والمواسم المحددة 📅`
+        : `تم تعطيل الحجز أونلاين لـ ${selectedHotel.name} 🚫`,
+      'success'
+    );
+
     try {
-      onUpdateHotel(updatedHotel);
-      onShowToast(
-        mode === 'always'
-          ? `تم ضبط ${selectedHotel.name}: متاح للحجز أونلاين دائماً ✓`
-          : mode === 'periods_only'
-          ? `تم ضبط ${selectedHotel.name}: متاح حصرياً في الفترات والمواسم المحددة 📅`
-          : `تم تعطيل الحجز أونلاين لـ ${selectedHotel.name} 🚫`,
-        'success'
-      );
-    } catch {
-      onShowToast('حدث خطأ أثناء تحديث نمط الحجز أونلاين', 'error');
+      await saveHotelToDb(updatedHotel);
+    } catch (err) {
+      console.error('Failed to save hotel online mode:', err);
+      onShowToast('حدث خطأ أثناء مزامنة حالة الفندق مع السحابة', 'error');
     }
   };
 

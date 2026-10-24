@@ -21,6 +21,8 @@ https://prestige-ksa.web.app/ar/hotels/bywt-aljzyrh
 https://prestige-ksa.web.app/en/hotels/bywt-aljzyrh
 https://prestige-ksa.web.app/ar/hotels/prestige-ajyad
 https://prestige-ksa.web.app/en/hotels/prestige-ajyad
+https://prestige-ksa.web.app/ar/hotels/mysan-almqam
+https://prestige-ksa.web.app/en/hotels/mysan-almqam
 https://prestige-ksa.web.app/ar/hotels/aljad-almhbs
 https://prestige-ksa.web.app/en/hotels/aljad-almhbs
 https://prestige-ksa.web.app/ar/hotels/fajr-badee-5
@@ -41,8 +43,6 @@ https://prestige-ksa.web.app/ar/hotels/mysan-almltzm
 https://prestige-ksa.web.app/en/hotels/mysan-almltzm
 https://prestige-ksa.web.app/ar/hotels/manazel-alsadq
 https://prestige-ksa.web.app/en/hotels/manazel-alsadq
-https://prestige-ksa.web.app/ar/hotels/mysan-almqam
-https://prestige-ksa.web.app/en/hotels/mysan-almqam
 https://prestige-ksa.web.app/ar/hotels/nkhbh-aljwar
 https://prestige-ksa.web.app/en/hotels/nkhbh-aljwar
 https://prestige-ksa.web.app/ar/hotels/sfwt-albyt-2

@@ -2402,8 +2402,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <AdminOnlineAvailabilityManager
                 hotels={localHotels}
                 siteSettings={siteSettings}
-                onUpdateHotel={(updatedHotel) => {
+                onUpdateHotel={async (updatedHotel) => {
                   setLocalHotels(prev => prev.map(h => h.id === updatedHotel.id ? updatedHotel : h));
+                  try {
+                    await saveHotelToDb(updatedHotel);
+                  } catch (err) {
+                    console.error('Failed to save hotel in DB:', err);
+                  }
                 }}
                 onUpdateSiteSettings={onUpdateSiteSettings}
                 onShowToast={onShowToast}
@@ -2433,8 +2438,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 hotels={localHotels}
                 onShowToast={onShowToast}
                 onRefreshHotels={onRefreshData}
-                onUpdateHotel={(updatedHotel) => {
+                onUpdateHotel={async (updatedHotel) => {
                   setLocalHotels(prev => prev.map(h => h.id === updatedHotel.id ? updatedHotel : h));
+                  try {
+                    await saveHotelToDb(updatedHotel);
+                  } catch (err) {
+                    console.error('Failed to save hotel in DB:', err);
+                  }
                 }}
                 activeSubTab={
                   activeTab === 'calendar-grid' ? 'calendar-grid' :

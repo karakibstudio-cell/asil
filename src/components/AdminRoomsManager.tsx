@@ -451,39 +451,57 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
   const handleSaveRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomForm.name.trim()) {
-      onShowToast('يرجى كتابة اسم نوع الغرفة (مثال: مفردة، ثنائية، ثلاثية، جناح)', 'error');
+      onShowToast('يرجى كتابة اسم نوع الغرفة (مثال: مفردة، ثنائية، ثلاثية، رباعية، جناح)', 'error');
       return;
     }
+
+    const effectiveGuests = Number(roomForm.maxGuests) || (
+      roomForm.name.includes('خماس') ? 5 :
+      roomForm.name.includes('رباع') ? 4 :
+      roomForm.name.includes('ثلاث') ? 3 :
+      roomForm.name.includes('مفرد') ? 1 : 2
+    );
 
     const updatedRoom: RoomTypeItem = {
       ...roomForm,
       hotelId: selectedHotelId,
-      bedsCount: Number(roomForm.bedsCount) || 1,
+      bedsCount: Number(roomForm.bedsCount) || effectiveGuests,
+      maxGuests: effectiveGuests,
+      basePrice: Number(roomForm.basePrice) || 350,
+      totalRooms: Number(roomForm.totalRooms) || 10,
+      availableRooms: Number(roomForm.availableRooms) || 10,
+      bedType: roomForm.bedType || (
+        effectiveGuests === 5 ? '5 أسرة مفردة مريحة' :
+        effectiveGuests === 4 ? '4 أسرة مفردة مريحة' :
+        effectiveGuests === 3 ? '3 أسرة مفردة مريحة' :
+        effectiveGuests === 1 ? 'سرير مفرد مريح' : 'سريرين مفردين أو سرير كينج'
+      ),
       features: roomForm.features.length > 0 ? roomForm.features : ['إقامة فندقية فاخرة'],
       images: (roomForm.images && roomForm.images.length > 0) ? roomForm.images : [
         'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1000&q=80'
       ]
     };
 
-    try {
-      await withAutoSave(async () => {
-        await saveRoomToDb(updatedRoom);
-      });
-      setRooms(prev => {
-        const idx = prev.findIndex(r => r.id === updatedRoom.id);
-        if (idx >= 0) {
-          const cp = [...prev];
-          cp[idx] = updatedRoom;
-          return cp;
-        }
-        return [updatedRoom, ...prev];
-      });
+    // 1. Optimistic instant UI update
+    setRooms(prev => {
+      const idx = prev.findIndex(r => r.id === updatedRoom.id);
+      if (idx >= 0) {
+        const cp = [...prev];
+        cp[idx] = updatedRoom;
+        return cp;
+      }
+      return [updatedRoom, ...prev];
+    });
+    setIsRoomModalOpen(false);
+    onShowToast(`تم حفظ نوع الغرفة "${updatedRoom.name}" بنجاح ✓`, 'success');
 
-      onShowToast(`تم حفظ نوع الغرفة "${updatedRoom.name}" بنجاح ✓`, 'success');
-      setIsRoomModalOpen(false);
-    } catch {
-      onShowToast('فشل حفظ الغرفة', 'error');
-    }
+    // 2. Persist to DB in background
+    withAutoSave(async () => {
+      await saveRoomToDb(updatedRoom);
+    }).catch(err => {
+      console.error('Failed to save room in DB:', err);
+      onShowToast('حدث خطأ أثناء مزامنة الغرفة مع السحابة', 'error');
+    });
   };
 
   const handleToggleRoomActive = async (room: RoomTypeItem) => {
@@ -2689,6 +2707,41 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
               </button>
             </div>
 
+            {/* Quick Type Presets */}
+            <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200/80">
+              <span className="text-[11px] font-bold text-amber-950 block mb-2">⚡ نماذج سريعة لتحديد السعة والأسرة بنقرة واحدة:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: 'مفردة (1 نزيل)', name: 'مفرد', nameEn: 'Single Room', beds: 1, guests: 1, bedType: 'سرير مفرد مريح', cat: 'غرفة مفردة', price: 280 },
+                  { label: 'ثنائية (2 نزلاء)', name: 'ثنائي', nameEn: 'Double Room', beds: 2, guests: 2, bedType: 'سريرين مفردين أو سرير كينج', cat: 'غرفة ثنائية', price: 400 },
+                  { label: 'ثلاثية (3 نزلاء)', name: 'ثلاثي', nameEn: 'Triple Room', beds: 3, guests: 3, bedType: '3 أسرة مفردة مريحة', cat: 'غرفة ثلاثية', price: 480 },
+                  { label: 'رباعية (4 نزلاء)', name: 'رباعي', nameEn: 'Quadruple Room', beds: 4, guests: 4, bedType: '4 أسرة مفردة مريحة', cat: 'غرفة رباعية', price: 580 },
+                  { label: 'خماسية (5 نزلاء)', name: 'خماسي', nameEn: 'Quintuple Room', beds: 5, guests: 5, bedType: '5 أسرة مفردة مريحة', cat: 'غرفة خماسية', price: 680 },
+                  { label: 'جناح عائلي (4-6)', name: 'جناح عائلي رحب', nameEn: 'Family Suite', beds: 4, guests: 5, bedType: '1 سرير كينج + 2 سرير مفرد + صالة', cat: 'جناح عائلي', price: 750 }
+                ].map((preset, pIdx) => (
+                  <button
+                    key={pIdx}
+                    type="button"
+                    onClick={() => {
+                      setRoomForm({
+                        ...roomForm,
+                        name: preset.name,
+                        nameEn: preset.nameEn,
+                        bedsCount: preset.beds,
+                        maxGuests: preset.guests,
+                        bedType: preset.bedType,
+                        category: preset.cat,
+                        basePrice: roomForm.basePrice || preset.price
+                      });
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-white hover:bg-[#C9A24B] hover:text-white border border-amber-300 text-amber-900 text-[11px] font-bold shadow-2xs transition-all cursor-pointer"
+                  >
+                    + {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <form onSubmit={handleSaveRoom} className="space-y-4 text-xs font-bold">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -2697,8 +2750,27 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
                     type="text"
                     required
                     value={roomForm.name}
-                    onChange={(e) => setRoomForm({ ...roomForm, name: e.target.value })}
-                    placeholder="مثال: غرفة ثنائية، جناح ملكي"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const lower = val.toLowerCase();
+                      let g = roomForm.maxGuests || 2;
+                      let b = roomForm.bedsCount || 2;
+                      let bt = roomForm.bedType || 'سريرين مفردين أو سرير كينج';
+                      let cat = roomForm.category || 'غرفة فندقية';
+                      if (lower.includes('خماس') || lower.includes('خمس')) {
+                        g = 5; b = 5; bt = '5 أسرة مفردة مريحة'; cat = 'غرفة خماسية';
+                      } else if (lower.includes('رباع') || lower.includes('أربع')) {
+                        g = 4; b = 4; bt = '4 أسرة مفردة مريحة'; cat = 'غرفة رباعية';
+                      } else if (lower.includes('ثلاث') || lower.includes('ثلاثي')) {
+                        g = 3; b = 3; bt = '3 أسرة مفردة مريحة'; cat = 'غرفة ثلاثية';
+                      } else if (lower.includes('مفرد') || lower.includes('فردي')) {
+                        g = 1; b = 1; bt = 'سرير مفرد مريح'; cat = 'غرفة مفردة';
+                      } else if (lower.includes('ثنائ') || lower.includes('مزدوج')) {
+                        g = 2; b = 2; bt = 'سريرين مفردين أو سرير كينج'; cat = 'غرفة ثنائية';
+                      }
+                      setRoomForm({ ...roomForm, name: val, maxGuests: g, bedsCount: b, bedType: bt, category: cat });
+                    }}
+                    placeholder="مثال: ثنائي، ثلاثي، رباعي، جناح..."
                     className="w-full px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-none focus:border-[#C9A24B]"
                   />
                 </div>
@@ -2713,13 +2785,50 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-stone-700 mb-1">عدد الأسرة *</label>
+                  <label className="block text-stone-700 mb-1">سعة الغرفة (النزلاء) *</label>
+                  <input 
+                    type="number"
+                    min={1}
+                    max={10}
+                    required
+                    value={roomForm.maxGuests || 2}
+                    onChange={(e) => setRoomForm({ ...roomForm, maxGuests: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-stone-700 mb-1">نوع وتوزيع الأسرة *</label>
+                  <input 
+                    type="text"
+                    required
+                    value={roomForm.bedType || 'سريرين مفردين أو سرير كينج'}
+                    onChange={(e) => setRoomForm({ ...roomForm, bedType: e.target.value })}
+                    placeholder="مثال: 3 أسرة مفردة، سرير كينج..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-stone-700 mb-1">سعر الليلة الأساسي ({currentCurrency}) *</label>
+                  <input 
+                    type="number"
+                    min={50}
+                    required
+                    value={roomForm.basePrice || 400}
+                    onChange={(e) => setRoomForm({ ...roomForm, basePrice: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-200 text-stone-900 font-bold focus:outline-none focus:border-[#C9A24B]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-stone-700 mb-1">عدد الغرف المتاحة *</label>
                   <input 
                     type="number"
                     min={1}
                     required
-                    value={roomForm.bedsCount || 2}
-                    onChange={(e) => setRoomForm({ ...roomForm, bedsCount: Number(e.target.value) })}
+                    value={roomForm.availableRooms || 10}
+                    onChange={(e) => setRoomForm({ ...roomForm, availableRooms: Number(e.target.value), totalRooms: Number(e.target.value) })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-stone-50 border border-stone-200 text-stone-900 focus:outline-none focus:border-[#C9A24B]"
                   />
                 </div>

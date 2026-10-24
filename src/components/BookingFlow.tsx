@@ -102,6 +102,29 @@ export const POPULAR_COUNTRIES: CountryCodeItem[] = [
 
 const DRAFT_STORAGE_KEY = 'prestige_booking_draft_v2';
 
+export const getEffectiveRoomCapacity = (room: RoomTypeItem): number => {
+  const name = (room.name + ' ' + (room.category || '')).toLowerCase();
+  if (name.includes('خماس') || name.includes('خمس') || name.includes('quint')) return Math.max(room.maxGuests || 0, 5);
+  if (name.includes('رباع') || name.includes('أربع') || name.includes('quad')) return Math.max(room.maxGuests || 0, 4);
+  if (name.includes('ثلاث') || name.includes('ثلاثي') || name.includes('triple')) return Math.max(room.maxGuests || 0, 3);
+  if (name.includes('مفرد') || name.includes('فردي') || name.includes('single')) return Math.max(room.maxGuests || 0, 1);
+  if (name.includes('ثنائ') || name.includes('مزدوج') || name.includes('double') || name.includes('twin')) return Math.max(room.maxGuests || 0, 2);
+  return room.maxGuests || 2;
+};
+
+export const getEffectiveBedType = (room: RoomTypeItem): string => {
+  const name = (room.name + ' ' + (room.category || '')).toLowerCase();
+  if (room.bedType && room.bedType !== 'سريرين مفردين أو سرير كينج' && room.bedType !== 'سرير مزدوج فاخر') {
+    return room.bedType;
+  }
+  if (name.includes('خماس') || name.includes('خمس')) return '5 أسرة مفردة مريحة';
+  if (name.includes('رباع') || name.includes('أربع')) return '4 أسرة مفردة مريحة';
+  if (name.includes('ثلاث') || name.includes('ثلاثي')) return '3 أسرة مفردة مريحة';
+  if (name.includes('مفرد') || name.includes('فردي')) return 'سرير مفرد مريح';
+  if (name.includes('ثنائ') || name.includes('مزدوج')) return 'سريرين مفردين أو سرير كينج';
+  return room.bedType || 'سريرين مفردين أو سرير كينج';
+};
+
 export interface BookingFlowProps {
   hotel: Hotel;
   allHotels?: Hotel[];
@@ -113,6 +136,7 @@ export interface BookingFlowProps {
   initialAdults?: number;
   initialChildren?: number;
   initialBookingType?: 'individual' | 'group';
+  hideBookingTypeToggle?: boolean;
   siteSettings?: SiteSettings;
   onNavigateHome?: () => void;
   onSelectAnotherHotel?: (hotelId: string) => void;
@@ -130,6 +154,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
   initialAdults = 2,
   initialChildren = 0,
   initialBookingType,
+  hideBookingTypeToggle = false,
   siteSettings,
   onNavigateHome,
   onSelectAnotherHotel,
@@ -528,7 +553,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
       const nQty = Number(qty) || 0;
       if (nQty <= 0) return sum;
       const r = rooms.find(room => room.id === rId);
-      return sum + (r?.maxGuests || 2) * nQty;
+      return sum + (r ? getEffectiveRoomCapacity(r) : 2) * nQty;
     }, 0);
   }, [selectedRoomsMap, rooms]);
 
@@ -537,11 +562,12 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
     const selectedEntries = (Object.entries(selectedRoomsMap) as [string, number][]).filter(([_, qty]) => Number(qty) > 0);
     if (selectedEntries.length === 0) {
       if (!selectedRoom) return [];
+      const cap = getEffectiveRoomCapacity(selectedRoom);
       return [{
         roomId: selectedRoom.id,
         roomName: selectedRoom.name,
         roomsCount: roomsCount,
-        adultsPerRoom: selectedRoom.maxGuests || 2,
+        adultsPerRoom: cap,
         pricePerNight: selectedRoom.basePrice || 350,
         totalAmount: (selectedRoom.basePrice || 350) * roomsCount * (nightsCount || 1)
       }];
@@ -552,13 +578,14 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
         const roomObj = rooms.find(r => r.id === rId) || (selectedRoom?.id === rId ? selectedRoom : null);
         if (!roomObj) return null;
         const nQty = Number(qty) || 1;
+        const cap = getEffectiveRoomCapacity(roomObj);
         const singleCalc = calculateBookingPrice({
           hotel,
           room: roomObj,
           checkIn,
           checkOut,
           roomsCount: nQty,
-          guestsCount: (roomObj.maxGuests || 2) * nQty,
+          guestsCount: cap * nQty,
           mealPlan: null,
           pricingPeriods
         });
@@ -566,7 +593,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
           roomId: rId,
           roomName: roomObj.name,
           roomsCount: nQty,
-          adultsPerRoom: roomObj.maxGuests || 2,
+          adultsPerRoom: cap,
           pricePerNight: singleCalc.averageNightlyRate,
           totalAmount: singleCalc.roomsCost
         };
@@ -612,7 +639,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
           checkIn,
           checkOut,
           roomsCount: nQty,
-          guestsCount: (roomObj.maxGuests || 2) * nQty,
+          guestsCount: getEffectiveRoomCapacity(roomObj) * nQty,
           mealPlan: null,
           pricingPeriods
         });
@@ -1053,42 +1080,44 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
       {/* ======================================================== */}
       {currentStep === 1 && (
         <div className="bg-white rounded-3xl border border-stone-200 p-6 md:p-8 shadow-sm">
-          {/* Segmented Booking Mode Toggle */}
-          <div className="mb-6 p-1.5 bg-stone-100 rounded-2xl flex items-center gap-1.5 border border-stone-200/90 shadow-inner">
-            <button
-              type="button"
-              onClick={() => setBookingType('individual')}
-              className={`flex-1 py-3 px-4 rounded-xl text-xs md:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                bookingType === 'individual'
-                  ? 'bg-white text-stone-900 shadow-md border border-[#C9A24B]/40 ring-1 ring-[#C9A24B]/20'
-                  : 'text-stone-500 hover:text-stone-800'
-              }`}
-            >
-              <User className="w-4 h-4 text-[#C9A24B]" />
-              <span>👤 حجز فردي / عائلي</span>
-            </button>
+          {/* Segmented Booking Mode Toggle (Hidden when user is in individual booking flow) */}
+          {(!hideBookingTypeToggle && initialBookingType !== 'individual') && (
+            <div className="mb-6 p-1.5 bg-stone-100 rounded-2xl flex items-center gap-1.5 border border-stone-200/90 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setBookingType('individual')}
+                className={`flex-1 py-3 px-4 rounded-xl text-xs md:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  bookingType === 'individual'
+                    ? 'bg-white text-stone-900 shadow-md border border-[#C9A24B]/40 ring-1 ring-[#C9A24B]/20'
+                    : 'text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <User className="w-4 h-4 text-[#C9A24B]" />
+                <span>👤 حجز فردي / عائلي</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setBookingType('group');
-                if (roomsCount < 3 && totalSelectedRoomsCount < 3) {
-                  setRoomsCount(3);
-                }
-              }}
-              className={`flex-1 py-3 px-4 rounded-xl text-xs md:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                bookingType === 'group'
-                  ? 'bg-gradient-to-r from-stone-900 to-stone-800 text-white shadow-lg border border-[#C9A24B]/50'
-                  : 'text-stone-500 hover:text-stone-800'
-              }`}
-            >
-              <UsersRound className="w-4 h-4 text-[#E0C070]" />
-              <span>👥 حجز مجموعة / حملة / شركات</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#C9A24B]/25 text-[#E0C070] font-bold hidden sm:inline border border-[#C9A24B]/30">
-                حملات ومجموعات
-              </span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBookingType('group');
+                  if (roomsCount < 3 && totalSelectedRoomsCount < 3) {
+                    setRoomsCount(3);
+                  }
+                }}
+                className={`flex-1 py-3 px-4 rounded-xl text-xs md:text-sm font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  bookingType === 'group'
+                    ? 'bg-gradient-to-r from-stone-900 to-stone-800 text-white shadow-lg border border-[#C9A24B]/50'
+                    : 'text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <UsersRound className="w-4 h-4 text-[#E0C070]" />
+                <span>👥 حجز مجموعة / حملة / شركات</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#C9A24B]/25 text-[#E0C070] font-bold hidden sm:inline border border-[#C9A24B]/30">
+                  حملات ومجموعات
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Group Booking Informative Banner */}
           {bookingType === 'group' && (
@@ -1439,13 +1468,13 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
 
                         {/* Room Features */}
                         <div className="flex flex-wrap items-center gap-2 text-xs text-stone-600 mb-2">
-                          <span className="bg-stone-100 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
-                            <Users className="w-3.5 h-3.5 text-stone-500" />
-                            <span>سعة {room.maxGuests || 2} نزلاء للغرفة</span>
+                          <span className="bg-amber-50 border border-amber-200/90 text-amber-950 px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-bold shadow-2xs">
+                            <Users className="w-3.5 h-3.5 text-[#B38A34]" />
+                            <span>سعة {getEffectiveRoomCapacity(room)} نزلاء للغرفة</span>
                           </span>
-                          <span className="bg-stone-100 px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
+                          <span className="bg-stone-100 px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-medium text-stone-700">
                             <BedDouble className="w-3.5 h-3.5 text-stone-500" />
-                            <span>{room.bedType || 'سرير مزدوج فاخر'}</span>
+                            <span>{getEffectiveBedType(room)}</span>
                           </span>
                         </div>
                       </div>
@@ -1457,6 +1486,11 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
                           <div className="text-xl md:text-2xl font-black text-[#C9A24B] tracking-tight">
                             {room.basePrice || 350} <span className="text-xs font-bold text-stone-600">ر.س</span>
                           </div>
+                          {selectedMealPlan && selectedMealPlan.id !== 'meal_none' && (
+                            <div className="text-[10px] font-bold text-[#8C6D23] mt-0.5">
+                              + وجبة {selectedMealPlan.name}: {Number(selectedMealPlan.price ?? selectedMealPlan.pricePerPersonPerNight ?? 0)} ر.س / فرد
+                            </div>
+                          )}
                         </div>
 
                         {/* Quantity Increment/Decrement Controls */}

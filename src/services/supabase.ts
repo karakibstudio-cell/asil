@@ -234,6 +234,7 @@ export function mapSupabaseRowToHotel(row: any): Hotel {
       : (typeof loc.onlineBookingEnabled === 'boolean' 
           ? loc.onlineBookingEnabled 
           : (row.onlineBookingEnabled === true || loc.onlineBookingEnabled === true || row.id === 'hotel_test_1790703048618')),
+    onlineAvailabilityMode: (loc.onlineAvailabilityMode as any) || (row as any).online_availability_mode || (typeof row.online_booking_enabled === 'boolean' ? (row.online_booking_enabled ? 'always' : 'disabled') : (loc.onlineBookingEnabled ? 'always' : 'disabled')),
     bookingPolicy: row.booking_policy || row.bookingPolicy || undefined,
     showDistanceBadge: typeof loc.showDistanceBadge === 'boolean'
       ? loc.showDistanceBadge
@@ -314,6 +315,7 @@ export async function upsertHotelToSupabase(hotel: Hotel): Promise<boolean> {
       order: typeof hotel.order === 'number' ? hotel.order : 0,
       isActive: hotel.isActive !== false,
       onlineBookingEnabled: isOnline,
+      onlineAvailabilityMode: hotel.onlineAvailabilityMode || (isOnline ? 'always' : 'disabled'),
       showDistanceBadge: hotel.showDistanceBadge !== false,
       showTransportInfo: hotel.showDistanceBadge !== false,
       showStars: hotel.showStars !== false,

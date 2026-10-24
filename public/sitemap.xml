@@ -212,6 +212,24 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://prestige-ksa.web.app/ar/hotels/mysan-almqam</loc>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://prestige-ksa.web.app/ar/hotels/mysan-almqam" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://prestige-ksa.web.app/en/hotels/mysan-almqam" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://prestige-ksa.web.app/ar/hotels/mysan-almqam" />
+    <lastmod>2026-10-24</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://prestige-ksa.web.app/en/hotels/mysan-almqam</loc>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://prestige-ksa.web.app/ar/hotels/mysan-almqam" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://prestige-ksa.web.app/en/hotels/mysan-almqam" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://prestige-ksa.web.app/ar/hotels/mysan-almqam" />
+    <lastmod>2026-10-24</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/aljad-almhbs</loc>
     <xhtml:link rel="alternate" hreflang="ar" href="https://prestige-ksa.web.app/ar/hotels/aljad-almhbs" />
     <xhtml:link rel="alternate" hreflang="en" href="https://prestige-ksa.web.app/en/hotels/aljad-almhbs" />
@@ -387,24 +405,6 @@
     <xhtml:link rel="alternate" hreflang="ar" href="https://prestige-ksa.web.app/ar/hotels/manazel-alsadq" />
     <xhtml:link rel="alternate" hreflang="en" href="https://prestige-ksa.web.app/en/hotels/manazel-alsadq" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://prestige-ksa.web.app/ar/hotels/manazel-alsadq" />
-    <lastmod>2026-10-24</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://prestige-ksa.web.app/ar/hotels/mysan-almqam</loc>
-    <xhtml:link rel="alternate" hreflang="ar" href="https://prestige-ksa.web.app/ar/hotels/mysan-almqam" />
-    <xhtml:link rel="alternate" hreflang="en" href="https://prestige-ksa.web.app/en/hotels/mysan-almqam" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://prestige-ksa.web.app/ar/hotels/mysan-almqam" />
-    <lastmod>2026-10-24</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://prestige-ksa.web.app/en/hotels/mysan-almqam</loc>
-    <xhtml:link rel="alternate" hreflang="ar" href="https://prestige-ksa.web.app/ar/hotels/mysan-almqam" />
-    <xhtml:link rel="alternate" hreflang="en" href="https://prestige-ksa.web.app/en/hotels/mysan-almqam" />
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://prestige-ksa.web.app/ar/hotels/mysan-almqam" />
     <lastmod>2026-10-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>

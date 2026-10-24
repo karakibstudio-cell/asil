@@ -132,6 +132,7 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<BookingStatus[]>([]);
+  const [selectedHotelFilter, setSelectedHotelFilter] = useState<string>('all');
   
   // Date Range Filter State
   const [dateFilterType, setDateFilterType] = useState<DateFilterType>('createdAt');
@@ -406,9 +407,13 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
         if (!matchesQuery) return false;
       }
 
+      if (selectedHotelFilter !== 'all') {
+        if (b.hotelId !== selectedHotelFilter) return false;
+      }
+
       return true;
     });
-  }, [bookings, selectedStatuses, dateFilterType, dateFrom, dateTo, searchQuery]);
+  }, [bookings, selectedStatuses, dateFilterType, dateFrom, dateTo, searchQuery, selectedHotelFilter]);
 
   // Sorted Bookings
   const sortedBookings = useMemo(() => {
@@ -444,7 +449,7 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedStatuses, dateFilterType, dateFrom, dateTo, pageSize]);
+  }, [searchQuery, selectedStatuses, selectedHotelFilter, dateFilterType, dateFrom, dateTo, pageSize]);
 
   // Pagination Slice
   const totalFilteredCount = sortedBookings.length;
@@ -1080,6 +1085,26 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
             )}
           </div>
 
+          {/* Hotel Filter Dropdown */}
+          <div className="flex items-center gap-1.5 bg-stone-50 px-3 py-2 rounded-xl border border-stone-200 shrink-0">
+            <Building2 className="w-4 h-4 text-[#B38A34] shrink-0" />
+            <select
+              value={selectedHotelFilter}
+              onChange={(e) => setSelectedHotelFilter(e.target.value)}
+              className="text-xs font-bold text-stone-800 bg-transparent focus:outline-none cursor-pointer max-w-[190px] truncate"
+            >
+              <option value="all">🏢 جميع الفنادق ({bookings.length})</option>
+              {hotels.map(h => {
+                const count = bookings.filter(b => b.hotelId === h.id).length;
+                return (
+                  <option key={h.id} value={h.id}>
+                    {h.name} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
           {/* Quick Date Presets */}
           <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto text-xs font-bold">
             <span className="text-[11px] text-stone-400 hidden xl:inline">فترة سريعة:</span>
@@ -1241,13 +1266,14 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
           </div>
 
           {/* Active Filters Clear Button */}
-          {(selectedStatuses.length > 0 || dateFrom || dateTo || searchQuery) && (
+          {(selectedStatuses.length > 0 || dateFrom || dateTo || searchQuery || selectedHotelFilter !== 'all') && (
             <button
               onClick={() => {
                 setSelectedStatuses([]);
                 setDateFrom('');
                 setDateTo('');
                 setSearchQuery('');
+                setSelectedHotelFilter('all');
               }}
               className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-1 cursor-pointer underline"
             >
@@ -1462,7 +1488,7 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2 text-[11px] text-stone-500">
+                          <div className="flex items-center gap-2 text-[11px] text-stone-500 flex-wrap">
                             <a 
                               href={`tel:${b.guestPhone}`} 
                               dir="ltr" 
@@ -1471,6 +1497,18 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
                               <Phone className="w-3 h-3 text-stone-400" />
                               <span>{b.guestPhone}</span>
                             </a>
+                            {b.guestPhone && (
+                              <a
+                                href={`https://wa.me/${b.guestPhone.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-1.5 py-0.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold border border-emerald-200 inline-flex items-center gap-1 cursor-pointer shadow-2xs"
+                                title="محادثة واتساب مباشرة مع النزيل"
+                              >
+                                <MessageSquare className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>واتساب</span>
+                              </a>
+                            )}
                             {b.guestEmail && (
                               <span className="text-[10px] text-stone-400 truncate max-w-[140px]" title={b.guestEmail}>
                                 • {b.guestEmail}

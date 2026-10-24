@@ -1374,6 +1374,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                     initialAdults={searchAdultsCount}
                     initialChildren={searchChildrenCount}
                     initialBookingType="individual"
+                    hideBookingTypeToggle={true}
                     siteSettings={siteSettings}
                     onNavigateHome={() => onNavigate('home')}
                     onSelectAnotherHotel={(hId) => {
