@@ -107,21 +107,28 @@ try {
   
   // Initialize Firestore with multi-tab persistent IndexedDB local cache (instant 0ms loads, automatic offline support)
   if (typeof window !== 'undefined') {
+    const firestoreDbId = (firebaseConfigJson as any).firestoreDatabaseId && (firebaseConfigJson as any).firestoreDatabaseId !== '(default)' 
+      ? (firebaseConfigJson as any).firestoreDatabaseId 
+      : undefined;
+
     try {
       db = initializeFirestore(app, {
         localCache: persistentLocalCache({
           tabManager: persistentMultipleTabManager()
         })
-      }, firebaseConfigJson.firestoreDatabaseId || undefined);
+      }, firestoreDbId);
     } catch {
       // Fallback if already initialized or if IndexedDB is restricted
-      db = firebaseConfigJson.firestoreDatabaseId 
-        ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId) 
+      db = firestoreDbId 
+        ? getFirestore(app, firestoreDbId) 
         : getFirestore(app);
     }
   } else {
-    db = firebaseConfigJson.firestoreDatabaseId 
-      ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId) 
+    const firestoreDbId = (firebaseConfigJson as any).firestoreDatabaseId && (firebaseConfigJson as any).firestoreDatabaseId !== '(default)' 
+      ? (firebaseConfigJson as any).firestoreDatabaseId 
+      : undefined;
+    db = firestoreDbId 
+      ? getFirestore(app, firestoreDbId) 
       : getFirestore(app);
   }
   

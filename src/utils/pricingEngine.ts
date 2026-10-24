@@ -120,6 +120,36 @@ export function calculateBookingPrice(params: PricingEngineCalculationParams): P
     validationErrors.push('يرجى تحديد تاريخي الدخول والمغادرة بشكل صحيح.');
   }
 
+  if (!room) {
+    return {
+      isValid: false,
+      totalNights: totalNights || 0,
+      averageNightlyRate: 0,
+      roomsCost: 0,
+      mealPricePerPerson: 0,
+      mealsCost: 0,
+      subtotal: 0,
+      taxes: 0,
+      grandTotal: 0,
+      isTaxIncluded: true,
+      currency,
+      nightlyBreakdown: [],
+      validationErrors: ['لم يتم تحديد نوع الغرفة'],
+      priceBreakdown: {
+        nights: totalNights || 0,
+        nightlyRates: [],
+        roomsCost: 0,
+        mealPricePerPerson: 0,
+        mealsCost: 0,
+        extraCharges: 0,
+        taxes: 0,
+        isTaxIncluded: true,
+        totalAmount: 0,
+        currency
+      }
+    };
+  }
+
   // 1. Validate basic rules
   if (rules) {
     if (rules.minNights && totalNights < rules.minNights) {
@@ -139,7 +169,7 @@ export function calculateBookingPrice(params: PricingEngineCalculationParams): P
     }
   }
 
-  if (room.maxGuests && guestsCount > room.maxGuests * roomsCount) {
+  if (room?.maxGuests && guestsCount > room.maxGuests * roomsCount) {
     validationErrors.push(`الطاقة الاستيعابية للغرفة هي ${room.maxGuests} نزلاء (المطلوب ${guestsCount} نزلاء لـ ${roomsCount} غرف).`);
   }
 

@@ -215,6 +215,12 @@ function buildPageHtml(baseTemplate, config) {
     html = html.replace('</head>', `${jsonLdScript}\n  </head>`);
   }
 
+  // Inject LCP Hero Preload specifically on Home Pages where hero slide is visible
+  if (['/', '/ar', '/en'].includes(canonicalPath)) {
+    const heroPreload = `\n    <link rel="preload" href="/images/slides/slide_0.webp" as="image" type="image/webp" fetchpriority="high" />`;
+    html = html.replace('</head>', `${heroPreload}\n  </head>`);
+  }
+
 
   // 8. Inject Semantic Crawler-Visible Content inside <div id="root">
   if (bodyHtml) {
@@ -842,8 +848,8 @@ async function run() {
   // 9. Bookings Portal: /ar/bookings and /en/bookings
   const arBookingsHtml = buildPageHtml(baseTemplate, {
     lang: 'ar',
-    title: 'بوابة حجز الغرف الفندقية أونلاين | شركة برستيج',
-    description: 'بوابة الحجز الفوري لغرف فنادق مكة والمدينة، إصدار سندات الحجز والمفتاح الرقمي مباشرة.',
+    title: 'بوابة حجز فنادق مكة والمدينة | حجز فردي وعائلي وعقود الشركات B2B | شركة برستيج',
+    description: 'بوابة الحجز الفوري لغرف فنادق مكة المكرمة والمدينة المنورة الأقرب للحرمين. حجز فردي وعائلي، عقود شركات وبعثات B2B، إتاحة مباشرة، وتأكيد فوري عبر الواتساب.',
     canonicalPath: '/ar/bookings',
     arPath: '/ar/bookings',
     enPath: '/en/bookings',
@@ -853,8 +859,8 @@ async function run() {
           <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#C9A24B]/15 text-[#8C6D23] text-xs font-bold border border-[#C9A24B]/30">
             <span>منظومة الحجوزات الفندقية الذكية والمباشرة</span>
           </div>
-          <h1 class="text-2xl sm:text-4xl font-extrabold text-stone-900 tracking-tight">احجز إقامتك الفاخرة بجوار الحرمين الشريفين</h1>
-          <p class="text-xs sm:text-sm text-stone-600 max-w-2xl mx-auto leading-relaxed">حجز سريع في ٣ خطوات واضحة، تأكيد فوري بالواتساب، إصدار سند الحجز الرقمي، وأفضل سعر مباشر بدون عمولات.</p>
+          <h1 class="text-2xl sm:text-4xl font-extrabold text-stone-900 tracking-tight">حجز فنادق مكة المكرمة والمدينة المنورة وعقود الشركات</h1>
+          <p class="text-xs sm:text-sm text-stone-600 max-w-2xl mx-auto leading-relaxed">استعرض الفنادق المتاحة للحجز الفوري بجوار الحرمين الشريفين، أو قدم طلب تسكين وتعاقد مخصص للشركات والبعثات مع تأكيد مباشر عبر الواتساب وسند حجز رسمي.</p>
         </div>
         <div class="max-w-5xl mx-auto px-4 sm:px-6">
           <div class="bg-white rounded-3xl border border-stone-200/80 shadow-sm p-6 sm:p-8 min-h-[640px]">

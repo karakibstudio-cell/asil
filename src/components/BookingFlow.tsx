@@ -533,6 +533,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
   }, [selectedRoomsMap, rooms]);
 
   const groupRoomsBreakdown = useMemo(() => {
+    if (!rooms || rooms.length === 0) return [];
     const selectedEntries = (Object.entries(selectedRoomsMap) as [string, number][]).filter(([_, qty]) => Number(qty) > 0);
     if (selectedEntries.length === 0) {
       if (!selectedRoom) return [];
@@ -546,28 +547,31 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
       }];
     }
 
-    return selectedEntries.map(([rId, qty]) => {
-      const roomObj = rooms.find(r => r.id === rId) || selectedRoom!;
-      const nQty = Number(qty) || 1;
-      const singleCalc = calculateBookingPrice({
-        hotel,
-        room: roomObj,
-        checkIn,
-        checkOut,
-        roomsCount: nQty,
-        guestsCount: (roomObj?.maxGuests || 2) * nQty,
-        mealPlan: null,
-        pricingPeriods
-      });
-      return {
-        roomId: rId,
-        roomName: roomObj.name,
-        roomsCount: nQty,
-        adultsPerRoom: roomObj?.maxGuests || 2,
-        pricePerNight: singleCalc.averageNightlyRate,
-        totalAmount: singleCalc.roomsCost
-      };
-    });
+    return selectedEntries
+      .map(([rId, qty]) => {
+        const roomObj = rooms.find(r => r.id === rId) || (selectedRoom?.id === rId ? selectedRoom : null);
+        if (!roomObj) return null;
+        const nQty = Number(qty) || 1;
+        const singleCalc = calculateBookingPrice({
+          hotel,
+          room: roomObj,
+          checkIn,
+          checkOut,
+          roomsCount: nQty,
+          guestsCount: (roomObj.maxGuests || 2) * nQty,
+          mealPlan: null,
+          pricingPeriods
+        });
+        return {
+          roomId: rId,
+          roomName: roomObj.name,
+          roomsCount: nQty,
+          adultsPerRoom: roomObj.maxGuests || 2,
+          pricePerNight: singleCalc.averageNightlyRate,
+          totalAmount: singleCalc.roomsCost
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
   }, [selectedRoomsMap, selectedRoom, roomsCount, rooms, hotel, checkIn, checkOut, pricingPeriods, nightsCount]);
 
   // Handler for Room Quantity Increment/Decrement
