@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Hotel, SiteSettings, ActivePage, RoomBooking, RoomTypeItem, HotelPricingPeriod } from '../types';
-import { getBookingByCodeOrPhone, buildGuestWhatsAppShareLink, getRoomsFromDb } from '../services/bookingService';
+import { 
+  getBookingByCodeOrPhone, 
+  buildGuestWhatsAppShareLink, 
+  getRoomsFromDb, 
+  getPricingPeriodsFromDb 
+} from '../services/bookingService';
 import { sendContactMessage } from '../services/firebase';
 import { BookingFlow } from '../components/BookingFlow';
 import { 
@@ -12,42 +17,29 @@ import {
   Key, 
   Printer, 
   MessageSquare, 
-  ExternalLink, 
-  PhoneCall, 
   Copy, 
   Check, 
-  AlertCircle,
-  Clock,
-  ChevronDown,
-  Calendar,
-  MapPin,
-  Star,
-  Users,
-  RotateCcw,
-  BedDouble,
-  ArrowRight,
-  ArrowLeft,
-  Filter,
-  CheckCircle,
-  Briefcase,
-  UsersRound,
-  MessageCircle,
-  Utensils,
-  Bus,
-  Send,
-  FileText,
-  CheckCheck,
-  Compass,
-  Info,
-  Award,
-  ChevronRight,
-  Phone,
-  Mail,
-  HelpCircle
+  AlertCircle, 
+  Calendar, 
+  MapPin, 
+  Star, 
+  Users, 
+  RotateCcw, 
+  BedDouble, 
+  ArrowRight, 
+  CheckCircle, 
+  Briefcase, 
+  MessageCircle, 
+  Utensils, 
+  Bus, 
+  Send, 
+  FileText, 
+  CheckCheck, 
+  ChevronDown 
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { INITIAL_HOTELS } from '../data/mockHotels';
-import { buildWhatsAppLink, getFirstActiveWhatsApp } from '../utils/channels';
+import { buildWhatsAppLink } from '../utils/channels';
 
 const BookingVoucherModal = React.lazy(() => 
   import('../components/BookingVoucherModal').then(m => ({ default: m.BookingVoucherModal }))
@@ -65,18 +57,17 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
   hotels,
   siteSettings,
   onNavigate,
-  onSelectHotel,
   initialHotelId
 }) => {
   const { isRtl } = useLanguage();
   const isCreationAllowed = siteSettings?.bookingModule?.allowPublicBookingCreation !== false;
 
-  // Immediate fallback to INITIAL_HOTELS ensures 0ms render without null state
+  // Fallback to INITIAL_HOTELS ensures 0ms render without null state
   const availableHotels = useMemo(() => {
     return (hotels && hotels.length > 0) ? hotels : INITIAL_HOTELS;
   }, [hotels]);
 
-  // Read URL search params for prefill
+  // Read URL search params
   const urlParams = useMemo(() => {
     if (typeof window === 'undefined') return new URLSearchParams();
     return new URLSearchParams(window.location.search);
@@ -106,39 +97,51 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     return d.toISOString().split('T')[0];
   }, [prefillCheckOut]);
 
-  // Date and Search Bar State
+  // Search State: Dates, Hotel query, City, Stars, Rooms and Guests count
   const [searchCheckIn, setSearchCheckIn] = useState<string>(defaultCheckInDate);
   const [searchCheckOut, setSearchCheckOut] = useState<string>(defaultCheckOutDate);
+  const [searchRoomsCount, setSearchRoomsCount] = useState<number>(prefillRooms || 1);
+  const [searchAdultsCount, setSearchAdultsCount] = useState<number>(prefillAdults || 2);
+  const [searchChildrenCount, setSearchChildrenCount] = useState<number>(prefillChildren || 0);
+  const [isGuestPopoverOpen, setIsGuestPopoverOpen] = useState<boolean>(false);
   const [hotelSearchQuery, setHotelSearchQuery] = useState<string>('');
   const [selectedCity, setSelectedCity] = useState<'all' | 'مكة المكرمة' | 'المدينة المنورة'>('all');
   const [selectedStars, setSelectedStars] = useState<number | 'all'>('all');
   const [sortBy, setSortBy] = useState<'recommended' | 'distance' | 'rating' | 'price_asc'>('recommended');
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [isUpdatingSearch, setIsUpdatingSearch] = useState(false);
+  const [showQuoteSection, setShowQuoteSection] = useState<boolean>(false);
 
-  // If a hotel was explicitly prefilled (e.g. from a link or detail page), start directly in wizard.
-  // Otherwise, default to the Booking.com-style hotel results grid!
+  // If a hotel was explicitly prefilled from URL, start directly in wizard. Otherwise start in grid.
   const [viewMode, setViewMode] = useState<'wizard' | 'grid'>(() => {
     return prefillHotel ? 'wizard' : 'grid';
   });
 
-  // Load all rooms to provide accurate starting prices on Booking.com-style cards
+  // DB Data: Loaded asynchronously for availability & price checking
   const [allRooms, setAllRooms] = useState<RoomTypeItem[]>([]);
+  const [allPricingPeriods, setAllPricingPeriods] = useState<HotelPricingPeriod[]>([]);
+
   useEffect(() => {
     getRoomsFromDb().then(rooms => {
-      if (Array.isArray(rooms) && rooms.length > 0) {
-        setAllRooms(rooms);
-      }
+      if (Array.isArray(rooms) && rooms.length > 0) setAllRooms(rooms);
+    }).catch(() => {});
+
+    getPricingPeriodsFromDb().then(periods => {
+      if (Array.isArray(periods) && periods.length > 0) setAllPricingPeriods(periods);
     }).catch(() => {});
   }, []);
 
   const searchDropdownRef = useRef<HTMLDivElement>(null);
+  const guestPopoverRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchDropdownRef.current && !searchDropdownRef.current.contains(e.target as Node)) {
         setIsSearchDropdownOpen(false);
+      }
+      if (guestPopoverRef.current && !guestPopoverRef.current.contains(e.target as Node)) {
+        setIsGuestPopoverOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -154,12 +157,14 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     return diffDays > 0 ? diffDays : 1;
   }, [searchCheckIn, searchCheckOut]);
 
+  const totalGuests = searchAdultsCount + searchChildrenCount;
+
   // Active hotels
   const activeHotels = useMemo(() => {
     return availableHotels.filter(h => h.isActive !== false);
   }, [availableHotels]);
 
-  // Smart default hotel selection
+  // Default hotel selection
   const defaultHotel = useMemo(() => {
     if (!availableHotels || availableHotels.length === 0) return null;
     if (prefillHotel) {
@@ -170,12 +175,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
       );
       if (match) return match;
     }
-    // Prefer Prestige Ajyad or first active hotel with online booking
-    const ajyad = availableHotels.find(h => 
-      (h.name.includes('أجياد') || h.name.includes('اجياد') || h.id.includes('ajyad')) &&
-      h.onlineBookingEnabled !== false && h.isActive !== false
-    );
-    if (ajyad) return ajyad;
     const online = availableHotels.find(h => h.onlineBookingEnabled !== false && h.isActive !== false);
     return online || availableHotels[0];
   }, [availableHotels, prefillHotel]);
@@ -188,7 +187,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     }
   }, [defaultHotel]);
 
-  // Real-time letter-by-letter matching hotels
+  // Real-time letter matching filter
   const matchedHotels = useMemo(() => {
     return activeHotels.filter(h => {
       if (selectedCity !== 'all' && h.city !== selectedCity) return false;
@@ -213,22 +212,148 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     return stars === 5 ? 550 : stars === 4 ? 420 : 320;
   };
 
-  // Sorted hotels for Booking.com display
-  const sortedHotels = useMemo(() => {
-    const list = [...matchedHotels];
+  // =========================================================================
+  // ADMIN AVAILABILITY & PERIOD ENGINE: STRICT CHECKING PER HOTEL, DATES & CAPACITY
+  // =========================================================================
+  const getHotelAvailabilityStatus = (
+    h: Hotel, 
+    checkIn: string, 
+    checkOut: string, 
+    roomsReq: number = 1
+  ): { 
+    isAvailableOnline: boolean; 
+    reason?: string; 
+    matchingPeriod?: HotelPricingPeriod;
+    allActivePeriods: HotelPricingPeriod[];
+  } => {
+    // Gather periods assigned to this hotel or global
+    const periods = (
+      allPricingPeriods.length > 0 ? allPricingPeriods : (h.pricingPeriods || [])
+    ).filter(p => (p.hotelId === h.id || p.hotelId === 'all') && p.isActive !== false);
+
+    // Rule 1: Admin enabled online booking?
+    if (h.isActive === false) {
+      return { isAvailableOnline: false, reason: 'الفندق غير نشط حالياً', allActivePeriods: periods };
+    }
+    if (h.onlineBookingEnabled === false || h.onlineAvailabilityMode === 'disabled') {
+      return { 
+        isAvailableOnline: false, 
+        reason: 'الحجز أونلاين غير مفعّل لهذا الفندق من الإدارة (يتطلب طلب تسعير وتنسيق مخصص)',
+        allActivePeriods: periods 
+      };
+    }
+
+    // Rule 2: Active rooms check
+    const hotelRooms = allRooms.filter(r => r.hotelId === h.id && r.isActive !== false);
+    if (allRooms.length > 0 && hotelRooms.length === 0) {
+      return { isAvailableOnline: false, reason: 'لا توجد غرف نشطة لهذا الفندق في النظام حالياً', allActivePeriods: periods };
+    }
+
+    // Rule 3: Blackout / Closed period check
+    const blackoutPeriod = periods.find(p => 
+      p.isAvailable === false && !(p.endDate < checkIn || p.startDate > checkOut)
+    );
+    if (blackoutPeriod) {
+      return { 
+        isAvailableOnline: false, 
+        reason: `الفندق مغلق للحجوزات الإلكترونية خلال فترة: ${blackoutPeriod.name}`,
+        allActivePeriods: periods 
+      };
+    }
+
+    // Rule 4: Period matching
+    const matchingPeriod = periods.find(p => 
+      p.isAvailable !== false && p.startDate <= checkIn && p.endDate >= checkOut
+    );
+
+    // If onlineAvailabilityMode is 'periods_only': MUST be within an active period!
+    if (h.onlineAvailabilityMode === 'periods_only') {
+      if (!matchingPeriod) {
+        return { 
+          isAvailableOnline: false, 
+          reason: 'الفندق متاح للحجز أونلاين في فترات ومواسم محددة فقط، والتواريخ المطلوبة تقع خارج هذه الفترات',
+          allActivePeriods: periods 
+        };
+      }
+      if (matchingPeriod.minStayNights && nightsCount < matchingPeriod.minStayNights) {
+        return { 
+          isAvailableOnline: false, 
+          reason: `الحد الأدنى للإقامة في ${matchingPeriod.name} هو ${matchingPeriod.minStayNights} ليالٍ`,
+          matchingPeriod,
+          allActivePeriods: periods 
+        };
+      }
+      if (typeof matchingPeriod.availableRooms === 'number' && matchingPeriod.availableRooms < roomsReq) {
+        return { 
+          isAvailableOnline: false, 
+          reason: `المخزون المتاح في فترة ${matchingPeriod.name} (${matchingPeriod.availableRooms} غرف) أقل من المطلوب`,
+          matchingPeriod,
+          allActivePeriods: periods 
+        };
+      }
+      return { isAvailableOnline: true, matchingPeriod, allActivePeriods: periods };
+    }
+
+    // If hotel has periods defined but not in 'periods_only':
+    if (periods.length > 0) {
+      if (matchingPeriod) {
+        if (matchingPeriod.minStayNights && nightsCount < matchingPeriod.minStayNights) {
+          return { 
+            isAvailableOnline: false, 
+            reason: `الحد الأدنى للإقامة هو ${matchingPeriod.minStayNights} ليالٍ`,
+            matchingPeriod,
+            allActivePeriods: periods 
+          };
+        }
+        if (typeof matchingPeriod.availableRooms === 'number' && matchingPeriod.availableRooms < roomsReq) {
+          return { 
+            isAvailableOnline: false, 
+            reason: `الغرف المتاحة في هذه الفترة أقل من المطلوب`,
+            matchingPeriod,
+            allActivePeriods: periods 
+          };
+        }
+        return { isAvailableOnline: true, matchingPeriod, allActivePeriods: periods };
+      }
+      // If periods exist but none covers the selected dates:
+      return { 
+        isAvailableOnline: false, 
+        reason: 'التواريخ المختارة تقع خارج الفترات المعتمدة للحجز المباشر من الإدارة',
+        allActivePeriods: periods 
+      };
+    }
+
+    // Default open
+    return { isAvailableOnline: true, allActivePeriods: periods };
+  };
+
+  // 1. HOTELS STRICTLY AVAILABLE FOR DIRECT ONLINE BOOKING IN SELECTED PERIOD
+  const onlineBookableHotels = useMemo(() => {
+    return matchedHotels.filter(h => {
+      const status = getHotelAvailabilityStatus(h, searchCheckIn, searchCheckOut, searchRoomsCount);
+      return status.isAvailableOnline;
+    });
+  }, [matchedHotels, searchCheckIn, searchCheckOut, searchRoomsCount, allPricingPeriods, allRooms]);
+
+  // 2. OTHER HOTELS: NOT AVAILABLE ONLINE IN THIS PERIOD (REQUIRE CUSTOM QUOTE & WHATSAPP)
+  const quoteOnlyHotels = useMemo(() => {
+    return matchedHotels.filter(h => {
+      const status = getHotelAvailabilityStatus(h, searchCheckIn, searchCheckOut, searchRoomsCount);
+      return !status.isAvailableOnline;
+    });
+  }, [matchedHotels, searchCheckIn, searchCheckOut, searchRoomsCount, allPricingPeriods, allRooms]);
+
+  // Sorted list of online bookable hotels
+  const sortedOnlineHotels = useMemo(() => {
+    const list = [...onlineBookableHotels];
     return list.sort((a, b) => {
-      if (sortBy === 'distance') {
-        return (a.distanceToHaram || 9999) - (b.distanceToHaram || 9999);
-      }
-      if (sortBy === 'rating') {
-        return (b.rating || 4.5) - (a.rating || 4.5);
-      }
+      if (sortBy === 'distance') return (a.distanceToHaram || 9999) - (b.distanceToHaram || 9999);
+      if (sortBy === 'rating') return (b.rating || 4.5) - (a.rating || 4.5);
       if (sortBy === 'price_asc') {
         const priceA = getHotelStartingPrice(a.id, a.stars);
         const priceB = getHotelStartingPrice(b.id, b.stars);
         return priceA - priceB;
       }
-      // 'recommended' default: featured first, then order, then rating
       if (a.featured && !b.featured) return -1;
       if (!a.featured && b.featured) return 1;
       const orderA = typeof a.order === 'number' && a.order > 0 ? a.order : 999;
@@ -236,23 +361,30 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
       if (orderA !== orderB) return orderA - orderB;
       return (b.rating || 0) - (a.rating || 0);
     });
-  }, [matchedHotels, sortBy, allRooms]);
+  }, [onlineBookableHotels, sortBy, allRooms]);
 
-  // Filter for hotels where admin enabled online booking
-  const onlineAvailableHotels = useMemo(() => {
-    return matchedHotels.filter(h => h.onlineBookingEnabled !== false && h.isActive !== false);
-  }, [matchedHotels]);
+  // All active admin periods across available hotels for quick switching
+  const allActiveAdminPeriods = useMemo(() => {
+    const seen = new Set<string>();
+    const list: HotelPricingPeriod[] = [];
+    const pool = allPricingPeriods.length > 0 ? allPricingPeriods : availableHotels.flatMap(h => h.pricingPeriods || []);
+    for (const p of pool) {
+      if (p.isActive !== false && p.isAvailable !== false && !seen.has(p.name + p.startDate)) {
+        seen.add(p.name + p.startDate);
+        list.push(p);
+      }
+    }
+    return list.slice(0, 5);
+  }, [allPricingPeriods, availableHotels]);
 
-  // Tab: 'book-individual' | 'book-corporate' | 'manage'
-  // (3 primary distinct tabs as requested by the user)
+  // 3 Primary Tabs
   const [activeTab, setActiveTab] = useState<'book-individual' | 'book-corporate' | 'manage'>(() => {
     if (prefillManageCode) return 'manage';
     if (prefillTab === 'corporate') return 'book-corporate';
     return isCreationAllowed ? 'book-individual' : 'manage';
   });
 
-  // Corporate Sub-tab mode:
-  // 'rfp' (تقديم طلب تسكين وتعاقد شركات مخصص) vs 'online' (فحص الإتاحة والحجز المباشر أونلاين للشركات)
+  // Corporate Sub-tab mode
   const [corporateSubMode, setCorporateSubMode] = useState<'rfp' | 'online'>('rfp');
 
   // Corporate RFP Form State
@@ -278,11 +410,8 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
   const [corpSubmitting, setCorpSubmitting] = useState(false);
   const [corpSubmittedCode, setCorpSubmittedCode] = useState<string | null>(null);
 
-  // Sync corporate hotel with selectedHotel
   useEffect(() => {
-    if (selectedHotel && !corpHotelId) {
-      setCorpHotelId(selectedHotel.id);
-    }
+    if (selectedHotel && !corpHotelId) setCorpHotelId(selectedHotel.id);
   }, [selectedHotel]);
 
   // Manage Booking Tab State
@@ -293,11 +422,8 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
   const [copiedField, setCopiedField] = useState<'code' | 'key' | 'corp' | null>(null);
   const [manageVoucher, setManageVoucher] = useState<RoomBooking | null>(null);
 
-  // Auto-search if code was in URL
   useEffect(() => {
-    if (prefillManageCode) {
-      handleSearchBooking(prefillManageCode);
-    }
+    if (prefillManageCode) handleSearchBooking(prefillManageCode);
   }, [prefillManageCode]);
 
   const handleSearchBooking = async (queryToSearch?: string) => {
@@ -348,18 +474,23 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     setSearchCheckOut(outD.toISOString().split('T')[0]);
   };
 
-  // Direct WhatsApp Link Builder for any Hotel (Syncs with admin settings)
-  const buildHotelDirectWhatsAppLink = (h: Hotel) => {
+  // WhatsApp Quote Builder for hotels requiring custom quotation or off-period
+  const buildQuoteWhatsAppLink = (h: Hotel, reason?: string) => {
     const rawPhone = (
       (h.showHotelWhatsApp !== false && h.hotelWhatsApp?.trim()) ||
       siteSettings?.bookingModule?.bookingWhatsApp ||
       siteSettings?.channels?.find(c => c.type === 'whatsapp')?.value ||
       '+966544076726'
     );
-    const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
-    const bookingModeText = activeTab === 'book-corporate' ? 'حجز شركات ومجموعات' : 'حجز إقامة فندقية';
-    const msg = `السلام عليكم ورحمة الله،\nأود الاستفسار وطلب *${bookingModeText}* في فندق:\n🏨 *${h.name}*\n📍 المدينة: ${h.city} - حي ${h.district || 'المنطقة المركزية'}\n📅 فترة الإقامة: من ${searchCheckIn} إلى ${searchCheckOut} (${nightsCount} ليالٍ)\nعبر منظومة برستيج الفندقية المعتمدة.\nيرجى تزويدي بأفضل الأسعار والإتاحة المباشرة.`;
-    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+    const msg = `السلام عليكم ورحمة الله،\n` +
+      `أود الاستفسار وطلب *تسعير خاص وإتاحة فندقية* في:\n` +
+      `🏨 *${h.name}* (${h.city} - حي ${h.district || 'المنطقة المركزية'})\n` +
+      `📅 فترة الإقامة المطلوبة: من ${searchCheckIn} إلى ${searchCheckOut} (${nightsCount} ليالٍ)\n` +
+      `🛏️ عدد الغرف المطلوبة: ${searchRoomsCount} غرفة\n` +
+      `👥 إجمالي عدد النزلاء: ${totalGuests} شخص (${searchAdultsCount} بالغين${searchChildrenCount > 0 ? ` + ${searchChildrenCount} أطفال` : ''})\n` +
+      (reason ? `📌 ملاحظة الإتاحة: ${reason}\n` : '') +
+      `عبر منظومة برستيج المعتمدة. يرجى تزويدي بأفضل تسعير رسمي وإمكانية التسكين.`;
+    return buildWhatsAppLink(rawPhone, msg);
   };
 
   // Format date to friendly Arabic
@@ -372,36 +503,19 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     }
   };
 
-  // Featured and WhatsApp Connected Hotels List (Controlled by Admin Settings)
-  const featuredAndWhatsAppHotels = useMemo(() => {
-    return availableHotels.filter(h => {
-      if (h.isActive === false) return false;
-      const isFeatured = h.featured === true;
-      const hasWhatsApp = Boolean(h.hotelWhatsApp?.trim()) || h.showHotelWhatsApp !== false;
-      return isFeatured || hasWhatsApp;
-    }).sort((a, b) => {
-      if (a.featured && !b.featured) return -1;
-      if (!a.featured && b.featured) return 1;
-      const orderA = typeof a.order === 'number' && a.order > 0 ? a.order : 999;
-      const orderB = typeof b.order === 'number' && b.order > 0 ? b.order : 999;
-      if (orderA !== orderB) return orderA - orderB;
-      return (b.rating || 0) - (a.rating || 0);
-    });
-  }, [availableHotels]);
-
-  // Handle Search & Refresh Button
+  // Trigger search update
   const handleTriggerSearch = () => {
     setIsUpdatingSearch(true);
     setIsSearchDropdownOpen(false);
     setTimeout(() => {
       setIsUpdatingSearch(false);
-      if (onlineAvailableHotels.length > 0) {
-        const stillSelected = onlineAvailableHotels.find(h => h.id === selectedHotel?.id);
+      if (onlineBookableHotels.length > 0) {
+        const stillSelected = onlineBookableHotels.find(h => h.id === selectedHotel?.id);
         if (!stillSelected) {
-          setSelectedHotel(onlineAvailableHotels[0]);
+          setSelectedHotel(onlineBookableHotels[0]);
         }
       }
-    }, 350);
+    }, 300);
   };
 
   // Handle Corporate RFP Submission
@@ -461,7 +575,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
       setCorpSubmittedCode(code);
     } catch (err) {
       console.error('Failed submitting corporate request:', err);
-      // Still set code for local confirmation so user can continue via WhatsApp
       setCorpSubmittedCode(code);
     } finally {
       setCorpSubmitting(false);
@@ -516,7 +629,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
 
   return (
     <div className="min-h-screen bg-[#F8F7F4] text-stone-900 font-cairo pt-24 pb-16" dir={isRtl ? 'rtl' : 'ltr'}>
-      {/* Expansive Top Hero Section */}
+      {/* Top Hero Section */}
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6 text-center space-y-3">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#C9A24B]/15 text-[#8C6D23] text-xs font-bold border border-[#C9A24B]/30 backdrop-blur-md shadow-2xs">
           <Sparkles className="w-4 h-4 text-[#B38A34]" />
@@ -532,15 +645,13 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
         </h1>
         <p className="text-xs sm:text-sm text-stone-600 max-w-3xl mx-auto leading-relaxed">
           {activeTab === 'book-individual'
-            ? 'استعرض الفنادق المتاحة لحظياً على غرار كبرى منصات الحجز العالمية، قارن المسافات والأسعار، واحجز إقامتك مباشرة بأفضل سعر معتمد وبدون أي عمولات.'
+            ? 'استعرض الفنادق المتاحة للحجز الفوري وفق إتاحة الإدارة المعتمدة، حدد التواريخ وعدد الغرف، واحجز إقامتك مباشرة بأفضل سعر معتمد بدون أي وسيط.'
             : activeTab === 'book-corporate'
             ? 'منظومة حصرية متكاملة لخدمة الشركات ووكالات السفر والحملات: فحص إتاحة فوري أونلاين أو تقديم طلب تسكين وتعاقد مخصص مع متابعة واتساب فورية.'
             : 'استعلم برقم الحجز أو رقم الجوال للاطلاع على تفاصيل إقامتك، كود التسكين الذكي، وتحميل سند الحجز الرسمي.'}
         </p>
 
-        {/* ========================================================================= */}
-        {/* 3 PRIMARY SEPARATED TABS: 1. حجز فردي - 2. حجز شركات - 3. إدارة ومتابعة الحجز */}
-        {/* ========================================================================= */}
+        {/* 3 PRIMARY SEPARATED TABS */}
         <div className="pt-2 flex items-center justify-center">
           <div className="inline-flex p-1.5 rounded-2xl bg-white border border-stone-200 shadow-xs gap-1.5 sm:gap-2 flex-wrap justify-center">
             {isCreationAllowed && (
@@ -594,11 +705,11 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
 
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* ========================================================================= */}
-        {/* TAB 1: INDIVIDUAL BOOKINGS (BOOKING.COM LUXURY EXPERIENCE)                 */}
+        {/* TAB 1: INDIVIDUAL BOOKINGS (STRICT AVAILABILITY BASED ON ADMIN SETTINGS)    */}
         {/* ========================================================================= */}
         {activeTab === 'book-individual' && (
           <div className="space-y-6 animate-fadeIn">
-            {/* ── UNIFIED LUXURY SEARCH BAR (Booking.com style) ── */}
+            {/* ── LUXURY SEARCH BAR (Connected to Hotel, Period & Guest Count) ── */}
             <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-4 sm:p-6 border border-[#C9A24B]/30 shadow-lg relative z-20">
               <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 pb-4 border-b border-stone-100">
                 <div className="flex items-center gap-2 text-xs font-bold text-stone-800">
@@ -607,10 +718,10 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                   </div>
                   <div>
                     <span className="block text-sm font-extrabold text-stone-900 font-cairo">
-                      ابحث وحدد فترة الإقامة بالفندق
+                      ابحث وحدد الفترة وعدد الغرف
                     </span>
                     <span className="text-[11px] text-stone-500 font-normal">
-                      يعرض فقط الفنادق المتاحة فعلياً وفق إمكانية الإدارة لمنع أي حجز زائد
+                      يعرض فقط الفنادق المتاحة للحجز الفوري وفق فترات الإتاحة المعتمدة من الإدارة
                     </span>
                   </div>
                 </div>
@@ -638,7 +749,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                 </div>
               </div>
 
-              {/* Main Fields Grid */}
+              {/* Main Fields Grid: Check-in, Check-out, Rooms & Guests, Hotel Name */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-4">
                 {/* 1. Check-In Date */}
                 <div className="md:col-span-3 bg-stone-50/90 hover:bg-stone-50 p-3 rounded-2xl border border-stone-200 transition-colors">
@@ -688,19 +799,108 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                   />
                 </div>
 
-                {/* 3. Hotel Search Bar (Real-Time Autocomplete as visitor types letters) */}
-                <div className="md:col-span-4 relative" ref={searchDropdownRef}>
+                {/* 3. Rooms & Guests Picker */}
+                <div className="md:col-span-2 relative" ref={guestPopoverRef}>
                   <div className="bg-stone-50/90 hover:bg-stone-50 p-3 rounded-2xl border border-stone-200 h-full flex flex-col justify-between">
-                    <label className="text-[11px] font-bold text-stone-600 block mb-1 flex items-center justify-between">
-                      <span className="flex items-center gap-1">
-                        <Building2 className="w-3.5 h-3.5 text-[#C9A24B]" />
-                        <span>اسم الفندق أو الحي</span>
+                    <label className="text-[11px] font-bold text-stone-600 block mb-1 flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 text-[#B38A34]" />
+                      <span>الغرف والنزلاء</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsGuestPopoverOpen(!isGuestPopoverOpen)}
+                      className="w-full bg-white border border-stone-200 rounded-xl px-3 py-2 text-xs font-bold text-stone-900 flex items-center justify-between cursor-pointer text-right"
+                    >
+                      <span className="truncate">
+                        {searchRoomsCount} {searchRoomsCount === 1 ? 'غرفة' : 'غرف'} • {totalGuests} نزلاء
                       </span>
-                      {selectedHotel && (
-                        <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.2 rounded-full border border-emerald-200 truncate max-w-[140px]">
-                          ✓ {selectedHotel.name}
-                        </span>
-                      )}
+                      <ChevronDown className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                    </button>
+                  </div>
+
+                  {/* Popover */}
+                  {isGuestPopoverOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-stone-200 p-4 z-50 space-y-3 animate-fadeIn w-64">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-stone-700">عدد الغرف:</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSearchRoomsCount(Math.max(1, searchRoomsCount - 1))}
+                            className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 font-bold text-stone-800"
+                          >
+                            -
+                          </button>
+                          <span className="font-bold text-stone-900 w-4 text-center">{searchRoomsCount}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSearchRoomsCount(Math.min(10, searchRoomsCount + 1))}
+                            className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 font-bold text-stone-800"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-stone-700">البالغين:</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSearchAdultsCount(Math.max(1, searchAdultsCount - 1))}
+                            className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 font-bold text-stone-800"
+                          >
+                            -
+                          </button>
+                          <span className="font-bold text-stone-900 w-4 text-center">{searchAdultsCount}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSearchAdultsCount(Math.min(20, searchAdultsCount + 1))}
+                            className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 font-bold text-stone-800"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-stone-700">الأطفال:</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSearchChildrenCount(Math.max(0, searchChildrenCount - 1))}
+                            className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 font-bold text-stone-800"
+                          >
+                            -
+                          </button>
+                          <span className="font-bold text-stone-900 w-4 text-center">{searchChildrenCount}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSearchChildrenCount(Math.min(10, searchChildrenCount + 1))}
+                            className="w-7 h-7 rounded-lg bg-stone-100 hover:bg-stone-200 font-bold text-stone-800"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsGuestPopoverOpen(false)}
+                        className="w-full py-1.5 rounded-xl bg-stone-900 text-[#DFBE72] font-bold text-xs"
+                      >
+                        تم الاختيار ✓
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Hotel Search Input */}
+                <div className="md:col-span-2 relative" ref={searchDropdownRef}>
+                  <div className="bg-stone-50/90 hover:bg-stone-50 p-3 rounded-2xl border border-stone-200 h-full flex flex-col justify-between">
+                    <label className="text-[11px] font-bold text-stone-600 block mb-1">
+                      اسم الفندق أو الحي
                     </label>
 
                     <div className="relative">
@@ -712,97 +912,35 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                           setHotelSearchQuery(e.target.value);
                           setIsSearchDropdownOpen(true);
                         }}
-                        placeholder="ابحث بالاسم أو الحي (أجياد، المركزية)..."
-                        className="w-full bg-white border border-stone-200 rounded-xl px-3.5 py-2 pl-8 text-xs font-bold text-stone-900 focus:outline-none focus:border-[#C9A24B]"
+                        placeholder="أجياد، المركزية..."
+                        className="w-full bg-white border border-stone-200 rounded-xl px-2.5 py-2 pl-6 text-xs font-bold text-stone-900 focus:outline-none focus:border-[#C9A24B]"
                       />
-                      <Search className="w-4 h-4 text-stone-400 absolute left-2.5 top-2.5 pointer-events-none" />
-                      {hotelSearchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => setHotelSearchQuery('')}
-                          className="absolute left-8 top-2 text-stone-400 hover:text-stone-600 text-xs cursor-pointer"
-                        >
-                          ✕
-                        </button>
-                      )}
+                      <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2 top-2.5 pointer-events-none" />
                     </div>
                   </div>
 
-                  {/* Real-time Matching Dropdown List */}
                   {isSearchDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-stone-200 p-2 z-50 max-h-80 overflow-y-auto animate-fadeIn">
-                      <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-100 text-[11px] text-stone-500 font-bold">
-                        <span>الفنادق المطابقة للأحرف ({matchedHotels.length}):</span>
-                        <span className="text-[10px] text-[#B38A34]">اضغط لاختيار الفندق</span>
-                      </div>
-
-                      {matchedHotels.length === 0 ? (
-                        <div className="p-4 text-center text-xs text-stone-500">
-                          لا توجد فنادق مطابقة للبحث. جرب كتابة اسم آخر.
-                        </div>
-                      ) : (
-                        <div className="divide-y divide-stone-100">
-                          {matchedHotels.map(h => {
-                            const isOnline = h.onlineBookingEnabled !== false && h.isActive !== false;
-                            const isSelected = selectedHotel?.id === h.id;
-
-                            return (
-                              <button
-                                key={h.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedHotel(h);
-                                  setHotelSearchQuery(h.name);
-                                  setIsSearchDropdownOpen(false);
-                                  setViewMode('wizard');
-                                }}
-                                className={`w-full p-2.5 rounded-xl text-right flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                                  isSelected 
-                                    ? 'bg-[#C9A24B]/15 text-[#8C6D23]' 
-                                    : 'hover:bg-stone-50 text-stone-800'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <img
-                                    src={h.mainImage}
-                                    alt={h.name}
-                                    className="w-10 h-10 rounded-lg object-cover shrink-0 bg-stone-100 border border-stone-200"
-                                  />
-                                  <div className="min-w-0 text-right">
-                                    <strong className="text-xs font-bold block truncate">
-                                      {h.name}
-                                    </strong>
-                                    <span className="text-[10px] text-stone-500 block truncate">
-                                      {h.city} • حي {h.district}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="text-left shrink-0">
-                                  {isOnline ? (
-                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 block">
-                                      متاح أونلاين ✓
-                                    </span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-stone-100 text-stone-500 block">
-                                      واتساب فقط
-                                    </span>
-                                  )}
-                                  <div className="flex items-center justify-end gap-0.5 text-amber-400 mt-1">
-                                    <Star className="w-3 h-3 fill-amber-400" />
-                                    <span className="text-[10px] text-stone-700 font-bold">{h.stars ?? 5}</span>
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-stone-200 p-2 z-50 max-h-72 overflow-y-auto animate-fadeIn">
+                      {matchedHotels.map(h => (
+                        <button
+                          key={h.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedHotel(h);
+                            setHotelSearchQuery(h.name);
+                            setIsSearchDropdownOpen(false);
+                          }}
+                          className="w-full p-2 rounded-xl text-right flex items-center justify-between text-xs hover:bg-stone-50 cursor-pointer"
+                        >
+                          <span className="font-bold truncate">{h.name}</span>
+                          <span className="text-[10px] text-stone-500">{h.city}</span>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
 
-                {/* 4. Search & Update Button */}
+                {/* 5. Search Button */}
                 <div className="md:col-span-2 flex flex-col justify-end">
                   <button
                     type="button"
@@ -820,12 +958,12 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                 </div>
               </div>
 
-              {/* Quick Period Shortcuts Bar (تبديل الفترة) */}
+              {/* Quick Period Shortcuts Bar */}
               <div className="pt-3 mt-3 border-t border-stone-100 flex items-center justify-between flex-wrap gap-2 text-xs">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[11px] font-extrabold text-stone-600 flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-[#B38A34]" />
-                    <span>فترات سريعة:</span>
+                    <span>فترات ومواسم معتمدة من الإدارة:</span>
                   </span>
 
                   <button
@@ -833,7 +971,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                     onClick={handleQuickWeekend}
                     className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-[#C9A24B]/15 hover:text-[#8C6D23] text-stone-700 text-[11px] font-bold transition-colors cursor-pointer border border-stone-200"
                   >
-                    عطلة نهاية الأسبوع (خميس - سبت) ⚡
+                    عطلة نهاية الأسبوع ⚡
                   </button>
 
                   <button
@@ -841,11 +979,11 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                     onClick={handleQuickNextWeek}
                     className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-[#C9A24B]/15 hover:text-[#8C6D23] text-stone-700 text-[11px] font-bold transition-colors cursor-pointer border border-stone-200"
                   >
-                    الأسبوع القادم (3 ليالٍ) ⚡
+                    الأسبوع القادم ⚡
                   </button>
 
-                  {/* Show hotel active seasons if selectedHotel has pricing periods */}
-                  {selectedHotel?.pricingPeriods && selectedHotel.pricingPeriods.filter(p => p.isActive !== false).slice(0, 3).map(p => {
+                  {/* Admin configured active pricing periods */}
+                  {allActiveAdminPeriods.map(p => {
                     const isSelected = searchCheckIn === p.startDate && searchCheckOut === p.endDate;
                     return (
                       <button
@@ -857,86 +995,95 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             ? 'bg-[#C9A24B] text-white border-[#C9A24B] shadow-2xs'
                             : 'bg-white hover:bg-amber-50 text-stone-700 border-amber-300'
                         }`}
+                        title={`من ${p.startDate} إلى ${p.endDate}`}
                       >
-                        <span>{p.name}: {p.startDate} ~ {p.endDate}</span>
+                        <span>{p.name}</span>
                       </button>
                     );
                   })}
                 </div>
 
                 <span className="text-[11px] text-stone-500 font-medium">
-                  ✓ أفضل سعر معتمد بدون وسيط • تأكيد حجز مباشر
+                  ✓ الأسعار معتمدة ومباشرة من الإدارة
                 </span>
-              </div>
-
-              {/* View Mode Toggle: Grid of Hotels vs Single Hotel Wizard */}
-              <div className="pt-3 mt-2 border-t border-stone-100/70 flex items-center justify-between flex-wrap gap-2 text-xs">
-                <div className="flex items-center gap-2 text-stone-600">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>
-                    الفنادق المتاحة: <strong>{onlineAvailableHotels.length} فندقاً</strong>
-                  </span>
-                  <span className="text-stone-300">•</span>
-                  <span>المدة: <strong>{nightsCount} {nightsCount === 1 ? 'ليلة' : 'ليالٍ'}</strong></span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode(viewMode === 'wizard' ? 'grid' : 'wizard')}
-                    className="px-3.5 py-1.5 rounded-xl bg-stone-100 hover:bg-[#C9A24B]/15 hover:text-[#8C6D23] text-stone-700 font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Filter className="w-3.5 h-3.5" />
-                    <span>
-                      {viewMode === 'wizard' 
-                        ? 'استعراض كل الفنادق المتاحة (طريقة بوكينج) ⊞' 
-                        : 'العودة لخطوات حجز الفندق الحالي ←'}
-                    </span>
-                  </button>
-                </div>
               </div>
             </div>
 
-            {/* ── VIEW MODE 1: BOOKING.COM LUXURY HOTEL LISTINGS ── */}
+            {/* ── VIEW MODE 1: GRID OF AVAILABLE HOTELS ── */}
             {viewMode === 'grid' && (
-              <div className="space-y-5 animate-fadeIn">
-                {/* Filter and Sorting Header */}
-                <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-stone-700">ترتيب النتائج:</span>
+              <div className="space-y-6 animate-fadeIn">
+                {/* Available Online Count Bar */}
+                <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-xs sm:text-sm font-bold text-stone-800">
+                      الفنادق المتاحة للحجز الإلكتروني الفوري للفترة المختارة: 
+                      <strong className="text-emerald-700 font-extrabold mr-1"> ({sortedOnlineHotels.length} فندقاً)</strong>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-stone-500">ترتيب:</span>
                     {[
-                      { id: 'recommended' as const, label: 'الأكثر ملاءمة (الموصى به)' },
-                      { id: 'distance' as const, label: 'الأقرب للحرم الشريف' },
-                      { id: 'rating' as const, label: 'الأعلى تقييماً' },
-                      { id: 'price_asc' as const, label: 'الأقل سعراً أولاً' }
+                      { id: 'recommended' as const, label: 'الموصى به' },
+                      { id: 'distance' as const, label: 'الأقرب للحرم' },
+                      { id: 'price_asc' as const, label: 'الأقل سعراً' }
                     ].map(s => (
                       <button
                         key={s.id}
                         type="button"
                         onClick={() => setSortBy(s.id)}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          sortBy === s.id
-                            ? 'bg-stone-900 text-white shadow-2xs'
-                            : 'bg-stone-100 hover:bg-stone-200 text-stone-600'
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                          sortBy === s.id ? 'bg-stone-900 text-[#DFBE72]' : 'bg-stone-100 text-stone-600'
                         }`}
                       >
                         {s.label}
                       </button>
                     ))}
                   </div>
-
-                  <div className="text-xs text-stone-500 font-medium">
-                    تم العثور على <strong className="text-stone-900">{sortedHotels.length}</strong> فندقاً مطابقاً
-                  </div>
                 </div>
 
-                {/* The List of Hotel Cards (Booking.com style rich cards) */}
+                {/* ZERO AVAILABLE HOTELS ALERT */}
+                {sortedOnlineHotels.length === 0 && (
+                  <div className="bg-amber-50/80 rounded-3xl border border-amber-300/80 p-6 sm:p-8 text-center space-y-4 shadow-sm animate-fadeIn">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-100 text-[#8C6D23] flex items-center justify-center mx-auto">
+                      <AlertCircle className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-extrabold text-stone-900 font-cairo">
+                        لا تتوفر فنادق متاحة للحجز الإلكتروني الفوري في هذه الفترة المحددة
+                      </h3>
+                      <p className="text-xs text-stone-600 max-w-xl mx-auto mt-1 leading-relaxed">
+                        الفترة المختارة (من {searchCheckIn} إلى {searchCheckOut}) تقع خارج فترات الإتاحة المباشرة المعتمدة من الإدارة حالياً، أو تم حجز كامل المخزون المخصص لها.
+                      </p>
+                    </div>
+
+                    {/* Quick Options */}
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                      {allActiveAdminPeriods.length > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap justify-center">
+                          <span className="text-xs font-bold text-stone-700">اختر فترة متاحة معتمدة:</span>
+                          {allActiveAdminPeriods.slice(0, 3).map(p => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => handleSelectQuickPeriod(p.startDate, p.endDate)}
+                              className="px-3 py-1.5 rounded-xl bg-white border border-[#C9A24B] text-[#8C6D23] text-xs font-bold hover:bg-[#C9A24B] hover:text-white transition-colors cursor-pointer shadow-2xs"
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* LIST OF INSTANT ONLINE BOOKING HOTELS (Booking.com style) */}
                 <div className="space-y-5">
-                  {sortedHotels.map((h) => {
-                    const isSelected = selectedHotel?.id === h.id;
-                    const isOnline = h.onlineBookingEnabled !== false && h.isActive !== false;
+                  {sortedOnlineHotels.map((h) => {
                     const minPrice = getHotelStartingPrice(h.id, h.stars);
-                    const totalPrice = minPrice * nightsCount;
+                    const totalPrice = minPrice * nightsCount * searchRoomsCount;
                     const score = ((h.rating || 4.8) * 2).toFixed(1);
                     const reviewScoreNum = parseFloat(score);
                     const ratingWord = reviewScoreNum >= 9.2 ? 'استثنائي' : reviewScoreNum >= 8.5 ? 'رائع جداً' : 'جيد جداً';
@@ -945,13 +1092,9 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                     return (
                       <div
                         key={h.id}
-                        className={`bg-white rounded-3xl border overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col md:flex-row group ${
-                          isSelected 
-                            ? 'border-[#C9A24B] ring-2 ring-[#C9A24B]/30 shadow-md' 
-                            : 'border-stone-200 hover:border-[#C9A24B]/40'
-                        }`}
+                        className="bg-white rounded-3xl border border-stone-200/90 overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col md:flex-row group hover:border-[#C9A24B]/40"
                       >
-                        {/* 1. Left/Image Column (Desktop: fixed width) */}
+                        {/* 1. Photo Column */}
                         <div className="relative md:w-72 lg:w-80 shrink-0 aspect-video md:aspect-auto overflow-hidden bg-stone-100">
                           <img
                             src={h.mainImage}
@@ -959,9 +1102,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             loading="lazy"
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none md:hidden" />
-
-                          {/* Top Badges */}
                           <div className="absolute top-3 right-3 flex items-center gap-1.5 flex-wrap z-10">
                             <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-black/75 backdrop-blur-md text-white border border-white/20">
                               {h.city === 'مكة المكرمة' ? '🕋 مكة' : '🕌 المدينة'}
@@ -973,7 +1113,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             )}
                           </div>
 
-                          {/* Distance Badge over Image */}
                           <div className="absolute bottom-3 right-3 left-3 bg-black/75 backdrop-blur-md px-3 py-1.5 rounded-xl text-white text-[11px] font-bold flex items-center justify-between border border-white/15">
                             <span className="truncate">{h.distanceText || `${h.distanceToHaram}م من ساحة الحرم`}</span>
                             <span className="text-amber-400 shrink-0">
@@ -982,7 +1121,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                           </div>
                         </div>
 
-                        {/* 2. Middle Column: Hotel Information & Features */}
+                        {/* 2. Middle Column: Info & Features */}
                         <div className="flex-1 p-5 space-y-3 flex flex-col justify-between">
                           <div className="space-y-2">
                             <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -1015,24 +1154,24 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                               {h.overview || h.detailedDescription}
                             </p>
 
-                            {/* Booking Highlights / Amenity Chips */}
+                            {/* Booking Highlights Chips */}
                             <div className="flex items-center gap-1.5 flex-wrap pt-1">
                               <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200/70 flex items-center gap-1">
                                 <Utensils className="w-3 h-3 text-[#B38A34]" />
-                                <span>إفطار بوفيه فاخر متوفر</span>
+                                <span>إفطار بوفيه متوفر</span>
                               </span>
                               <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-stone-100 text-stone-700 flex items-center gap-1">
                                 <Sparkles className="w-3 h-3 text-[#C9A24B]" />
-                                <span>واي فاي فائق السرعة مجاناً</span>
+                                <span>واي فاي فائق مجاناً</span>
                               </span>
                               <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/70 flex items-center gap-1">
                                 <CheckCheck className="w-3 h-3 text-emerald-600" />
-                                <span>تأكيد فوري بدون وسيط</span>
+                                <span>حجز فوري معتمد من الإدارة</span>
                               </span>
                             </div>
                           </div>
 
-                          {/* Admin Availability Period Badge */}
+                          {/* Admin Period Badge */}
                           <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-xs flex-wrap gap-2">
                             {activePeriod ? (
                               <span className="text-[11px] text-amber-900 font-bold bg-amber-50/80 px-2.5 py-1 rounded-lg border border-amber-200/80 flex items-center gap-1">
@@ -1045,22 +1184,15 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                               </span>
                             )}
 
-                            {isOnline ? (
-                              <span className="text-emerald-700 font-bold text-xs flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                <span>متاح للحجز الفوري الإلكتروني</span>
-                              </span>
-                            ) : (
-                              <span className="text-stone-600 font-bold text-xs bg-stone-100 px-2 py-0.5 rounded-lg">
-                                الحجز عبر الواتساب والإدارة
-                              </span>
-                            )}
+                            <span className="text-emerald-700 font-bold text-xs flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>متاح للحجز الفوري أونلاين ✓</span>
+                            </span>
                           </div>
                         </div>
 
-                        {/* 3. Right Column (RTL Left side): Review Score & Price Box */}
+                        {/* 3. Action Box */}
                         <div className="md:w-64 lg:w-72 shrink-0 p-5 bg-stone-50/80 md:border-r border-t md:border-t-0 border-stone-100 flex flex-col justify-between">
-                          {/* Booking.com Style Review Score */}
                           <div className="flex items-center justify-between">
                             <div className="text-right">
                               <span className="text-xs font-extrabold text-stone-900 block leading-tight">
@@ -1076,26 +1208,21 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             </div>
                           </div>
 
-                          {/* Pricing Details */}
                           <div className="py-3 text-left">
                             <span className="text-[11px] text-stone-500 block">
-                              الإقامة لـ {nightsCount} {nightsCount === 1 ? 'ليلة' : 'ليالٍ'}:
+                              الإقامة لـ {nightsCount} {nightsCount === 1 ? 'ليلة' : 'ليالٍ'} ({searchRoomsCount} {searchRoomsCount === 1 ? 'غرفة' : 'غرف'}):
                             </span>
                             <div className="flex items-baseline justify-end gap-1.5 mt-0.5">
-                              <span className="text-xs text-stone-400 line-through">
-                                {(totalPrice * 1.2).toFixed(0)} ر.س
-                              </span>
                               <strong className="text-xl sm:text-2xl font-black text-[#8C6D23] font-mono">
                                 {totalPrice.toLocaleString()}
                               </strong>
                               <span className="text-xs font-bold text-stone-700">ر.س</span>
                             </div>
                             <span className="text-[10px] text-stone-500 block text-left">
-                              (من {minPrice.toLocaleString()} ر.س / ليلة) • شامل الضريبة والرسوم
+                              (من {minPrice.toLocaleString()} ر.س / ليلة) • شامل الضريبة
                             </span>
                           </div>
 
-                          {/* Action Buttons */}
                           <div className="space-y-2">
                             <button
                               type="button"
@@ -1104,18 +1231,14 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                                 setViewMode('wizard');
                                 window.scrollTo({ top: 120, behavior: 'smooth' });
                               }}
-                              className={`w-full py-3 px-4 rounded-xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm ${
-                                isSelected
-                                  ? 'bg-stone-900 text-[#DFBE72] border border-[#C9A24B]/40'
-                                  : 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] hover:from-[#9E782B] hover:to-[#B38A34] text-white active:scale-95'
-                              }`}
+                              className="w-full py-3 px-4 rounded-xl font-black text-xs sm:text-sm bg-gradient-to-r from-[#B38A34] to-[#C9A24B] hover:from-[#9E782B] hover:to-[#B38A34] text-white shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
                             >
-                              <span>{isSelected ? 'متابعة اختيار الغرف والحجز ←' : 'اختر الغرف واحجز الآن ⚡'}</span>
+                              <span>اختر الغرف واحجز الآن ⚡</span>
                               <ArrowRight className="w-4 h-4" />
                             </button>
 
                             <a
-                              href={buildHotelDirectWhatsAppLink(h)}
+                              href={buildQuoteWhatsAppLink(h)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="w-full py-2 px-3 rounded-xl bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
@@ -1129,13 +1252,81 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                     );
                   })}
                 </div>
+
+                {/* ── SECTION: HOTELS REQUIRING CUSTOM QUOTE / NOT IN THIS PERIOD ── */}
+                {quoteOnlyHotels.length > 0 && (
+                  <div className="pt-8 border-t border-stone-200/90 space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <h3 className="text-base sm:text-lg font-bold text-stone-900 font-cairo flex items-center gap-2">
+                          <MessageSquare className="w-5 h-5 text-[#B38A34]" />
+                          <span>فنادق تتطلب طلب تسعير وتنسيق مخصص (عبر الواتساب)</span>
+                        </h3>
+                        <p className="text-xs text-stone-500 mt-0.5">
+                          هذه الفنادق غير متاحة للحجز الفوري في الفترة المختارة أو تتطلب تسعيراً خاصاً من الإدارة
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowQuoteSection(!showQuoteSection)}
+                        className="text-xs text-[#8C6D23] font-bold hover:underline cursor-pointer flex items-center gap-1"
+                      >
+                        <span>{showQuoteSection ? 'إخفاء هذه الفنادق ▲' : `عرض الفنادق (${quoteOnlyHotels.length}) ▼`}</span>
+                      </button>
+                    </div>
+
+                    {(showQuoteSection || sortedOnlineHotels.length === 0) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 animate-fadeIn">
+                        {quoteOnlyHotels.map(h => {
+                          const status = getHotelAvailabilityStatus(h, searchCheckIn, searchCheckOut, searchRoomsCount);
+                          return (
+                            <div
+                              key={`quote-${h.id}`}
+                              className="bg-white rounded-3xl border border-stone-200 p-4 flex flex-col justify-between shadow-2xs space-y-3"
+                            >
+                              <div className="space-y-2">
+                                <div className="relative aspect-video rounded-2xl overflow-hidden bg-stone-100">
+                                  <img src={h.mainImage} alt={h.name} className="w-full h-full object-cover" />
+                                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/70 text-white">
+                                    {h.city}
+                                  </div>
+                                </div>
+
+                                <h4 className="font-bold text-sm text-stone-900 truncate">{h.name}</h4>
+                                <p className="text-xs text-stone-500 flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5 text-[#B38A34]" />
+                                  <span>{h.distanceText || `حي ${h.district}`}</span>
+                                </p>
+
+                                <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-[11px] text-stone-600 space-y-1">
+                                  <span className="font-bold text-amber-900 block">📌 سبب عدم الحجز الفوري:</span>
+                                  <span className="block text-stone-500">{status.reason}</span>
+                                </div>
+                              </div>
+
+                              <a
+                                href={buildQuoteWhatsAppLink(h, status.reason)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full py-2.5 px-3 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer text-center"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                                <span>طلب تسعير وإرسال للواتساب 💬</span>
+                              </a>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ── VIEW MODE 2: ACTIVE HOTEL BOOKING WIZARD ── */}
+            {/* ── VIEW MODE 2: ACTIVE HOTEL WIZARD ── */}
             {viewMode === 'wizard' && (
               <div className="space-y-4">
-                {/* Active Selected Hotel Banner / Breadcrumb */}
                 {selectedHotel && (
                   <div className="bg-white rounded-3xl p-4 sm:p-5 border border-stone-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -1150,10 +1341,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
                             {selectedHotel.city}
                           </span>
-                          <div className="flex items-center gap-0.5 text-amber-400">
-                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                            <span className="text-xs text-stone-800 font-bold">{selectedHotel.stars ?? 5} نجوم</span>
-                          </div>
                         </div>
                         <h3 className="text-lg sm:text-xl font-cairo font-black text-stone-900 mt-0.5">
                           {selectedHotel.name}
@@ -1177,16 +1364,15 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                   </div>
                 )}
 
-                {/* Render High-Performance 3-Step Booking Wizard */}
                 {selectedHotel ? (
                   <BookingFlow
                     hotel={selectedHotel}
                     allHotels={activeHotels}
                     initialCheckIn={searchCheckIn}
                     initialCheckOut={searchCheckOut}
-                    initialRooms={prefillRooms}
-                    initialAdults={prefillAdults}
-                    initialChildren={prefillChildren}
+                    initialRooms={searchRoomsCount}
+                    initialAdults={searchAdultsCount}
+                    initialChildren={searchChildrenCount}
                     initialBookingType="individual"
                     siteSettings={siteSettings}
                     onNavigateHome={() => onNavigate('home')}
@@ -1215,11 +1401,11 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
         )}
 
         {/* ========================================================================= */}
-        {/* TAB 2: CORPORATE & GROUP BOOKINGS (B2B SUITE)                             */}
+        {/* TAB 2: CORPORATE BOOKINGS (B2B RFP SUITE & ONLINE AVAILABILITY)           */}
         {/* ========================================================================= */}
         {activeTab === 'book-corporate' && (
           <div className="space-y-6 animate-fadeIn">
-            {/* Corporate Mode Selector: RFP Request vs Online Availability Check */}
+            {/* Corporate Sub-mode Switcher */}
             <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-5 border border-[#C9A24B]/40 shadow-md">
               <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -1236,7 +1422,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                   </div>
                 </div>
 
-                {/* Sub-mode Switcher */}
                 <div className="inline-flex p-1 rounded-2xl bg-stone-100 border border-stone-200 gap-1 shrink-0">
                   <button
                     type="button"
@@ -1271,7 +1456,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
             {corporateSubMode === 'rfp' && (
               <div className="space-y-6">
                 {corpSubmittedCode ? (
-                  /* Success Confirmation Voucher with Code & WhatsApp Follow-up */
                   <div className="bg-white rounded-3xl border border-[#C9A24B]/40 p-6 sm:p-8 shadow-xl max-w-2xl mx-auto space-y-6 animate-fadeIn">
                     <div className="text-center space-y-2">
                       <div className="w-16 h-16 rounded-3xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-sm">
@@ -1288,7 +1472,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                       </p>
                     </div>
 
-                    {/* Reference Card */}
                     <div className="p-5 rounded-2xl bg-gradient-to-br from-stone-900 to-stone-800 text-white border border-[#C9A24B]/40 shadow-lg space-y-3">
                       <div className="flex items-center justify-between border-b border-white/10 pb-3">
                         <span className="text-xs text-stone-400">رقم الطلب المرجعي:</span>
@@ -1327,7 +1510,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                       </div>
                     </div>
 
-                    {/* Fast WhatsApp Follow-up Button */}
                     <div className="space-y-3">
                       <a
                         href={buildCorporateWhatsAppUrl()}
@@ -1353,7 +1535,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                     </div>
                   </div>
                 ) : (
-                  /* Form */
                   <form onSubmit={handleCorporateSubmit} className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-sm space-y-6">
                     <div className="border-b border-stone-100 pb-4">
                       <h3 className="text-lg font-black text-stone-900 font-cairo">
@@ -1364,7 +1545,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                       </p>
                     </div>
 
-                    {/* Section 1: Company & Contact Information */}
+                    {/* Section 1: Company & Coordinator */}
                     <div className="space-y-4">
                       <h4 className="text-xs font-black text-[#8C6D23] uppercase tracking-wider flex items-center gap-1.5">
                         <Building2 className="w-4 h-4" />
@@ -1394,7 +1575,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             type="text"
                             value={corpAddress}
                             onChange={(e) => setCorpAddress(e.target.value)}
-                            placeholder="مثال: الرياض - حي الملز أو القاهرة"
+                            placeholder="الرياض أو القاهرة أو جاكرتا..."
                             className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900 focus:outline-none focus:border-[#C9A24B] focus:bg-white"
                           />
                         </div>
@@ -1408,7 +1589,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             required
                             value={corpNationality}
                             onChange={(e) => setCorpNationality(e.target.value)}
-                            placeholder="مثال: وفد تركي / إندونيسي / مصري / محلي"
+                            placeholder="مثال: وفد تركي / إندونيسي / مصري"
                             className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900 focus:outline-none focus:border-[#C9A24B] focus:bg-white"
                           />
                         </div>
@@ -1421,7 +1602,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             type="text"
                             value={corpCoordinator}
                             onChange={(e) => setCorpCoordinator(e.target.value)}
-                            placeholder="اسم مسؤول التسكين المعتمد"
+                            placeholder="اسم منسق التسكين"
                             className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900 focus:outline-none focus:border-[#C9A24B] focus:bg-white"
                           />
                         </div>
@@ -1435,7 +1616,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             required
                             value={corpPhone}
                             onChange={(e) => setCorpPhone(e.target.value)}
-                            placeholder="مثال: 0501234567 أو +966..."
+                            placeholder="0501234567 أو +966..."
                             className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-stone-900 focus:outline-none focus:border-[#C9A24B] focus:bg-white"
                           />
                         </div>
@@ -1455,11 +1636,11 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                       </div>
                     </div>
 
-                    {/* Section 2: Hotel & Stay Details */}
+                    {/* Section 2: Hotel & Dates */}
                     <div className="space-y-4 pt-4 border-t border-stone-100">
                       <h4 className="text-xs font-black text-[#8C6D23] uppercase tracking-wider flex items-center gap-1.5">
                         <Calendar className="w-4 h-4" />
-                        <span>2. الفندق المطلوب وفترة الإقامة</span>
+                        <span>2. الفندق وفترة الإقامة</span>
                       </h4>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1474,7 +1655,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                           >
                             {availableHotels.map(h => (
                               <option key={h.id} value={h.id}>
-                                {h.name} ({h.city} - حي {h.district})
+                                {h.name} ({h.city})
                               </option>
                             ))}
                           </select>
@@ -1482,7 +1663,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
 
                         <div>
                           <label className="text-xs font-bold text-stone-700 block mb-1">
-                            تاريخ الوصول (الدخول) <span className="text-rose-500">*</span>
+                            تاريخ الوصول <span className="text-rose-500">*</span>
                           </label>
                           <input
                             type="date"
@@ -1504,7 +1685,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
 
                         <div>
                           <label className="text-xs font-bold text-stone-700 block mb-1">
-                            تاريخ المغادرة (الخروج) <span className="text-rose-500">*</span>
+                            تاريخ المغادرة <span className="text-rose-500">*</span>
                           </label>
                           <input
                             type="date"
@@ -1518,7 +1699,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                       </div>
                     </div>
 
-                    {/* Section 3: Room Breakdown & Guests */}
+                    {/* Section 3: Room Breakdown */}
                     <div className="space-y-4 pt-4 border-t border-stone-100">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-black text-[#8C6D23] uppercase tracking-wider flex items-center gap-1.5">
@@ -1542,7 +1723,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
 
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                         <div className="bg-stone-50 p-3 rounded-2xl border border-stone-200 text-center space-y-1">
-                          <span className="text-[11px] font-bold text-stone-600 block">غرف ثنائية (Double)</span>
+                          <span className="text-[11px] font-bold text-stone-600 block">ثنائية (Double)</span>
                           <input
                             type="number"
                             min={0}
@@ -1553,7 +1734,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                         </div>
 
                         <div className="bg-stone-50 p-3 rounded-2xl border border-stone-200 text-center space-y-1">
-                          <span className="text-[11px] font-bold text-stone-600 block">غرف ثلاثية (Triple)</span>
+                          <span className="text-[11px] font-bold text-stone-600 block">ثلاثية (Triple)</span>
                           <input
                             type="number"
                             min={0}
@@ -1564,7 +1745,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                         </div>
 
                         <div className="bg-stone-50 p-3 rounded-2xl border border-stone-200 text-center space-y-1">
-                          <span className="text-[11px] font-bold text-stone-600 block">غرف رباعية (Quad)</span>
+                          <span className="text-[11px] font-bold text-stone-600 block">رباعية (Quad)</span>
                           <input
                             type="number"
                             min={0}
@@ -1575,7 +1756,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                         </div>
 
                         <div className="bg-stone-50 p-3 rounded-2xl border border-stone-200 text-center space-y-1">
-                          <span className="text-[11px] font-bold text-stone-600 block">أجنحة فاخرة (Suites)</span>
+                          <span className="text-[11px] font-bold text-stone-600 block">أجنحة (Suites)</span>
                           <input
                             type="number"
                             min={0}
@@ -1586,7 +1767,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                         </div>
 
                         <div className="bg-stone-50 p-3 rounded-2xl border border-stone-200 text-center space-y-1">
-                          <span className="text-[11px] font-bold text-stone-600 block">غرف مفردة (Single)</span>
+                          <span className="text-[11px] font-bold text-stone-600 block">مفردة (Single)</span>
                           <input
                             type="number"
                             min={0}
@@ -1598,7 +1779,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                       </div>
                     </div>
 
-                    {/* Section 4: Meal Plan & Additional Services */}
+                    {/* Section 4: Meal Plan & Services */}
                     <div className="space-y-4 pt-4 border-t border-stone-100">
                       <h4 className="text-xs font-black text-[#8C6D23] uppercase tracking-wider flex items-center gap-1.5">
                         <Utensils className="w-4 h-4" />
@@ -1647,7 +1828,7 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                             onChange={(e) => setCorpNeedAirportTransfer(e.target.checked)}
                             className="w-4 h-4 text-[#C9A24B] rounded border-stone-300"
                           />
-                          <PlaneIcon className="w-4 h-4 text-[#B38A34]" />
+                          <Sparkles className="w-4 h-4 text-[#B38A34]" />
                           <span>طلب استقبال وتوديع بصالات المطار</span>
                         </label>
                       </div>
@@ -1704,7 +1885,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                   </span>
                 </div>
 
-                {/* Render BookingFlow in Group Mode for Selected Hotel */}
                 {selectedHotel && (
                   <BookingFlow
                     hotel={selectedHotel}
@@ -1779,10 +1959,8 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
               </button>
             </form>
 
-            {/* Results */}
             {manageBooking ? (
               <div className="space-y-5 pt-4 border-t border-stone-100 animate-fadeIn">
-                {/* Status Card */}
                 <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between flex-wrap gap-3">
                   <div>
                     <span className="text-[11px] text-stone-500 block">حالة الحجز:</span>
@@ -1806,7 +1984,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                   </div>
                 </div>
 
-                {/* Digital Key & Booking Code Card */}
                 <div className="p-5 rounded-3xl bg-gradient-to-br from-stone-900 to-stone-800 text-white border border-[#C9A24B]/30 shadow-lg space-y-4">
                   <div className="flex items-center justify-between border-b border-white/10 pb-3">
                     <div className="flex items-center gap-2">
@@ -1852,7 +2029,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                   </div>
                 </div>
 
-                {/* Details Breakdown */}
                 <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 text-xs space-y-2">
                   <div className="flex justify-between py-1 border-b border-stone-200/60">
                     <span className="text-stone-500">اسم النزيل:</span>
@@ -1872,7 +2048,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="flex items-center gap-3">
                   <a
                     href={buildGuestWhatsAppShareLink(manageBooking, undefined, siteSettings)}
@@ -1902,168 +2077,6 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
             ) : null}
           </div>
         )}
-
-        {/* ========================================================================= */}
-        {/* FEATURED & WHATSAPP-LINKED HOTELS SHOWCASE                                 */}
-        {/* ========================================================================= */}
-        {featuredAndWhatsAppHotels.length > 0 && (
-          <div className="pt-12 mt-12 border-t border-stone-200/90 space-y-6">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-              <div>
-                <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#C9A24B]/15 text-[#8C6D23] text-xs font-bold border border-[#C9A24B]/30 mb-2 shadow-2xs">
-                  <Star className="w-3.5 h-3.5 fill-[#DFBE72] text-[#DFBE72]" />
-                  <span>فنادق مختارة ومميزة • حجز فوري وتواصل مباشر</span>
-                </div>
-                <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-stone-900 font-cairo">
-                  فنادق برستيج المميزة والموصى بها
-                </h2>
-                <p className="text-xs sm:text-sm text-stone-500 mt-1 max-w-2xl leading-relaxed">
-                  فنادق مميزة متصلة برقم الواتساب المعتمد أو مؤهلة للحجز الإلكتروني المباشر، ويمكن تعديل خياراتها وربطها بالكامل من إعدادات لوحة التحكم.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 text-xs text-stone-600 bg-white px-3.5 py-2 rounded-2xl border border-stone-200 shadow-2xs">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>متصلة بالواتساب ومتاحة للحجز ({featuredAndWhatsAppHotels.length} فندقاً)</span>
-              </div>
-            </div>
-
-            {/* Grid of Featured & WhatsApp Hotels */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {featuredAndWhatsAppHotels.map((h) => {
-                const isSelected = selectedHotel?.id === h.id;
-                const isMakkah = h.city === 'مكة المكرمة';
-                const hasWhatsApp = Boolean(h.hotelWhatsApp?.trim()) || h.showHotelWhatsApp !== false;
-                const isOnline = h.onlineBookingEnabled !== false;
-
-                return (
-                  <div
-                    key={`showcase-${h.id}`}
-                    className={`rounded-3xl border bg-white overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col justify-between group ${
-                      isSelected
-                        ? 'border-[#C9A24B] ring-2 ring-[#C9A24B]/40 shadow-md'
-                        : 'border-stone-200/90 hover:border-[#C9A24B]/50'
-                    }`}
-                  >
-                    <div>
-                      {/* Photo Container */}
-                      <div className="relative aspect-video bg-stone-100 overflow-hidden">
-                        <img
-                          src={h.mainImage}
-                          alt={h.name}
-                          loading="lazy"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
-
-                        {/* Top Badges */}
-                        <div className="absolute top-3 right-3 flex items-center gap-1.5 flex-wrap z-10">
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-black/70 backdrop-blur-md text-white border border-white/20">
-                            {isMakkah ? '🕋 مكة المكرمة' : '🕌 المدينة المنورة'}
-                          </span>
-                          {h.featured && (
-                            <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-[#C9A24B] text-white shadow-sm flex items-center gap-1">
-                              <Star className="w-3 h-3 fill-white text-white" />
-                              <span>مميز</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Bottom Info inside image */}
-                        <div className="absolute bottom-3 inset-x-3 flex items-center justify-between text-white text-[11px] font-bold z-10">
-                          <div className="flex items-center gap-1 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/15">
-                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                            <span>{h.stars ?? 5} نجوم</span>
-                            <span className="text-stone-300">• {h.rating || 4.8} ★</span>
-                          </div>
-
-                          {h.distanceText && (
-                            <div className="bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/15 truncate max-w-[150px]">
-                              {h.distanceText}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Content */}
-                      <div className="p-4 sm:p-5 space-y-2.5">
-                        <div>
-                          <h3 className="font-extrabold text-base sm:text-lg text-stone-900 group-hover:text-[#B38A34] transition-colors line-clamp-1">
-                            {h.name}
-                          </h3>
-                          {h.nameEn && (
-                            <span className="text-[11px] text-stone-400 font-medium block truncate">
-                              {h.nameEn}
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="text-xs text-stone-500 flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-[#B38A34] shrink-0" />
-                          <span>حي {h.district} • {h.city}</span>
-                        </p>
-
-                        {/* Status Badges */}
-                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                          {hasWhatsApp && (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                              <MessageCircle className="w-3 h-3 text-emerald-600" />
-                              <span>واتساب مباشر {h.hotelWhatsApp ? `(${h.hotelWhatsApp})` : ''}</span>
-                            </span>
-                          )}
-                          {isOnline ? (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-[#8C6D23] border border-amber-200 flex items-center gap-1">
-                              <Sparkles className="w-3 h-3 text-[#B38A34]" />
-                              <span>حجز إلكتروني متاح</span>
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-stone-100 text-stone-600 border border-stone-200">
-                              حجز عبر الإدارة
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Dual Action Buttons */}
-                    <div className="p-4 sm:p-5 pt-0 grid grid-cols-2 gap-2">
-                      {/* WhatsApp Button */}
-                      <a
-                        href={buildHotelDirectWhatsAppLink(h)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="py-2.5 px-3 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer text-center"
-                        title="تواصل مباشرة عبر واتساب الفندق"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                        <span>حجز واتساب</span>
-                      </a>
-
-                      {/* Online Book Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedHotel(h);
-                          setViewMode('wizard');
-                          if (activeTab === 'manage') setActiveTab('book-individual');
-                          window.scrollTo({ top: 180, behavior: 'smooth' });
-                        }}
-                        className={`py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-stone-900 text-white shadow-xs'
-                            : 'bg-gradient-to-r from-[#B38A34] to-[#C9A24B] hover:from-[#9E782B] hover:to-[#B38A34] text-white shadow-xs active:scale-95'
-                        }`}
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>{isSelected ? 'المحدد حالياً ✓' : 'احجز أونلاين'}</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Printable Voucher Modal */}
@@ -2079,10 +2092,3 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     </div>
   );
 };
-
-// Helper Plane Icon for B2B airport transfer
-const PlaneIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>
-  </svg>
-);
