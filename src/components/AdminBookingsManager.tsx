@@ -5,11 +5,14 @@ import {
   SiteSettings,
   AdminUser,
   AdminRole,
-  Hotel
+  Hotel,
+  RoomTypeItem
 } from '../types';
 import { 
   getBookingsFromDb, 
   getCachedBookings,
+  getRoomsFromDb,
+  getCachedRooms,
   updateBookingStatus, 
   deleteBookingFromDb, 
   buildSupervisorWhatsAppMessage,
@@ -17,6 +20,7 @@ import {
   buildStaffConfirmationWhatsAppLink,
   isBookingPendingExpired
 } from '../services/bookingService';
+import { AdminRoomAllocationGantt } from './AdminRoomAllocationGantt';
 import { sendBookingEmailViaAppsScript } from '../services/emailService';
 import { 
   sendBookingConfirmationToCustomer, 
@@ -130,6 +134,14 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
   const canEdit = hasPermission(currentUser, adminRoles, 'bookings_log', 'edit');
   const canDelete = hasPermission(currentUser, adminRoles, 'bookings_log', 'delete');
   const canExport = hasPermission(currentUser, adminRoles, 'bookings_log', 'export');
+
+  // View Mode: Table vs Allocation Gantt Matrix
+  const [managerViewMode, setManagerViewMode] = useState<'table' | 'gantt'>('table');
+  const [rooms, setRooms] = useState<RoomTypeItem[]>(() => getCachedRooms());
+
+  useEffect(() => {
+    getRoomsFromDb().then(r => setRooms(r)).catch(() => {});
+  }, []);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -825,6 +837,81 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
     onShowToast(`تم تصدير ${sortedBookings.length} حجز بنجاح إلى ملف CSV`, 'success');
   };
 
+  // Official One-Click Rooming List Excel/CSV Export (for Hotels, Umrah Campaigns & Authorities)
+  const handleExportRoomingListCSV = () => {
+    if (!canExport) {
+      onShowToast('ليس لديك صلاحية تصدير كشوفات التسكين', 'error');
+      return;
+    }
+
+    if (sortedBookings.length === 0) {
+      onShowToast('لا توجد حجوزات مطابقة لتصدير كشف التسكين', 'info');
+      return;
+    }
+
+    const headers = [
+      'م',
+      'رقم الغرفة المسكنة',
+      'اسم النزيل بالكامل',
+      'نوع الحجز (فردي / حملة)',
+      'اسم الحملة / الشركة',
+      'رقم الجوال والواتساب',
+      'البريد الإلكتروني',
+      'الفندق المعتمد',
+      'فئة وتوزيع الغرفة',
+      'باقة الوجبات',
+      'عدد الغرف',
+      'البالغين',
+      'الأطفال',
+      'تاريخ الوصول',
+      'تاريخ المغادرة',
+      'الليالي',
+      'كود الحجز المرجعي',
+      'المفتاح الرقمي',
+      'حالة التسكين',
+      'ملاحظات التسكين والاستقبال'
+    ];
+
+    const rows = sortedBookings.map((b, idx) => {
+      return [
+        idx + 1,
+        `"${b.assignedRoomNumber || 'غير مسكن'}"`,
+        `"${(b.guestName || '').replace(/"/g, '""')}"`,
+        `"${b.isGroupBooking ? 'حملة / مجموعة' : 'حجز فردي'}"`,
+        `"${(b.companyOrGroupName || '').replace(/"/g, '""')}"`,
+        `"${b.guestPhone || ''}"`,
+        `"${b.guestEmail || ''}"`,
+        `"${(b.hotelName || '').replace(/"/g, '""')}"`,
+        `"${(b.roomName || '').replace(/"/g, '""')}"`,
+        `"${(b.mealPlanName || '').replace(/"/g, '""')}"`,
+        b.roomsCount || 1,
+        b.adults || 1,
+        b.children || 0,
+        `"${b.checkIn || ''}"`,
+        `"${b.checkOut || ''}"`,
+        b.nights || 1,
+        `"${b.bookingCode || ''}"`,
+        `"${b.digitalKey || ''}"`,
+        `"${STATUS_LABELS[b.status]?.label || b.status}"`,
+        `"${(b.adminNotes || b.specialRequests || '').replace(/"/g, '""')}"`
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const nowStr = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `prestige-rooming-list-${nowStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    onShowToast(`تم تصدير كشف التسكين الرسمي (${sortedBookings.length} نزيل) بنجاح ✓`, 'success');
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Header Bar with Actions & Permission Indicators */}
@@ -891,18 +978,57 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
             <span>تحديث فوري</span>
           </button>
 
-          {/* Export Button */}
+          {/* Export Filtered Log Button */}
           {canExport && (
             <button
               onClick={handleExportCSV}
               disabled={loading || sortedBookings.length === 0}
-              className="px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-[#C9A24B] hover:text-white text-stone-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3.5 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
               title="تصدير النتائج المفلترة الحالية إلى ملف Excel / CSV"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>تصدير النتائج ({sortedBookings.length})</span>
+              <span>تصدير السجل ({sortedBookings.length})</span>
             </button>
           )}
+
+          {/* Official One-Click Rooming List Excel Export */}
+          {canExport && (
+            <button
+              onClick={handleExportRoomingListCSV}
+              disabled={loading || sortedBookings.length === 0}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-stone-900 to-stone-850 hover:from-stone-800 hover:to-stone-700 text-[#E0C070] font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md border border-[#C9A24B]/40 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
+              title="تصدير كشف تسكين النزلاء الرسمي (Rooming List) لملف Excel متوافق مع الفنادق والجهات التنظيمية"
+            >
+              <FileText className="w-3.5 h-3.5 text-[#E0C070]" />
+              <span>كشف التسكين (Rooming List) 📋</span>
+            </button>
+          )}
+
+          {/* View Mode Switcher: Table vs Room Allocation Gantt */}
+          <div className="flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setManagerViewMode('table')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                managerViewMode === 'table' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500 hover:text-stone-900'
+              }`}
+              title="عرض جدول وسجل الحجوزات"
+            >
+              <FileText className="w-3.5 h-3.5 text-[#C9A24B]" />
+              <span>الجدول</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setManagerViewMode('gantt')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                managerViewMode === 'gantt' ? 'bg-[#C9A24B] text-white shadow-xs' : 'text-stone-500 hover:text-stone-900'
+              }`}
+              title="عرض مخطط تسكين الغرف الزمني البصري (Gantt Chart)"
+            >
+              <BedDouble className="w-3.5 h-3.5" />
+              <span>مخطط التسكين الزمني (Gantt) 📊</span>
+            </button>
+          </div>
 
           {/* Refresh Button */}
           <button 
@@ -916,7 +1042,17 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
         </div>
       </div>
 
-      {/* DAILY OPERATIONS WORKFLOW BAR */}
+      {managerViewMode === 'gantt' ? (
+        <AdminRoomAllocationGantt
+          hotels={hotels || []}
+          bookings={bookings}
+          rooms={rooms}
+          onShowToast={onShowToast}
+          onRefreshData={fetchBookings}
+        />
+      ) : (
+        <>
+          {/* DAILY OPERATIONS WORKFLOW BAR */}
       <div className="p-3.5 bg-gradient-to-r from-stone-900 via-stone-850 to-stone-900 rounded-3xl border border-stone-800 text-white shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-2xl bg-[#C9A24B]/20 border border-[#C9A24B]/40 flex items-center justify-center text-[#E0C070] shrink-0">
@@ -1746,6 +1882,8 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
           </div>
         )}
       </div>
+    </>
+  )}
 
       {/* 6. DELIVERY FAILURE DETAILS POPOVER / MODAL */}
       {deliveryInfoBooking && (() => {

@@ -15,8 +15,11 @@ import {
   Check,
   ChevronDown,
   X,
-  SlidersHorizontal
+  SlidersHorizontal,
+  LayoutGrid,
+  Map
 } from 'lucide-react';
+import { HaramProximityMap } from '../components/HaramProximityMap';
 
 interface HotelsPageProps {
   hotels: Hotel[];
@@ -45,6 +48,8 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
     searchQuery: '',
     selectedCategories: []
   });
+
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
 
   // Open dropdown state: 'district' | 'stars' | 'distance' | 'category' | 'sort' | null
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -559,6 +564,36 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
               </button>
             )}
 
+            {/* View Mode Switcher: Grid vs Haram Proximity 3D Map */}
+            <div className="flex items-center p-1 bg-stone-100 rounded-xl border border-stone-200 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setViewMode('grid')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-stone-500 hover:text-stone-900'
+                }`}
+                title="عرض بطاقات الفنادق"
+              >
+                <LayoutGrid className="w-3.5 h-3.5 text-[#C9A24B]" />
+                <span>{language === 'en' ? 'Cards' : 'البطاقات'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('map')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'map'
+                    ? 'bg-stone-900 text-[#E0C070] shadow-xs'
+                    : 'text-stone-500 hover:text-stone-900'
+                }`}
+                title="عرض خريطة الحرم التفاعلية ثلاثية الأبعاد"
+              >
+                <Map className="w-3.5 h-3.5 text-[#E0C070]" />
+                <span>{language === 'en' ? 'Haram Map' : 'خريطة الحرم 🗺️'}</span>
+              </button>
+            </div>
+
             {/* Results Count Summary Tag */}
             <div className={`${isRtl ? 'mr-auto' : 'ml-auto'} text-xs text-stone-500 font-medium`}>
               <span>
@@ -597,9 +632,17 @@ export const HotelsPage: React.FC<HotelsPageProps> = ({
         </div>
 
         {/* ========================================================= */}
-        {/* HOTELS GRID */}
+        {/* INTERACTIVE HARAM PROXIMITY MAP OR HOTELS GRID           */}
         {/* ========================================================= */}
-        {isLoading ? (
+        {viewMode === 'map' ? (
+          <div className="mb-10 animate-fadeIn">
+            <HaramProximityMap
+              hotels={filteredHotels}
+              onSelectHotel={onSelectHotel}
+              initialCity={filters.city === 'madinah' ? 'المدينة المنورة' : 'مكة المكرمة'}
+            />
+          </div>
+        ) : isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
             {Array.from({ length: 8 }).map((_, i) => (
               <HotelCardSkeleton key={i} />

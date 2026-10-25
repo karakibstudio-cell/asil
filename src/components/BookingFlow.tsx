@@ -77,6 +77,8 @@ import { ExpressCheckInModal } from './ExpressCheckInModal';
 import { trackBookingFunnel } from '../services/analytics';
 import { getInvoiceUrl } from '../utils/routing';
 import { useLanguage } from '../context/LanguageContext';
+import { HijriDatePickerWidget } from './HijriDatePickerWidget';
+import { B2BQuoteModal } from './B2BQuoteModal';
 
 export interface CountryCodeItem {
   code: string;
@@ -252,6 +254,7 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
   const [showExpressModal, setShowExpressModal] = useState<boolean>(false);
   const [emailSendingStatus, setEmailSendingStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const [emailErrorMessage, setEmailErrorMessage] = useState<string>('');
+  const [isB2BQuoteOpen, setIsB2BQuoteOpen] = useState<boolean>(false);
 
   // Idempotency Key (Generated once per draft session)
   const [idempotencyKey, setIdempotencyKey] = useState<string>(() => {
@@ -1139,16 +1142,27 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
 
           {/* Group Booking Informative Banner */}
           {bookingType === 'group' && (
-            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-[#C9A24B]/15 to-amber-500/10 border border-[#C9A24B]/40 text-stone-900 text-xs flex items-start gap-3">
-              <Briefcase className="w-5 h-5 text-[#8C6D23] shrink-0 mt-0.5" />
-              <div>
-                <strong className="block font-extrabold text-[#8C6D23] text-sm">
-                  ميزة حجز المجموعات والحملات مفعلة 👥
-                </strong>
-                <p className="mt-1 text-stone-600 leading-relaxed">
-                  يمكنك في الخطوة التالية تحديد واختيار أكثر من نوع غرفة معاً (مثال: غرف ثنائية + غرف ثلاثية + أجنحة عائلية)، واختيار باقة الوجبات الجماعية، وتدوين بيانات قائد الحملة وكشف التسكين الأولي.
-                </p>
+            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-[#C9A24B]/15 to-amber-500/10 border border-[#C9A24B]/40 text-stone-900 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Briefcase className="w-5 h-5 text-[#8C6D23] shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-extrabold text-[#8C6D23] text-sm">
+                    ميزة حجز المجموعات والحملات مفعلة 👥
+                  </strong>
+                  <p className="mt-1 text-stone-600 leading-relaxed">
+                    يمكنك تحديد أنواع غرف متعددة معاً، باقات الإعاشة الجماعية، وتوليد عرض سعر رسمي فوري معتمد للإدارة.
+                  </p>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setIsB2BQuoteOpen(true)}
+                className="px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-[#E0C070] font-black text-xs flex items-center gap-2 shadow-md border border-[#C9A24B]/40 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98] shrink-0 w-full md:w-auto justify-center"
+              >
+                <FileText className="w-4 h-4 text-[#E0C070]" />
+                <span>تحميل عرض سعر رسمي فوري (PDF) 📄</span>
+              </button>
             </div>
           )}
 
@@ -1242,6 +1256,18 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
                 )}
               </div>
             )}
+          </div>
+
+          {/* Smart Hijri & Islamic Seasons Date Picker Widget */}
+          <div className="mb-6">
+            <HijriDatePickerWidget
+              startDate={checkIn}
+              endDate={checkOut}
+              onSelectDates={(s, e) => {
+                setCheckIn(s);
+                setCheckOut(e);
+              }}
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
@@ -2500,6 +2526,25 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
           onClose={() => setShowExpressModal(false)}
         />
       )}
+
+      {/* 7. Instant Official B2B Proforma Quotation Modal */}
+      <B2BQuoteModal
+        isOpen={isB2BQuoteOpen}
+        onClose={() => setIsB2BQuoteOpen(false)}
+        hotel={hotel}
+        rooms={rooms}
+        selectedRoomsMap={selectedRoomsMap}
+        selectedMealPlan={selectedMealPlan}
+        checkIn={checkIn}
+        checkOut={checkOut}
+        nights={nightsCount}
+        totalAmount={pricingResult.grandTotal}
+        groupName={companyOrGroupName}
+        contactName={guestName || groupLeaderName}
+        contactPhone={fullWhatsAppNumber || groupLeaderPhone}
+        contactEmail={guestEmail}
+        siteSettings={siteSettings}
+      />
     </div>
   );
 };
