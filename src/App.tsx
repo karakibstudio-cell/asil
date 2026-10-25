@@ -528,17 +528,19 @@ export default function App() {
           siteSettings={siteSettings}
         />
 
-        {/* First-Visit Brand Intro & Loading Presentation */}
-        <FirstVisitIntroOverlay
-          siteSettings={siteSettings}
-          isReady={isFontsReady && hotels.length > 0}
-          onFinished={() => {
-            const heroEl = document.getElementById('hero-slider-section');
-            if (heroEl) {
-              heroEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-          }}
-        />
+        {/* First-Visit Brand Intro & Loading Presentation (Only on Home Page) */}
+        {currentPage === 'home' && (
+          <FirstVisitIntroOverlay
+            siteSettings={siteSettings}
+            isReady={isFontsReady && hotels.length > 0}
+            onFinished={() => {
+              const heroEl = document.getElementById('hero-slider-section');
+              if (heroEl) {
+                heroEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+          />
+        )}
 
         <div className="min-h-screen bg-[#F8F7F4] text-stone-900 flex flex-col font-cairo selection:bg-[#C9A24B] selection:text-white">
           {/* Toast Notifications */}

@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { 
   getBookingsFromDb, 
+  getCachedBookings,
   updateBookingStatus, 
   deleteBookingFromDb, 
   buildSupervisorWhatsAppMessage,
@@ -121,8 +122,9 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
   adminRoles = [],
   hotels = []
 }) => {
-  const [bookings, setBookings] = useState<RoomBooking[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Data States - Cache-First Hydration (0ms Load Time)
+  const [bookings, setBookings] = useState<RoomBooking[]>(() => getCachedBookings());
+  const [loading, setLoading] = useState<boolean>(() => getCachedBookings().length === 0);
 
   // RBAC Permission checks
   const canEdit = hasPermission(currentUser, adminRoles, 'bookings_log', 'edit');
@@ -216,7 +218,7 @@ export const AdminBookingsManager: React.FC<AdminBookingsManagerProps> = ({
   }, [bookings, todayDateStr]);
 
   const fetchBookings = async (isSilent: boolean = false) => {
-    if (!isSilent) setLoading(true);
+    if (!isSilent && bookings.length === 0) setLoading(true);
     try {
       const data = await getBookingsFromDb();
       setBookings(data);

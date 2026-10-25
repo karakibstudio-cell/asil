@@ -6,7 +6,7 @@ import {
   RoomTypeItem 
 } from '../types';
 import { hasPermission } from '../utils/rbac';
-import { getRoomsFromDb } from '../services/bookingService';
+import { getRoomsFromDb, getCachedRooms } from '../services/bookingService';
 import { 
   Search, 
   Filter, 
@@ -135,8 +135,16 @@ export const AdminHotelsManager: React.FC<AdminHotelsManagerProps> = ({
   });
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
 
-  // Rooms and Allotment Summary cache per hotel
-  const [hotelRoomsMap, setHotelRoomsMap] = useState<Record<string, RoomTypeItem[]>>({});
+  // Rooms and Allotment Summary cache per hotel - Cache-First Hydration (0ms Load Time)
+  const [hotelRoomsMap, setHotelRoomsMap] = useState<Record<string, RoomTypeItem[]>>(() => {
+    const allRooms = getCachedRooms();
+    const map: Record<string, RoomTypeItem[]> = {};
+    allRooms.forEach(room => {
+      if (!map[room.hotelId]) map[room.hotelId] = [];
+      map[room.hotelId].push(room);
+    });
+    return map;
+  });
   const [isWideMode, setIsWideMode] = useState(false);
 
   useEffect(() => {

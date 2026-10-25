@@ -90,10 +90,12 @@ export const HotelCard: React.FC<HotelCardProps> = ({
         onMouseEnter={() => {
           prefetchHotelDetails(hotel.slug || hotel.id);
           prefetchRoute('hotel-detail');
+          prefetchRoute('room-booking');
         }}
         onTouchStart={() => {
           prefetchHotelDetails(hotel.slug || hotel.id);
           prefetchRoute('hotel-detail');
+          prefetchRoute('room-booking');
         }}
         className="group bg-white hover:bg-[#FAF8F5] rounded-2xl border border-[#EFE6D8] hover:border-[#C9A24B] transition-all duration-300 overflow-hidden cursor-pointer shadow-sm hover:shadow-xl hover:shadow-[#C9A24B]/10 flex flex-col relative"
         style={{ animationDelay: `${index * 80}ms` }}

@@ -1641,10 +1641,45 @@ export function createDefaultRoomsForHotel(hotelId: string): RoomTypeItem[] {
   ];
 }
 
-export async function getRoomsFromDb(hotelId?: string): Promise<RoomTypeItem[]> {
+export function getCachedRooms(hotelId?: string): RoomTypeItem[] {
   const localRooms = getLocal<RoomTypeItem[]>(ROOMS_KEY, DEFAULT_ROOM_TYPES);
+  if (hotelId) {
+    const filtered = localRooms.filter(r => r.hotelId === hotelId && !r.id.includes(`_${hotelId}_`));
+    if (filtered.length > 0) return filtered;
+    return createDefaultRoomsForHotel(hotelId);
+  }
+  return localRooms.filter(r => !r.id.includes('_dlx_king') || r.hotelId === 'hotel_test_1790703048618');
+}
+
+export function getCachedMealPlans(hotelId?: string): MealPlanOption[] {
+  const allPlans = getLocal<MealPlanOption[]>(MEALS_KEY, DEFAULT_MEAL_PLANS);
+  if (hotelId) {
+    const hotelSpecific = allPlans.filter(m => m.hotelId === hotelId);
+    if (hotelSpecific.length > 0) return hotelSpecific;
+  }
+  return allPlans;
+}
+
+export function getCachedPricingPeriods(hotelId?: string): HotelPricingPeriod[] {
+  const current = getLocal<HotelPricingPeriod[]>(PERIODS_KEY, DEFAULT_PRICING_PERIODS);
+  if (hotelId) {
+    return current.filter(p => !p.hotelId || p.hotelId === 'all' || p.hotelId === hotelId);
+  }
+  return current;
+}
+
+export function getCachedBookings(hotelId?: string): RoomBooking[] {
+  const localBookings = getLocal<RoomBooking[]>(BOOKINGS_KEY, INITIAL_ROOM_BOOKINGS);
+  if (hotelId) {
+    return localBookings.filter(b => b.hotelId === hotelId);
+  }
+  return localBookings;
+}
+
+export async function getRoomsFromDb(hotelId?: string): Promise<RoomTypeItem[]> {
+  const localRooms = getCachedRooms(hotelId);
   
-  // Try Supabase first
+  // Try Supabase in background or with quick timeout (1500ms max)
   const sb = getSb();
   if (sb) {
     try {
@@ -1652,14 +1687,18 @@ export async function getRoomsFromDb(hotelId?: string): Promise<RoomTypeItem[]> 
       if (hotelId) {
         query = query.eq('hotel_id', hotelId);
       }
-      const { data, error } = await query;
+      const timeoutPromise = new Promise<{ data: null; error: string }>((resolve) => 
+        setTimeout(() => resolve({ data: null, error: 'timeout' }), 1500)
+      );
+      const { data, error } = await Promise.race([query, timeoutPromise]) as any;
       if (!error && Array.isArray(data) && data.length > 0) {
         const mapped = data.map(mapDbRowToRoom);
         if (!hotelId) {
           setLocal(ROOMS_KEY, mapped);
         } else {
           // Merge into local cache
-          const others = localRooms.filter(r => r.hotelId !== hotelId);
+          const allCached = getLocal<RoomTypeItem[]>(ROOMS_KEY, DEFAULT_ROOM_TYPES);
+          const others = allCached.filter(r => r.hotelId !== hotelId);
           setLocal(ROOMS_KEY, [...mapped, ...others]);
         }
         return mapped;
@@ -1669,11 +1708,7 @@ export async function getRoomsFromDb(hotelId?: string): Promise<RoomTypeItem[]> 
     }
   }
 
-  if (hotelId) {
-    const filtered = localRooms.filter(r => r.hotelId === hotelId && !r.id.includes(`_${hotelId}_`));
-    return filtered;
-  }
-  return localRooms.filter(r => !r.id.includes('_dlx_king') || r.hotelId === 'hotel_test_1790703048618');
+  return localRooms;
 }
 
 export async function saveRoomToDb(room: RoomTypeItem): Promise<void> {

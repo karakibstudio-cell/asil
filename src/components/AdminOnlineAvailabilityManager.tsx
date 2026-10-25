@@ -8,6 +8,9 @@ import {
 } from '../types';
 import { 
   getRoomsFromDb, 
+  getCachedRooms,
+  getCachedMealPlans,
+  getCachedPricingPeriods,
   saveRoomToDb, 
   getMealPlansFromDb, 
   saveMealPlansToDb,
@@ -65,11 +68,19 @@ export const AdminOnlineAvailabilityManager: React.FC<AdminOnlineAvailabilityMan
     return hotels.find(h => h.id === selectedHotelId) || hotels[0] || null;
   }, [hotels, selectedHotelId]);
 
-  // Data states for the selected hotel
-  const [rooms, setRooms] = useState<RoomTypeItem[]>([]);
-  const [mealPlans, setMealPlans] = useState<MealPlanOption[]>([]);
-  const [periods, setPricingPeriods] = useState<HotelPricingPeriod[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  // Data states for the selected hotel - Cache-First Hydration (0ms Load Time)
+  const [rooms, setRooms] = useState<RoomTypeItem[]>(() => {
+    return selectedHotelId ? getCachedRooms(selectedHotelId) : [];
+  });
+  const [mealPlans, setMealPlans] = useState<MealPlanOption[]>(() => {
+    return selectedHotelId ? getCachedMealPlans(selectedHotelId) : [];
+  });
+  const [periods, setPricingPeriods] = useState<HotelPricingPeriod[]>(() => {
+    return selectedHotelId ? getCachedPricingPeriods(selectedHotelId) : [];
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    return selectedHotelId ? getCachedRooms(selectedHotelId).length === 0 : false;
+  });
   const [isRebuilding, setIsRebuilding] = useState<boolean>(false);
 
   // New/Edit Period Modal State
@@ -93,11 +104,11 @@ export const AdminOnlineAvailabilityManager: React.FC<AdminOnlineAvailabilityMan
     isActive: true
   });
 
-  // Load hotel-specific rooms, meal plans, and periods
+  // Load hotel-specific rooms, meal plans, and periods with Stale-While-Revalidate
   useEffect(() => {
     if (!selectedHotel) return;
     let isMounted = true;
-    setLoading(true);
+    if (rooms.length === 0) setLoading(true);
 
     Promise.all([
       getRoomsFromDb(selectedHotel.id),

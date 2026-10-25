@@ -64,6 +64,10 @@ import {
   getMealPlansFromDb, 
   getPricingPeriodsFromDb, 
   getBookingsFromDb, 
+  getCachedRooms,
+  getCachedMealPlans,
+  getCachedPricingPeriods,
+  getCachedBookings,
   getHotelPolicy,
   buildVisitorWhatsAppConfirmationLink,
   DEFAULT_BOOKING_POLICY
@@ -254,12 +258,24 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
     return `idem_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   });
 
-  // Data Loading & State
-  const [rooms, setRooms] = useState<RoomTypeItem[]>([]);
-  const [mealPlans, setMealPlans] = useState<MealPlanOption[]>([]);
-  const [pricingPeriods, setPricingPeriods] = useState<HotelPricingPeriod[]>([]);
-  const [existingBookings, setExistingBookings] = useState<RoomBooking[]>([]);
-  const [loadingData, setLoadingData] = useState<boolean>(true);
+  // Data Loading & State - Cache-First Hydration (0ms Instant Load)
+  const [rooms, setRooms] = useState<RoomTypeItem[]>(() => {
+    const cached = getCachedRooms(hotel.id);
+    return cached.filter(r => r.hotelId === hotel.id && r.isActive !== false);
+  });
+  const [mealPlans, setMealPlans] = useState<MealPlanOption[]>(() => {
+    return getCachedMealPlans(hotel.id).filter(m => m.isActive !== false);
+  });
+  const [pricingPeriods, setPricingPeriods] = useState<HotelPricingPeriod[]>(() => {
+    return getCachedPricingPeriods(hotel.id) || [];
+  });
+  const [existingBookings, setExistingBookings] = useState<RoomBooking[]>(() => {
+    return getCachedBookings(hotel.id) || [];
+  });
+  const [loadingData, setLoadingData] = useState<boolean>(() => {
+    const cached = getCachedRooms(hotel.id).filter(r => r.hotelId === hotel.id && r.isActive !== false);
+    return cached.length === 0;
+  });
 
   // Availability Cache Map by Room ID: { isAvailable, minRemainingRooms, validationErrors }
   const [availabilityMap, setAvailabilityMap] = useState<Record<string, {
@@ -365,10 +381,12 @@ export const BookingFlow: React.FC<BookingFlowProps> = ({
     currentStep
   ]);
 
-  // 3. Load DB records for rooms, meal plans, pricing periods
+  // 3. Load DB records for rooms, meal plans, pricing periods with Stale-While-Revalidate
   useEffect(() => {
     let isMounted = true;
-    setLoadingData(true);
+    if (rooms.length === 0) {
+      setLoadingData(true);
+    }
 
     Promise.all([
       getRoomsFromDb(hotel.id),

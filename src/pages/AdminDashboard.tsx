@@ -19,7 +19,7 @@ import { AdminRoomsManager } from '../components/AdminRoomsManager';
 import { AdminOnlineAvailabilityManager } from '../components/AdminOnlineAvailabilityManager';
 import { AdminHotelsManager } from '../components/AdminHotelsManager';
 import { AdminSEOEditor } from '../components/AdminSEOEditor';
-import { getBookingsFromDb } from '../services/bookingService';
+import { getBookingsFromDb, getCachedBookings } from '../services/bookingService';
 import { sendOnlineBookingNotification, resolveBookingEmail } from '../services/bookingNotificationService';
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from '../components/BookingIcons';
 import { optimizeImageFile } from '../utils/imageOptimizer';
@@ -242,16 +242,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<'all' | 'pending' | 'approved'>('all');
 
-  // Bookings Counter State
-  const [pendingBookingsCount, setPendingBookingsCount] = useState(0);
-  const [totalBookingsCount, setTotalBookingsCount] = useState(0);
+  // Bookings Counter State - Synchronously hydrated from cache (0ms)
+  const [pendingBookingsCount, setPendingBookingsCount] = useState<number>(() => {
+    const list = getCachedBookings();
+    return list.filter(x => x.status === 'pending').length;
+  });
+  const [totalBookingsCount, setTotalBookingsCount] = useState<number>(() => {
+    return getCachedBookings().length;
+  });
 
   useEffect(() => {
     getBookingsFromDb().then(b => {
       setTotalBookingsCount(b.length);
       setPendingBookingsCount(b.filter(x => x.status === 'pending').length);
     }).catch(() => {});
-  }, [activeTab]);
+  }, []);
 
   // Hierarchical Collapsible Menus State (Apple-grade Accordion)
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({

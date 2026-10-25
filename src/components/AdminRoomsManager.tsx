@@ -15,6 +15,9 @@ import {
 } from '../types';
 import { 
   getRoomsFromDb, 
+  getCachedRooms,
+  getCachedMealPlans,
+  getCachedPricingPeriods,
   saveRoomToDb, 
   deleteRoomFromDb, 
   getMealPlansFromDb, 
@@ -206,34 +209,31 @@ export const AdminRoomsManager: React.FC<AdminRoomsManagerProps> = ({
   };
 
   // -------------------------------------------------------------
-  // 2. DATA STATES (Rooms, Meals, Packages, Rules, Policies, Periods)
+  // 2. DATA STATES - Cache-First Hydration (0ms Load Time)
   // -------------------------------------------------------------
-  const [rooms, setRooms] = useState<RoomTypeItem[]>([]);
-  const [loadingRooms, setLoadingRooms] = useState(true);
+  const [rooms, setRooms] = useState<RoomTypeItem[]>(() => getCachedRooms());
+  const [loadingRooms, setLoadingRooms] = useState<boolean>(() => getCachedRooms().length === 0);
 
-  const [mealPlans, setMealPlans] = useState<MealPlanOption[]>([]);
-  const [loadingMeals, setLoadingMeals] = useState(true);
+  const [mealPlans, setMealPlans] = useState<MealPlanOption[]>(() => getCachedMealPlans(selectedHotelId));
+  const [loadingMeals, setLoadingMeals] = useState<boolean>(() => getCachedMealPlans(selectedHotelId).length === 0);
 
   const [packages, setPackages] = useState<RoomPackageOption[]>([]);
-  const [loadingPackages, setLoadingPackages] = useState(true);
+  const [loadingPackages, setLoadingPackages] = useState(false);
 
   const [ruleSets, setRuleSets] = useState<BookingRuleSet[]>([]);
-  const [loadingRules, setLoadingRules] = useState(true);
+  const [loadingRules, setLoadingRules] = useState(false);
 
   const [policiesList, setPoliciesList] = useState<HotelPolicyItem[]>([]);
-  const [loadingPolicies, setLoadingPolicies] = useState(true);
+  const [loadingPolicies, setLoadingPolicies] = useState(false);
 
-  const [pricingPeriods, setPricingPeriods] = useState<HotelPricingPeriod[]>([]);
-  const [loadingPeriods, setLoadingPeriods] = useState(true);
+  const [pricingPeriods, setPricingPeriods] = useState<HotelPricingPeriod[]>(() => getCachedPricingPeriods(selectedHotelId));
+  const [loadingPeriods, setLoadingPeriods] = useState<boolean>(() => getCachedPricingPeriods(selectedHotelId).length === 0);
 
-  // Load all 6 data models
+  // Load all 6 data models with Stale-While-Revalidate
   const loadData = async () => {
-    setLoadingRooms(true);
-    setLoadingMeals(true);
-    setLoadingPackages(true);
-    setLoadingRules(true);
-    setLoadingPolicies(true);
-    setLoadingPeriods(true);
+    if (rooms.length === 0) setLoadingRooms(true);
+    if (mealPlans.length === 0) setLoadingMeals(true);
+    if (pricingPeriods.length === 0) setLoadingPeriods(true);
     try {
       const [r, m, p, rules, pols, periods] = await Promise.all([
         getRoomsFromDb(),

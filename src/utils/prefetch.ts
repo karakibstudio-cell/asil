@@ -52,14 +52,16 @@ export function scheduleIdlePrefetch(): void {
   if (typeof window === 'undefined') return;
   // Delay background route prefetching until main thread is completely idle after load
   setTimeout(() => {
-    const idleFn = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 1000));
+    const idleFn = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 600));
     idleFn(() => {
       prefetchRoute('hotels');
       prefetchRoute('hotel-detail');
-      prefetchRoute('about');
+      prefetchRoute('room-booking');
       prefetchRoute('offers');
+      prefetchRoute('about');
+      prefetchRoute('contact');
     });
-  }, 1200);
+  }, 800);
 }
 
 /**

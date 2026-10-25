@@ -4,7 +4,9 @@ import {
   getBookingByCodeOrPhone, 
   buildGuestWhatsAppShareLink, 
   getRoomsFromDb, 
-  getPricingPeriodsFromDb 
+  getPricingPeriodsFromDb,
+  getCachedRooms,
+  getCachedPricingPeriods 
 } from '../services/bookingService';
 import { sendContactMessage } from '../services/firebase';
 import { BookingFlow } from '../components/BookingFlow';
@@ -117,9 +119,9 @@ export const BookingPortalPage: React.FC<BookingPortalPageProps> = ({
     return prefillHotel ? 'wizard' : 'grid';
   });
 
-  // DB Data: Loaded asynchronously for availability & price checking
-  const [allRooms, setAllRooms] = useState<RoomTypeItem[]>([]);
-  const [allPricingPeriods, setAllPricingPeriods] = useState<HotelPricingPeriod[]>([]);
+  // DB Data: Cache-First Hydration (0ms load time for all hotels and starting prices)
+  const [allRooms, setAllRooms] = useState<RoomTypeItem[]>(() => getCachedRooms());
+  const [allPricingPeriods, setAllPricingPeriods] = useState<HotelPricingPeriod[]>(() => getCachedPricingPeriods());
 
   useEffect(() => {
     getRoomsFromDb().then(rooms => {
