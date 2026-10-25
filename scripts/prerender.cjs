@@ -215,19 +215,33 @@ function buildPageHtml(baseTemplate, config) {
     html = html.replace('</head>', `${jsonLdScript}\n  </head>`);
   }
 
-  // Inject LCP Hero Preload specifically on Home Pages where hero slide is visible
+  // Inject LCP Hero & Intro Video Preload specifically on Home Pages
   if (['/', '/ar', '/en'].includes(canonicalPath)) {
-    const heroPreload = `\n    <link rel="preload" href="/images/slides/slide_0.webp" as="image" type="image/webp" fetchpriority="high" />`;
-    html = html.replace('</head>', `${heroPreload}\n  </head>`);
+    if (!html.includes('1790863653287_7c96er.mp4')) {
+      const heroPreload = `
+    <link rel="preload" href="/images/slides/slide_0.webp" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/videos/1790863653287_7c96er.mp4" as="video" type="video/mp4" crossorigin="anonymous" fetchpriority="high" />`;
+      html = html.replace('</head>', `${heroPreload}\n  </head>`);
+    }
   }
-
 
   // 8. Inject Semantic Crawler-Visible Content inside <div id="root">
   if (bodyHtml) {
-    html = html.replace(
-      '<div id="root"></div>',
-      `<div id="root">${bodyHtml}</div>`
-    );
+    if (html.includes('<div id="root"></div>')) {
+      html = html.replace(
+        '<div id="root"></div>',
+        `<div id="root">${bodyHtml}</div>`
+      );
+    } else {
+      const rootStart = html.indexOf('<div id="root">');
+      const scriptStart = html.indexOf('<script', rootStart);
+      if (rootStart !== -1 && scriptStart !== -1) {
+        const lastDivClose = html.lastIndexOf('</div>', scriptStart);
+        if (lastDivClose !== -1) {
+          html = html.substring(0, rootStart) + `<div id="root">${bodyHtml}</div>` + html.substring(lastDivClose + 6);
+        }
+      }
+    }
   }
 
   return html;
@@ -368,16 +382,38 @@ async function run() {
     enPath: '/en',
     jsonLd: faqArJsonLd,
     bodyHtml: `
-      <header style="padding:20px;text-align:center;">
-        <h1>شركة برستيج لإدارة وتشغيل الفنادق</h1>
-        <p>الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين في مكة المكرمة والمدينة المنورة</p>
-      </header>
-      <main style="max-width:1200px;margin:0 auto;padding:20px;">
-        <h2>فنادقنا الرائدة بمكة والمدينة</h2>
-        <ul>
-          ${hotels.map(h => `<li><strong>${h.name}</strong> - ${h.city} (${h.stars} نجوم) - ${h.distanceText || `${h.distanceToHaram}م من الحرم`}</li>`).join('')}
-        </ul>
-      </main>
+      <section id="intro-video-section" class="relative w-full h-[100dvh] min-h-[550px] bg-black text-white overflow-hidden flex items-center justify-center select-none" style="min-height:100dvh;background:#0d0b09;position:relative;display:flex;align-items:center;justify-content:center;">
+        <div style="position:absolute;inset:0;width:100%;height:100%;overflow:hidden;z-index:0;">
+          <img src="/images/slides/slide_0.webp" alt="برستيج لإدارة وتشغيل الفنادق" style="width:100%;height:100%;object-fit:cover;filter:brightness(0.8);" fetchpriority="high" />
+          <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.35) 100%);pointer-events:none;"></div>
+        </div>
+        <div style="position:relative;z-index:20;max-width:896px;margin:0 auto;padding:0 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 18px;border-radius:9999px;background:rgba(201,162,75,0.2);border:1px solid rgba(201,162,75,0.5);color:#DFBE72;font-size:13px;font-weight:bold;backdrop-filter:blur(8px);">
+            <span>فنادق مكة المكرمة والمدينة المنورة الأقرب للحرم</span>
+          </div>
+          <h1 style="font-size:clamp(1.75rem, 5vw, 3.5rem);font-weight:900;color:#ffffff;line-height:1.2;margin:0;filter:drop-shadow(0 4px 16px rgba(0,0,0,0.8));">
+            برستيج لإدارة وتشغيل الفنادق
+          </h1>
+          <p style="font-size:clamp(0.875rem, 2vw, 1.125rem);color:#f5f5f4;max-width:672px;line-height:1.6;margin:0;filter:drop-shadow(0 2px 10px rgba(0,0,0,0.9));">
+            الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين في مكة المكرمة والمدينة المنورة
+          </p>
+        </div>
+        <div class="prestige-intro-loader">
+          <div class="prestige-intro-loader-bar"></div>
+        </div>
+      </section>
+      <div class="sr-crawler-only" aria-hidden="false">
+        <header>
+          <h1>شركة برستيج لإدارة وتشغيل الفنادق</h1>
+          <p>الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين في مكة المكرمة والمدينة المنورة</p>
+        </header>
+        <main>
+          <h2>فنادقنا الرائدة بمكة والمدينة</h2>
+          <ul>
+            ${hotels.map(h => `<li><strong>${h.name}</strong> - ${h.city} (${h.stars} نجوم) - ${h.distanceText || `${h.distanceToHaram}م من الحرم`}</li>`).join('')}
+          </ul>
+        </main>
+      </div>
     `
   });
   // Update root dist/index.html with pre-rendered Arabic home
@@ -397,16 +433,38 @@ async function run() {
     enPath: '/en',
     jsonLd: faqEnJsonLd,
     bodyHtml: `
-      <header style="padding:20px;text-align:center;">
-        <h1>Prestige Hotels Management & Hospitality</h1>
-        <p>Royal hospitality closest to the Holy Mosques in Makkah & Madinah</p>
-      </header>
-      <main style="max-width:1200px;margin:0 auto;padding:20px;">
-        <h2>Featured Hotels</h2>
-        <ul>
-          ${hotels.map(h => `<li><strong>${h.nameEn || h.name}</strong> - ${h.city.includes('مكة') ? 'Makkah' : 'Madinah'} (${h.stars} Stars) - ${h.distanceToHaram}m from the Mosque</li>`).join('')}
-        </ul>
-      </main>
+      <section id="intro-video-section" class="relative w-full h-[100dvh] min-h-[550px] bg-black text-white overflow-hidden flex items-center justify-center select-none" style="min-height:100dvh;background:#0d0b09;position:relative;display:flex;align-items:center;justify-content:center;">
+        <div style="position:absolute;inset:0;width:100%;height:100%;overflow:hidden;z-index:0;">
+          <img src="/images/slides/slide_0.webp" alt="Prestige Hotels Management" style="width:100%;height:100%;object-fit:cover;filter:brightness(0.8);" fetchpriority="high" />
+          <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.35) 100%);pointer-events:none;"></div>
+        </div>
+        <div style="position:relative;z-index:20;max-width:896px;margin:0 auto;padding:0 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
+          <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 18px;border-radius:9999px;background:rgba(201,162,75,0.2);border:1px solid rgba(201,162,75,0.5);color:#DFBE72;font-size:13px;font-weight:bold;backdrop-filter:blur(8px);">
+            <span>Prime Hotels in Makkah &amp; Madinah Near the Holy Mosques</span>
+          </div>
+          <h1 style="font-size:clamp(1.75rem, 5vw, 3.5rem);font-weight:900;color:#ffffff;line-height:1.2;margin:0;filter:drop-shadow(0 4px 16px rgba(0,0,0,0.8));">
+            Prestige Hotels Management
+          </h1>
+          <p style="font-size:clamp(0.875rem, 2vw, 1.125rem);color:#f5f5f4;max-width:672px;line-height:1.6;margin:0;filter:drop-shadow(0 2px 10px rgba(0,0,0,0.9));">
+            Royal Hospitality &amp; Premium Accommodations in Makkah &amp; Madinah
+          </p>
+        </div>
+        <div class="prestige-intro-loader">
+          <div class="prestige-intro-loader-bar"></div>
+        </div>
+      </section>
+      <div class="sr-crawler-only" aria-hidden="false">
+        <header>
+          <h1>Prestige Hotels Management & Hospitality</h1>
+          <p>Royal hospitality closest to the Holy Mosques in Makkah & Madinah</p>
+        </header>
+        <main>
+          <h2>Featured Hotels</h2>
+          <ul>
+            ${hotels.map(h => `<li><strong>${h.nameEn || h.name}</strong> - ${h.city.includes('مكة') ? 'Makkah' : 'Madinah'} (${h.stars} Stars) - ${h.distanceToHaram}m from the Mosque</li>`).join('')}
+          </ul>
+        </main>
+      </div>
     `
   });
   writeRoute('/en', enHomeHtml);

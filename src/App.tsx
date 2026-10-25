@@ -132,7 +132,17 @@ export default function App() {
       const saved = localStorage.getItem('diy_site_settings');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') return { ...INITIAL_SITE_SETTINGS, ...DEFAULT_SITE_SETTINGS, ...parsed };
+        if (parsed && typeof parsed === 'object') {
+          const introVideo = (parsed.introVideo && parsed.introVideo.videoUrl)
+            ? parsed.introVideo
+            : DEFAULT_SITE_SETTINGS.introVideo;
+          return {
+            ...INITIAL_SITE_SETTINGS,
+            ...DEFAULT_SITE_SETTINGS,
+            ...parsed,
+            introVideo
+          };
+        }
       }
       if (INITIAL_SITE_SETTINGS) {
         safeSetLocalStorage('diy_site_settings', INITIAL_SITE_SETTINGS);

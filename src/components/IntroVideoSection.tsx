@@ -51,19 +51,21 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
   // Default to muted for seamless browser autoplay compliance (Chrome, Safari, iOS, Android)
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
   const [progress, setProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hasAutoScrolledRef = useRef(false);
 
   const videoInfo = parseVideoUrl(videoUrlString, true);
 
-  // 1. Initial Mount: Set manual scroll restoration without forcing synchronous layout reflows
+  // 1. Initial Mount: Set manual scroll restoration and reset to top (0, 0) for instant intro replay on reload
   useEffect(() => {
     if (typeof window !== 'undefined' && isEnabled && videoUrlString.trim() && !isCrawler) {
       try {
         if ('scrollRestoration' in window.history) {
           window.history.scrollRestoration = 'manual';
         }
+        window.scrollTo(0, 0);
       } catch {}
     }
   }, [isEnabled, videoUrlString, isCrawler]);
@@ -104,6 +106,7 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
       if (playPromise !== undefined) {
         await playPromise;
         setIsPlaying(true);
+        setIsAutoplayBlocked(false);
       }
     } catch {
       // Browser blocked autoplay: keep muted and wait for user gesture
@@ -114,9 +117,11 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
         if (p2 !== undefined) {
           await p2;
           setIsPlaying(true);
+          setIsAutoplayBlocked(false);
         }
       } catch (err) {
         console.warn('Autoplay pending user gesture:', err);
+        setIsAutoplayBlocked(true);
       }
     }
   }, []);
@@ -130,6 +135,7 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
     const handleFirstGesture = () => {
       const vid = videoRef.current;
       if (vid && vid.paused && !hasAutoScrolledRef.current) {
+        setIsAutoplayBlocked(false);
         attemptPlay();
       }
     };
@@ -221,6 +227,7 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
             ref={videoRef}
             src={videoInfo.directUrl || videoUrlString}
             poster={posterUrlString || '/images/slides/slide_0.webp'}
+            crossOrigin="anonymous"
             className="w-full h-full object-cover"
             autoPlay
             playsInline
@@ -231,6 +238,8 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
             preload="auto"
             disablePictureInPicture
             disableRemotePlayback
+            onLoadStart={attemptPlay}
+            onLoadedMetadata={attemptPlay}
             onCanPlay={attemptPlay}
             onLoadedData={attemptPlay}
             onError={() => {
@@ -239,7 +248,10 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
             }}
             onTimeUpdate={handleTimeUpdate}
             onEnded={() => handleScrollToHero(true)}
-            onPlay={() => setIsPlaying(true)}
+            onPlay={() => {
+              setIsPlaying(true);
+              setIsAutoplayBlocked(false);
+            }}
             onPause={() => setIsPlaying(false)}
           />
         )}
@@ -256,10 +268,13 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
         )}
       </div>
 
-      {/* Floating Center Play prompt if autoplay is ever blocked by aggressive browser mode */}
-      {!isPlaying && (
+      {/* Floating Center Play prompt ONLY if browser blocked autoplay */}
+      {isAutoplayBlocked && !isPlaying && (
         <button
-          onClick={attemptPlay}
+          onClick={() => {
+            setIsAutoplayBlocked(false);
+            attemptPlay();
+          }}
           className="absolute inset-0 m-auto w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/60 hover:bg-[#C9A24B] text-[#DFBE72] hover:text-black border-2 border-[#C9A24B] flex items-center justify-center transition-all duration-300 shadow-2xl z-20 cursor-pointer"
           aria-label="تشغيل الفيديو"
         >

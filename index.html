@@ -53,8 +53,23 @@
     <link rel="preconnect" href="https://images.unsplash.com" crossorigin />
     <link rel="dns-prefetch" href="https://images.unsplash.com" />
 
-    <!-- Critical Asset Preloading: Self-Hosted Font -->
+    <!-- Instant Scroll Reset on Page Reload before paint -->
+    <script>
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+      }
+      try {
+        var p = window.location.pathname;
+        if (p === '/' || p === '/ar' || p === '/en' || p === '' || p.indexOf('/index.html') !== -1) {
+          window.scrollTo(0, 0);
+        }
+      } catch (e) {}
+    </script>
+
+    <!-- Critical Asset Preloading: Self-Hosted Font, Intro Video & Slide Poster -->
     <link rel="preload" href="/fonts/cairo-arabic.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/images/slides/slide_0.webp" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/videos/1790863653287_7c96er.mp4" as="video" type="video/mp4" crossorigin="anonymous" fetchpriority="high" />
 
     <!-- Self-Hosted High Performance Typography (Zero Third-Party Latency) & CLS Baseline -->
     <style>
@@ -79,6 +94,39 @@
       #root { min-height: 100vh; display: flex; flex-direction: column; }
       #intro-video-section { min-height: 100dvh; contain: layout style; }
       #hero-slider-section { min-height: 100dvh; contain: layout style; }
+
+      @keyframes prestigePulse {
+        0% { transform: translateX(-100%); }
+        50% { transform: translateX(50%); }
+        100% { transform: translateX(200%); }
+      }
+      .prestige-intro-loader {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+        z-index: 30;
+      }
+      .prestige-intro-loader-bar {
+        height: 100%;
+        width: 40%;
+        background: linear-gradient(90deg, transparent, #C9A24B, #DFBE72, transparent);
+        animation: prestigePulse 1.8s ease-in-out infinite;
+      }
+      .sr-crawler-only {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+      }
     </style>
 
     <!-- Google Search Structured Data (JSON-LD) for WebSite Name & Organization Rich Snippets -->
