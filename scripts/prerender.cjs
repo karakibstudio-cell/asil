@@ -193,7 +193,15 @@ function buildPageHtml(baseTemplate, config) {
 
   html = html.replace(/<link rel="canonical"[^>]*>/i, `${canonicalTag}\n    ${hreflangTags}`);
 
-  // 5. Open Graph & Twitter
+  // 5. Open Graph & Twitter & Site Name
+  const siteName = isRtl
+    ? 'برستيج لإدارة وتشغيل الفنادق | Prestige Hotels Management'
+    : 'Prestige Hotels Management | برستيج لإدارة وتشغيل الفنادق';
+
+  html = html.replace(/<meta property="og:site_name"[^>]*>/i, `<meta property="og:site_name" content="${siteName}" />`);
+  html = html.replace(/<meta name="application-name"[^>]*>/i, `<meta name="application-name" content="${siteName}" />`);
+  html = html.replace(/<meta name="apple-mobile-web-app-title"[^>]*>/i, `<meta name="apple-mobile-web-app-title" content="${siteName}" />`);
+
   html = html.replace(/<meta property="og:title"[^>]*>/i, `<meta property="og:title" content="${title}" />`);
   html = html.replace(/<meta property="og:description"[^>]*>/i, `<meta property="og:description" content="${description}" />`);
   html = html.replace(/<meta property="og:url"[^>]*>/i, `<meta property="og:url" content="${canonicalUrl}" />`);
@@ -205,6 +213,15 @@ function buildPageHtml(baseTemplate, config) {
   html = html.replace(/<meta name="twitter:url"[^>]*>/i, `<meta name="twitter:url" content="${canonicalUrl}" />`);
   html = html.replace(/<meta name="twitter:image"[^>]*>/i, `<meta name="twitter:image" content="${ogImage}" />`);
 
+  // Translate Base WebSite JSON-LD for English
+  if (!isRtl) {
+    html = html.replace(
+      /"name":\s*"برستيج لإدارة وتشغيل الفنادق"/g,
+      '"name": "Prestige Hotels Management"'
+    );
+    html = html.replace(/"inLanguage":\s*"ar"/g, '"inLanguage": "en"');
+  }
+
   // 6. Robots Tag
   const robotsDirective = isNoIndex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
   html = html.replace(/<meta name="robots"[^>]*>/i, `<meta name="robots" content="${robotsDirective}" />`);
@@ -215,14 +232,14 @@ function buildPageHtml(baseTemplate, config) {
     html = html.replace('</head>', `${jsonLdScript}\n  </head>`);
   }
 
-  // Inject LCP Hero & Intro Video Preload specifically on Home Pages
+  // Inject LCP Hero Preload specifically on Home Pages (Clean & Fast, Zero Video Blocking)
   if (['/', '/ar', '/en'].includes(canonicalPath)) {
-    if (!html.includes('1790863653287_7c96er.mp4')) {
-      const heroPreload = `
-    <link rel="preload" href="/images/slides/slide_0.webp" as="image" type="image/webp" fetchpriority="high" />
-    <link rel="preload" href="https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/videos/1790863653287_7c96er.mp4" as="video" type="video/mp4" crossorigin="anonymous" fetchpriority="high" />`;
+    if (!html.includes('/images/slides/slide_0.webp')) {
+      const heroPreload = `\n    <link rel="preload" href="/images/slides/slide_0.webp" as="image" type="image/webp" fetchpriority="high" />`;
       html = html.replace('</head>', `${heroPreload}\n  </head>`);
     }
+    // Remove any accidental video preload to preserve mobile Lighthouse 90+ score
+    html = html.replace(/<link rel="preload"[^>]*as="video"[^>]*>\s*/gi, '');
   }
 
   // 8. Inject Semantic Crawler-Visible Content inside <div id="root">
@@ -282,14 +299,16 @@ async function run() {
   // Route definitions
   const sitemapEntries = [];
 
-  function addSitemapEntry(loc, arLoc, enLoc, priority = '0.8', changefreq = 'daily') {
+  function addSitemapEntry(loc, arLoc, enLoc, priority = '0.8', changefreq = 'daily', image = null) {
+    const cleanPath = loc === '' || loc === '/' ? '/' : loc;
     sitemapEntries.push({
-      loc: `${SITE_URL}${loc}`,
+      loc: cleanPath === '/' ? `${SITE_URL}/` : `${SITE_URL}${cleanPath}`,
       arLoc: `${SITE_URL}${arLoc}`,
       enLoc: `${SITE_URL}${enLoc}`,
       priority,
       changefreq,
-      lastmod: new Date().toISOString().split('T')[0]
+      lastmod: new Date().toISOString().split('T')[0],
+      image
     });
   }
 
@@ -418,7 +437,7 @@ async function run() {
   });
   // Update root dist/index.html with pre-rendered Arabic home
   fs.writeFileSync(indexHtmlPath, rootArHtml, 'utf8');
-  addSitemapEntry('', '/ar', '/en', '1.0', 'daily');
+  addSitemapEntry('/', '/ar', '/en', '1.0', 'daily');
 
   // 2. Language Homes: /ar and /en
   writeRoute('/ar', rootArHtml);
@@ -730,7 +749,12 @@ async function run() {
       `
     });
     writeRoute(arHotelPath, arHotelHtml);
-    addSitemapEntry(arHotelPath, arHotelPath, enHotelPath, '0.9', 'daily');
+    const hotelImgAr = hotel.mainImage ? {
+      loc: hotel.mainImage.startsWith('http') ? hotel.mainImage : `${SITE_URL}${hotel.mainImage}`,
+      title: `${cleanArName} - ${hotel.city}`,
+      caption: `${cleanArName} (${hotel.stars} نجوم) - ${distText}`
+    } : null;
+    addSitemapEntry(arHotelPath, arHotelPath, enHotelPath, '0.9', 'daily', hotelImgAr);
 
     // English Hotel HTML
     const enHotelHtml = buildPageHtml(baseTemplate, {
@@ -770,7 +794,12 @@ async function run() {
       `
     });
     writeRoute(enHotelPath, enHotelHtml);
-    addSitemapEntry(enHotelPath, arHotelPath, enHotelPath, '0.9', 'daily');
+    const hotelImgEn = hotel.mainImage ? {
+      loc: hotel.mainImage.startsWith('http') ? hotel.mainImage : `${SITE_URL}${hotel.mainImage}`,
+      title: `${hotelNameEn} - ${hotelCityEn}`,
+      caption: `${hotelNameEn} (${hotel.stars} Stars) in ${hotelCityEn}`
+    } : null;
+    addSitemapEntry(enHotelPath, arHotelPath, enHotelPath, '0.9', 'daily', hotelImgEn);
 
     // Backward-compatibility ID redirect: /hotels/:id and /ar/hotels/:id -> /ar/hotels/:slug
     if (hotel.id && hotel.id !== slug) {
@@ -983,13 +1012,14 @@ async function run() {
   });
   writeRoute('/admin', adminHtml);
 
-  // 11. Generate Multilingual Sitemap XML
+  // 11. Generate Multilingual & Image Sitemap XML
   const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd http://www.google.com/schemas/sitemap-image/1.1 http://www.google.com/schemas/sitemap-image/1.1/sitemap-image.xsd">
 ${sitemapEntries.map(e => `  <url>
     <loc>${e.loc}</loc>
     <xhtml:link rel="alternate" hreflang="ar" href="${e.arLoc}" />
@@ -997,7 +1027,12 @@ ${sitemapEntries.map(e => `  <url>
     <xhtml:link rel="alternate" hreflang="x-default" href="${e.arLoc}" />
     <lastmod>${e.lastmod}</lastmod>
     <changefreq>${e.changefreq}</changefreq>
-    <priority>${e.priority}</priority>
+    <priority>${e.priority}</priority>${e.image ? `
+    <image:image>
+      <image:loc>${e.image.loc}</image:loc>
+      <image:title><![CDATA[${e.image.title}]]></image:title>
+      <image:caption><![CDATA[${e.image.caption}]]></image:caption>
+    </image:image>` : ''}
   </url>`).join('\n')}
 </urlset>`;
 

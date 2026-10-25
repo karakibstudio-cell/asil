@@ -158,9 +158,9 @@ async function main() {
 
   // 4. Create Web App Manifest (site.webmanifest)
   const manifest = {
-    name: "برستيج لإدارة وتشغيل الفنادق",
-    short_name: "برستيج للفنادق",
-    description: "شركة رائدة في إدارة وتشغيل الفنادق وتقديم أرقى حلول الضيافة والتسكين في مكة المكرمة والمدينة المنورة",
+    name: "برستيج لإدارة وتشغيل الفنادق | Prestige Hotels Management",
+    short_name: "برستيج للفنادق | Prestige Hotels",
+    description: "شركة رائدة في إدارة وتشغيل الفنادق وتقديم أرقى حلول الضيافة والتسكين في مكة المكرمة والمدينة المنورة | Premier Hotel Management and Operations in Makkah & Madinah",
     start_url: "/",
     display: "standalone",
     background_color: "#14120E",

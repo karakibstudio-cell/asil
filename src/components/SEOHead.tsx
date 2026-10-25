@@ -149,7 +149,14 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
     setLinkTag('alternate', enUrl, 'en');
     setLinkTag('alternate', arUrl, 'x-default');
 
-    // Open Graph
+    // Open Graph & Site Identity
+    const siteName = isEn
+      ? 'Prestige Hotels Management | برستيج لإدارة وتشغيل الفنادق'
+      : 'برستيج لإدارة وتشغيل الفنادق | Prestige Hotels Management';
+    setMetaTag('property', 'og:site_name', siteName);
+    setMetaTag('name', 'application-name', siteName);
+    setMetaTag('name', 'apple-mobile-web-app-title', isEn ? 'Prestige Hotels' : 'برستيج للفنادق');
+
     setMetaTag('property', 'og:title', pageTitle);
     setMetaTag('property', 'og:description', pageDescription);
     setMetaTag('property', 'og:url', canonicalUrl);

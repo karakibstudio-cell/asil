@@ -32,6 +32,7 @@ export default defineConfig(() => {
           return deps.filter(dep => 
             !dep.includes('vendor-pdf') && 
             !dep.includes('vendor-firebase') && 
+            !dep.includes('data-hotels-seed') &&
             !dep.includes('AdminDashboard') &&
             !dep.includes('vendor-charts')
           );
@@ -42,6 +43,9 @@ export default defineConfig(() => {
           manualChunks(id) {
             if (id.includes('preload-helper') || id.includes('commonjsHelpers') || id.includes('\0vite')) {
               return 'vendor-common';
+            }
+            if (id.includes('mockHotels')) {
+              return 'data-hotels-seed';
             }
             if (id.includes('node_modules')) {
               if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg') || id.includes('dompurify') || id.includes('fflate')) {

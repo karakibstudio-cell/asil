@@ -13,7 +13,9 @@ import {
   BedDouble
 } from 'lucide-react';
 import { BookingComIcon, AgodaIcon, ExpediaIcon, GoogleMapsIcon, WhatsAppIcon, EmailIcon } from './BookingIcons';
-import { HotelBookingModal } from './HotelBookingModal';
+const HotelBookingModal = React.lazy(() => 
+  import('./HotelBookingModal').then(m => ({ default: m.HotelBookingModal }))
+);
 import { useLanguage } from '../context/LanguageContext';
 import { prefetchRoute, prefetchHotelDetails } from '../utils/prefetch';
 import { buildWhatsAppLink, getFirstActiveWhatsApp } from '../utils/channels';
@@ -402,12 +404,14 @@ export const HotelCard: React.FC<HotelCardProps> = ({
 
       {/* Embedded Modal if parent didn't provide callback */}
       {!onOpenBookingModal && isBookingOpen && (
-        <HotelBookingModal
-          isOpen={isBookingOpen}
-          onClose={() => setIsBookingOpen(false)}
-          hotel={hotel}
-          siteSettings={siteSettings}
-        />
+        <React.Suspense fallback={null}>
+          <HotelBookingModal
+            isOpen={isBookingOpen}
+            onClose={() => setIsBookingOpen(false)}
+            hotel={hotel}
+            siteSettings={siteSettings}
+          />
+        </React.Suspense>
       )}
     </>
   );
