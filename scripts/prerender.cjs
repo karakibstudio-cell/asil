@@ -160,7 +160,7 @@ function buildPageHtml(baseTemplate, config) {
     canonicalPath,
     arPath,
     enPath,
-    ogImage = `${SITE_URL}/favicon.svg`,
+    ogImage = `${SITE_URL}/images/brand/logo.png`,
     jsonLd,
     bodyHtml = '',
     isNoIndex = false

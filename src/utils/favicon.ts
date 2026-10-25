@@ -1,47 +1,89 @@
 /**
  * Dynamic Browser Favicon & Title Updater
- * يقوم بتحديث أيقونة علامة التبويب (Favicon) وعنوان الصفحة فورياً من الشعار وإعدادات الهوية
+ * يقوم بتحديث أيقونة علامة التبويب (Favicon) وعنوان الصفحة فورياً وسلساً دون وميض
  */
 
-export function updateFavicon(iconUrl?: string | null): void {
-  if (!iconUrl) return;
+export function resolveFaviconUrl(rawUrl?: string | null): string {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return '/favicon-48x48.png';
+  }
 
+  const trimmed = rawUrl.trim();
+  // If points to large Supabase raw upload or default paths, resolve to static ultra-fast 48x48 favicon
+  if (
+    trimmed.includes('prestige-media/brand/favicon_') ||
+    trimmed.includes('prestige-media/brand/logo_') ||
+    trimmed === '/favicon.svg' ||
+    trimmed === '/favicon.ico' ||
+    trimmed.includes('brand-user-logo')
+  ) {
+    return '/favicon-48x48.png';
+  }
+
+  return trimmed;
+}
+
+export function updateFavicon(iconUrl?: string | null): void {
   try {
+    const finalUrl = resolveFaviconUrl(iconUrl);
+    if (!finalUrl || typeof document === 'undefined') return;
+
     const head = document.getElementsByTagName('head')[0] || document.documentElement;
 
-    // 1. Remove existing favicon links to force browser reload
-    const existingIcons = document.querySelectorAll("link[rel*='icon'], link[rel='apple-touch-icon']");
-    existingIcons.forEach(el => el.remove());
-
-    // 2. Create standard icon link
-    const newIcon = document.createElement('link');
-    newIcon.rel = 'icon';
-    const lower = iconUrl.toLowerCase();
+    // Detect MIME type
+    const lower = finalUrl.toLowerCase();
+    let mimeType = 'image/png';
     if (lower.startsWith('data:image/svg+xml') || lower.includes('.svg')) {
-      newIcon.type = 'image/svg+xml';
+      mimeType = 'image/svg+xml';
     } else if (lower.startsWith('data:image/webp') || lower.includes('.webp')) {
-      newIcon.type = 'image/webp';
-    } else if (lower.startsWith('data:image/png') || lower.includes('.png')) {
-      newIcon.type = 'image/png';
-    } else if (lower.startsWith('data:image/jpeg') || lower.startsWith('data:image/jpg') || lower.includes('.jpg') || lower.includes('.jpeg')) {
-      newIcon.type = 'image/jpeg';
-    } else {
-      newIcon.type = 'image/x-icon';
+      mimeType = 'image/webp';
+    } else if (lower.endsWith('.ico') || lower.includes('.ico')) {
+      mimeType = 'image/x-icon';
+    } else if (lower.includes('.jpg') || lower.includes('.jpeg')) {
+      mimeType = 'image/jpeg';
     }
-    newIcon.href = iconUrl;
-    head.appendChild(newIcon);
 
-    // 3. Create shortcut icon link
-    const shortcutIcon = document.createElement('link');
-    shortcutIcon.rel = 'shortcut icon';
-    shortcutIcon.href = iconUrl;
-    head.appendChild(shortcutIcon);
+    // Update or create standard <link rel="icon">
+    let linkIcon = document.querySelector<HTMLLinkElement>("link[rel='icon']:not([sizes])") ||
+      document.querySelector<HTMLLinkElement>("link[rel='icon'][sizes='48x48']");
 
-    // 4. Create apple touch icon
-    const appleIcon = document.createElement('link');
-    appleIcon.rel = 'apple-touch-icon';
-    appleIcon.href = iconUrl;
-    head.appendChild(appleIcon);
+    if (linkIcon) {
+      if (linkIcon.href.endsWith(finalUrl) || linkIcon.href === finalUrl) {
+        // Already matching, no DOM mutation needed
+        return;
+      }
+      linkIcon.type = mimeType;
+      linkIcon.href = finalUrl;
+    } else {
+      const newIcon = document.createElement('link');
+      newIcon.rel = 'icon';
+      newIcon.type = mimeType;
+      newIcon.href = finalUrl;
+      head.appendChild(newIcon);
+    }
+
+    // Update or create <link rel="shortcut icon">
+    let linkShortcut = document.querySelector<HTMLLinkElement>("link[rel='shortcut icon']");
+    if (linkShortcut) {
+      linkShortcut.href = finalUrl;
+    } else {
+      const sc = document.createElement('link');
+      sc.rel = 'shortcut icon';
+      sc.href = finalUrl;
+      head.appendChild(sc);
+    }
+
+    // Update Apple Touch Icon
+    let linkApple = document.querySelector<HTMLLinkElement>("link[rel='apple-touch-icon']");
+    const appleUrl = finalUrl.endsWith('.ico') ? '/apple-touch-icon.png' : finalUrl;
+    if (linkApple) {
+      linkApple.href = appleUrl;
+    } else {
+      const apple = document.createElement('link');
+      apple.rel = 'apple-touch-icon';
+      apple.href = appleUrl;
+      head.appendChild(apple);
+    }
   } catch (err) {
     console.warn('Failed to dynamically update browser favicon:', err);
   }

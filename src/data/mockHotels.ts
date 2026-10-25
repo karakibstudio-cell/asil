@@ -2652,8 +2652,8 @@ export const INITIAL_SITE_SETTINGS: SiteSettings = {
   browserTabTitle: 'برستيج لإدارة وتشغيل الفنادق | حجز فنادق مكة والمدينة وعروض الشركات',
   metaDescription: 'شركة برستيج الرائدة في إدارة وتشغيل الفنادق في مكة المكرمة والمدينة المنورة. أفضل عروض حجز فنادق مكة للشركات والمجموعات، فندق برستيج أجياد، خدمات إعاشة ونقل فاخر.',
   metaKeywords: 'حجز فنادق مكة, فنادق مكة والمدينة, إدارة فنادق, برستيج أجياد',
-  logoUrl: '/images/brand/logo.png',
-  faviconUrl: '/favicon.svg',
+  logoUrl: '/images/brand/logo.webp',
+  faviconUrl: '/favicon-48x48.png',
   actionButtons: DEFAULT_ACTION_BUTTONS,
   bookingModule: {
     enabled: true,

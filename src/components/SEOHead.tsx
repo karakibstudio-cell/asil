@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { Hotel, ActivePage, SiteSettings } from '../types';
 import { Language, getPageShareUrl, getHotelSlug } from '../utils/routing';
+import { getBrandLogoUrl } from '../utils/brandLogo';
 
 interface SEOHeadProps {
   page: ActivePage;
@@ -34,7 +35,7 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
     // 1. Determine Title & Description based on page
     let pageTitle = '';
     let pageDescription = '';
-    let ogImage = hotel?.mainImage || siteSettings?.logoUrl || `${origin}/favicon.svg`;
+    let ogImage = hotel?.mainImage || getBrandLogoUrl(siteSettings?.logoUrl) || `${origin}/images/brand/logo.png`;
     let isNoIndex = page === 'admin';
 
     if (customTitle) {

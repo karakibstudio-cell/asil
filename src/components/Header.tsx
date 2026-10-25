@@ -11,6 +11,7 @@ import {
 import { EditableText } from './EditableText';
 import { useLanguage } from '../context/LanguageContext';
 import { prefetchRoute } from '../utils/prefetch';
+import { getBrandLogoUrl } from '../utils/brandLogo';
 
 interface HeaderProps {
   currentPage: ActivePage;
@@ -180,22 +181,27 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group select-none shrink-0"
             >
               {/* Custom Uploaded Logo or Fallback Emblem */}
-              {siteSettings?.logoUrl && !logoLoadError ? (
-                <img
-                  src={siteSettings.logoUrl}
-                  alt={siteSettings.siteTitle || 'شعار الموقع'}
-                  fetchPriority="high"
-                  decoding="async"
-                  onError={() => setLogoLoadError(true)}
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-contain bg-white/80 border border-[#C9A24B]/40 shadow-xs"
-                />
-              ) : (
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#DFBE72] via-[#C9A24B] to-[#98752B] p-[1.5px] shadow-xs group-hover:shadow-md group-hover:shadow-[#C9A24B]/30 transition-all duration-300 shrink-0">
-                  <div className="w-full h-full bg-white/90 rounded-full flex items-center justify-center">
-                    <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#B38A34] group-hover:scale-110 transition-transform duration-300" />
+              {(() => {
+                const activeLogo = getBrandLogoUrl(siteSettings?.logoUrl, 'header');
+                return activeLogo && !logoLoadError ? (
+                  <img
+                    src={activeLogo}
+                    alt={siteSettings?.siteTitle || 'شعار الموقع'}
+                    width={40}
+                    height={40}
+                    fetchPriority="high"
+                    decoding="async"
+                    onError={() => setLogoLoadError(true)}
+                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-contain bg-white/90 border border-[#C9A24B]/40 shadow-xs"
+                  />
+                ) : (
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#DFBE72] via-[#C9A24B] to-[#98752B] p-[1.5px] shadow-xs group-hover:shadow-md group-hover:shadow-[#C9A24B]/30 transition-all duration-300 shrink-0">
+                    <div className="w-full h-full bg-white/90 rounded-full flex items-center justify-center">
+                      <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-[#B38A34] group-hover:scale-110 transition-transform duration-300" />
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className={`flex flex-col ${isRtl ? 'text-right' : 'text-left'}`}>
                 <span className="font-cairo font-bold text-base sm:text-lg text-stone-900 tracking-tight leading-tight group-hover:text-[#B38A34] transition-colors drop-shadow-[0_1px_1px_rgba(255,255,255,0.7)]">

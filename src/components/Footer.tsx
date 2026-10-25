@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivePage, Offer, SiteSettings } from '../types';
+import { getBrandLogoUrl } from '../utils/brandLogo';
 import { 
   Building2, 
   Phone, 
@@ -138,8 +139,10 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, activeOffers, siteSe
             <div className="flex items-center gap-3">
               {siteSettings?.logoUrl ? (
                 <img
-                  src={siteSettings.logoUrl}
+                  src={getBrandLogoUrl(siteSettings.logoUrl)}
                   alt={brandTitle}
+                  width={40}
+                  height={40}
                   className="w-10 h-10 rounded-xl object-contain bg-white border border-[#C9A24B]/30 shadow-xs"
                 />
               ) : (

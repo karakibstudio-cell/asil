@@ -611,16 +611,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         forcePng: isPng
       });
 
-      // Try uploading directly to Supabase Storage first for permanent CDN URL
+      // Upload optimized image to Supabase Storage
       let finalLogoUrl = optimizedLogo;
       try {
-        const uploadRes = await uploadMediaToSupabase(file, 'images', `brand/logo_${Date.now()}.${isPng ? 'png' : 'webp'}`);
-        if (uploadRes.success && uploadRes.url) {
-          finalLogoUrl = uploadRes.url;
-        } else {
-          const base64Url = await uploadBase64ToSupabase(optimizedLogo, 'images');
-          if (base64Url) finalLogoUrl = base64Url;
-        }
+        const base64Url = await uploadBase64ToSupabase(optimizedLogo, 'images');
+        if (base64Url) finalLogoUrl = base64Url;
       } catch (storageErr) {
         console.warn('Storage upload fallback to base64:', storageErr);
       }
@@ -699,14 +694,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         finalFaviconUrl = optimizedFavicon;
         try {
-          const ext = isSvg ? 'svg' : 'png';
-          const uploadRes = await uploadMediaToSupabase(file, 'images', `brand/favicon_${Date.now()}.${ext}`);
-          if (uploadRes.success && uploadRes.url) {
-            finalFaviconUrl = uploadRes.url;
-          } else {
-            const base64Url = await uploadBase64ToSupabase(optimizedFavicon, 'images');
-            if (base64Url) finalFaviconUrl = base64Url;
-          }
+          const base64Url = await uploadBase64ToSupabase(optimizedFavicon, 'images');
+          if (base64Url) finalFaviconUrl = base64Url;
         } catch (storageErr) {
           console.warn('Storage upload fallback to base64:', storageErr);
         }

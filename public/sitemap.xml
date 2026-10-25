@@ -2,10 +2,11 @@
 <?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd http://www.google.com/schemas/sitemap-image/1.1 http://www.google.com/schemas/sitemap-image/1.1/sitemap-image.xsd">
   <url>
-    <loc>https://prestige-ksa.web.app</loc>
+    <loc>https://prestige-ksa.web.app/</loc>
     <xhtml:link rel="alternate" hreflang="ar" href="https://prestige-ksa.web.app/ar" />
     <xhtml:link rel="alternate" hreflang="en" href="https://prestige-ksa.web.app/en" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://prestige-ksa.web.app/ar" />
@@ -93,6 +94,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791474365968_gj8q29.webp</image:loc>
+      <image:title><![CDATA[فندق أركان بكة - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق أركان بكة (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/arkan-bkh</loc>
@@ -102,6 +108,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791474365968_gj8q29.webp</image:loc>
+      <image:title><![CDATA[فندق أركان بكة - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق أركان بكة (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/brj-alkhyr</loc>
@@ -111,6 +122,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379122311_qpteww.webp</image:loc>
+      <image:title><![CDATA[فندق برج الخير - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق برج الخير (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/brj-alkhyr</loc>
@@ -120,6 +136,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379122311_qpteww.webp</image:loc>
+      <image:title><![CDATA[فندق برج الخير - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق برج الخير (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/manazel-alhsn</loc>
@@ -129,6 +150,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379384446_o0qdiw.webp</image:loc>
+      <image:title><![CDATA[فندق منازل الحسن - المدينة المنورة]]></image:title>
+      <image:caption><![CDATA[فندق منازل الحسن (3 نجوم) - 7 دقائق سيراً للحرم]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/manazel-alhsn</loc>
@@ -138,6 +164,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379384446_o0qdiw.webp</image:loc>
+      <image:title><![CDATA[فندق منازل الحسن - Madinah]]></image:title>
+      <image:caption><![CDATA[فندق منازل الحسن (3 Stars) in Madinah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/awrnsys-almhbs</loc>
@@ -147,6 +178,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791474573989_kpssov.webp</image:loc>
+      <image:title><![CDATA[فندق أورنسيس المحبس - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق أورنسيس المحبس (3 نجوم) - 3 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/awrnsys-almhbs</loc>
@@ -156,6 +192,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791474573989_kpssov.webp</image:loc>
+      <image:title><![CDATA[فندق أورنسيس المحبس - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق أورنسيس المحبس (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/sraya-aljwar</loc>
@@ -165,6 +206,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379079618_iawhde.webp</image:loc>
+      <image:title><![CDATA[فندق سرايا الجوار - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق سرايا الجوار (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/sraya-aljwar</loc>
@@ -174,6 +220,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379079618_iawhde.webp</image:loc>
+      <image:title><![CDATA[فندق سرايا الجوار - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق سرايا الجوار (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/bywt-aljzyrh</loc>
@@ -183,6 +234,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379192462_sof028.webp</image:loc>
+      <image:title><![CDATA[فندق بيوت الجزيرة - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق بيوت الجزيرة (3 نجوم) - 3 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/bywt-aljzyrh</loc>
@@ -192,6 +248,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379192462_sof028.webp</image:loc>
+      <image:title><![CDATA[فندق بيوت الجزيرة - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق بيوت الجزيرة (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/prestige-ajyad</loc>
@@ -201,6 +262,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791378975751_bhxard.webp</image:loc>
+      <image:title><![CDATA[فندق برستيج اجياد - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق برستيج اجياد (4 نجوم) - 7 دقائق سيراً للحرم]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/prestige-ajyad</loc>
@@ -210,6 +276,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791378975751_bhxard.webp</image:loc>
+      <image:title><![CDATA[فندق برستيج اجياد - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق برستيج اجياد (4 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/mysan-almqam</loc>
@@ -219,6 +290,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791378997732_6ix65m.webp</image:loc>
+      <image:title><![CDATA[فندق ميسان المقام - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق ميسان المقام (4 نجوم) - 8 دقائق سيراً للحرم]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/mysan-almqam</loc>
@@ -228,6 +304,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791378997732_6ix65m.webp</image:loc>
+      <image:title><![CDATA[فندق ميسان المقام - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق ميسان المقام (4 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/aljad-almhbs</loc>
@@ -237,6 +318,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379158112_cvfq14.webp</image:loc>
+      <image:title><![CDATA[فندق الجاد المحبس - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق الجاد المحبس (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/aljad-almhbs</loc>
@@ -246,6 +332,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379158112_cvfq14.webp</image:loc>
+      <image:title><![CDATA[فندق الجاد المحبس - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق الجاد المحبس (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/fajr-badee-5</loc>
@@ -255,6 +346,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379026915_j7zs0j.webp</image:loc>
+      <image:title><![CDATA[فندق فجر البديع 5 - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق فجر البديع 5 (3 نجوم) - 15 دقائق سيراً للحرم]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/fajr-badee-5</loc>
@@ -264,6 +360,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379026915_j7zs0j.webp</image:loc>
+      <image:title><![CDATA[فندق فجر البديع 5 - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق فجر البديع 5 (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/awrnsys-haram</loc>
@@ -273,6 +374,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379008807_s0jej8.webp</image:loc>
+      <image:title><![CDATA[فندق أورنسيس الحرم - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق أورنسيس الحرم (4 نجوم) - 15 دقائق سيراً للحرم]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/awrnsys-haram</loc>
@@ -282,6 +388,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379008807_s0jej8.webp</image:loc>
+      <image:title><![CDATA[فندق أورنسيس الحرم - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق أورنسيس الحرم (4 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/manazel-azzahra</loc>
@@ -291,6 +402,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791380036972_bg2mpl.webp</image:loc>
+      <image:title><![CDATA[فندق منازل الزهراء - المدينة المنورة]]></image:title>
+      <image:caption><![CDATA[فندق منازل الزهراء (4 نجوم) - 8 دقائق سيراً للحرم]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/manazel-azzahra</loc>
@@ -300,6 +416,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791380036972_bg2mpl.webp</image:loc>
+      <image:title><![CDATA[فندق منازل الزهراء  - Madinah]]></image:title>
+      <image:caption><![CDATA[فندق منازل الزهراء  (4 Stars) in Madinah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/mltqa-alabadh</loc>
@@ -309,6 +430,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379061334_9fu5c9.webp</image:loc>
+      <image:title><![CDATA[فندق ملتقى العبادة - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق ملتقى العبادة (3 نجوم) - 20 دقائق سيراً للحرم]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/mltqa-alabadh</loc>
@@ -318,6 +444,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379061334_9fu5c9.webp</image:loc>
+      <image:title><![CDATA[ملتقى العبادة - Makkah]]></image:title>
+      <image:caption><![CDATA[ملتقى العبادة (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/sfwh-alkhyr</loc>
@@ -327,6 +458,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379231124_r92qvd.webp</image:loc>
+      <image:title><![CDATA[فندق صفوة الخير - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق صفوة الخير (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/sfwh-alkhyr</loc>
@@ -336,6 +472,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379231124_r92qvd.webp</image:loc>
+      <image:title><![CDATA[فندق صفوة الخير - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق صفوة الخير (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/mysan-almhbs</loc>
@@ -345,6 +486,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379245110_dfodpg.webp</image:loc>
+      <image:title><![CDATA[فندق ميسان المحبس - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق ميسان المحبس (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/mysan-almhbs</loc>
@@ -354,6 +500,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379245110_dfodpg.webp</image:loc>
+      <image:title><![CDATA[فندق ميسان المحبس - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق ميسان المحبس (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/sfwt-albyt-1</loc>
@@ -363,6 +514,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379268093_ot0oa9.webp</image:loc>
+      <image:title><![CDATA[فندق صفوت البيت 1 - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق صفوت البيت 1 (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/sfwt-albyt-1</loc>
@@ -372,6 +528,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379268093_ot0oa9.webp</image:loc>
+      <image:title><![CDATA[ فندق صفوت البيت 1 - Makkah]]></image:title>
+      <image:caption><![CDATA[ فندق صفوت البيت 1 (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/mysan-almltzm</loc>
@@ -381,6 +542,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379290477_gd2fd8.webp</image:loc>
+      <image:title><![CDATA[فندق ميسان الملتزم - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق ميسان الملتزم (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/mysan-almltzm</loc>
@@ -390,6 +556,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379290477_gd2fd8.webp</image:loc>
+      <image:title><![CDATA[فندق ميسان الملتزم - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق ميسان الملتزم (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/manazel-alsadq</loc>
@@ -399,6 +570,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379399948_rwr36s.webp</image:loc>
+      <image:title><![CDATA[فندق منازل الصادق - المدينة المنورة]]></image:title>
+      <image:caption><![CDATA[فندق منازل الصادق (4 نجوم) - 7 دقائق سيراً للحرم]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/manazel-alsadq</loc>
@@ -408,6 +584,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379399948_rwr36s.webp</image:loc>
+      <image:title><![CDATA[فندق منازل الصادق - Madinah]]></image:title>
+      <image:caption><![CDATA[فندق منازل الصادق (4 Stars) in Madinah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/nkhbh-aljwar</loc>
@@ -417,6 +598,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379109485_s90q86.webp</image:loc>
+      <image:title><![CDATA[فندق نخبة الجوار - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق نخبة الجوار (3 نجوم) - 5 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/nkhbh-aljwar</loc>
@@ -426,6 +612,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379109485_s90q86.webp</image:loc>
+      <image:title><![CDATA[فندق نخبة الجوار - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق نخبة الجوار (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/hotels/sfwt-albyt-2</loc>
@@ -435,6 +626,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379279649_kesrpj.webp</image:loc>
+      <image:title><![CDATA[فندق صفوت البيت 2 - مكة المكرمة]]></image:title>
+      <image:caption><![CDATA[فندق صفوت البيت 2 (3 نجوم) - 4 دقائق بالحافلة للحرم (ترددي 24/7)]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/en/hotels/sfwt-albyt-2</loc>
@@ -444,6 +640,11 @@
     <lastmod>2026-10-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+    <image:image>
+      <image:loc>https://nejmudhoamtugdaqfbdd.supabase.co/storage/v1/object/public/prestige-media/hotels/1791379279649_kesrpj.webp</image:loc>
+      <image:title><![CDATA[فندق صفوت البيت 2 - Makkah]]></image:title>
+      <image:caption><![CDATA[فندق صفوت البيت 2 (3 Stars) in Makkah]]></image:caption>
+    </image:image>
   </url>
   <url>
     <loc>https://prestige-ksa.web.app/ar/about</loc>

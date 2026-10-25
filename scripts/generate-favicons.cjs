@@ -2,76 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-// 1. High-Resolution Vector SVG Favicon for Prestige Hotels
-// Features: Dark royal charcoal background (#14120E), royal 24k gold gradient, architectural arches and 5-star crown
-const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <defs>
-    <linearGradient id="prestigeGold" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#F3E5AB" />
-      <stop offset="30%" stop-color="#DFBE72" />
-      <stop offset="70%" stop-color="#C9A24B" />
-      <stop offset="100%" stop-color="#9A772B" />
-    </linearGradient>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1E1C18" />
-      <stop offset="100%" stop-color="#0E0D0B" />
-    </linearGradient>
-    <linearGradient id="innerGlow" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#DFBE72" stop-opacity="0.25" />
-      <stop offset="100%" stop-color="#DFBE72" stop-opacity="0.02" />
-    </linearGradient>
-    <filter id="goldGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#C9A24B" flood-opacity="0.35"/>
-    </filter>
-  </defs>
-
-  <!-- Dark Royal Rounded Squircle Background -->
-  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
-  
-  <!-- Outer Gold Border -->
-  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="url(#prestigeGold)" stroke-width="8" stroke-opacity="0.85" />
-  
-  <!-- Subtle Inner Inset Border -->
-  <rect x="32" y="32" width="448" height="448" rx="80" fill="url(#innerGlow)" stroke="url(#prestigeGold)" stroke-width="2" stroke-opacity="0.3" />
-
-  <g filter="url(#goldGlow)">
-    <!-- 5-Star Luxury Crown on Top -->
-    <!-- Center Star -->
-    <path d="M256 92 L261 106 L276 106 L264 115 L268 129 L256 120 L244 129 L248 115 L236 106 L251 106 Z" fill="url(#prestigeGold)" />
-    <!-- Left Inner Star -->
-    <path d="M208 108 L212 119 L224 119 L214 126 L217 137 L208 130 L199 137 L202 126 L192 119 L204 119 Z" fill="url(#prestigeGold)" transform="scale(0.85) translate(40, 20)" />
-    <!-- Right Inner Star -->
-    <path d="M304 108 L308 119 L320 119 L310 126 L313 137 L304 130 L295 137 L298 126 L288 119 L300 119 Z" fill="url(#prestigeGold)" transform="scale(0.85) translate(46, 20)" />
-
-    <!-- Royal Monogram / Hotel Arch Icon -->
-    <!-- Main Monumental Islamic/Royal Arch -->
-    <path d="M256 148 C186 148 132 202 132 272 L132 400 C132 406 138 412 144 412 L368 412 C374 412 380 406 380 400 L380 272 C380 202 326 148 256 148 Z" 
-          fill="none" 
-          stroke="url(#prestigeGold)" 
-          stroke-width="16" 
-          stroke-linejoin="round" />
-
-    <!-- Inner Keyhole / Mosque Sanctuary Arch -->
-    <path d="M256 196 C216 196 184 228 184 268 L184 412 L328 412 L328 268 C328 228 296 196 256 196 Z" 
-          fill="none" 
-          stroke="url(#prestigeGold)" 
-          stroke-width="10" 
-          stroke-linejoin="round" />
-
-    <!-- Central Prestige Monogram "P" Crown Column -->
-    <!-- Stylized Iconic "P" in the Center -->
-    <path d="M232 248 L232 376 M232 248 L268 248 C288 248 300 260 300 276 C300 292 288 304 268 304 L232 304" 
-          fill="none" 
-          stroke="url(#prestigeGold)" 
-          stroke-width="18" 
-          stroke-linecap="round" 
-          stroke-linejoin="round" />
-          
-    <!-- Base Pedestal Line -->
-    <line x1="112" y1="412" x2="400" y2="412" stroke="url(#prestigeGold)" stroke-width="14" stroke-linecap="round" />
-  </g>
-</svg>`;
-
 // Helper function to build a standard multi-size Windows ICO buffer from PNG buffers
 function buildIco(pngBuffers) {
   const count = pngBuffers.length;
@@ -105,28 +35,74 @@ function buildIco(pngBuffers) {
 async function main() {
   const publicDir = path.resolve(__dirname, '../public');
   const distDir = path.resolve(__dirname, '../dist');
+  const brandDir = path.join(publicDir, 'images/brand');
+  fs.mkdirSync(brandDir, { recursive: true });
 
-  console.log('[favicon-gen] Generating SVG & high-res PNG favicons...');
+  // Source master brand logo
+  let masterPath = path.join(publicDir, 'brand-user-logo.png');
+  if (!fs.existsSync(masterPath)) {
+    masterPath = path.join(brandDir, 'logo.png');
+  }
 
-  // 1. Write SVG
-  fs.writeFileSync(path.join(publicDir, 'favicon.svg'), svgContent, 'utf8');
+  console.log('[favicon-gen] Using master logo from:', masterPath);
+  const masterBuf = fs.readFileSync(masterPath);
 
-  const svgBuffer = Buffer.from(svgContent);
+  // 1. Generate Full Brand Logos (Optimized WebP, PNG, Header thumbnail)
+  console.log('[favicon-gen] Generating optimized brand logos...');
+  const logo512Webp = await sharp(masterBuf)
+    .resize(512, 512, { fit: 'contain', background: { r: 245, g: 241, b: 232, alpha: 0 } })
+    .webp({ quality: 90 })
+    .toBuffer();
+  fs.writeFileSync(path.join(brandDir, 'logo.webp'), logo512Webp);
+  fs.writeFileSync(path.join(brandDir, 'about_logo.webp'), logo512Webp);
 
-  // 2. Generate required sizes
+  const logo512Png = await sharp(masterBuf)
+    .resize(512, 512, { fit: 'contain', background: { r: 245, g: 241, b: 232, alpha: 0 } })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+  fs.writeFileSync(path.join(brandDir, 'logo.png'), logo512Png);
+  fs.writeFileSync(path.join(brandDir, 'about_logo.png'), logo512Png);
+
+  // Ultra-fast header thumbnail (128x128 WebP ~5KB)
+  const logoHeaderWebp = await sharp(masterBuf)
+    .resize(128, 128, { fit: 'contain', background: { r: 245, g: 241, b: 232, alpha: 0 } })
+    .webp({ quality: 85 })
+    .toBuffer();
+  fs.writeFileSync(path.join(brandDir, 'logo-header.webp'), logoHeaderWebp);
+  console.log('[favicon-gen] Created brand logo assets (WebP 512, PNG 512, Header 128)');
+
+  // 2. Extract Authentic Golden "P" Medallion for Favicon Suite
+  // Coordinates in 1254x1254 master: center X=627, center Y=418, diameter=348
+  const cropSize = 348;
+  const cropLeft = 627 - Math.round(cropSize / 2);
+  const cropTop = 418 - Math.round(cropSize / 2);
+
+  const circleMask = Buffer.from(
+    `<svg width="${cropSize}" height="${cropSize}">
+      <circle cx="${cropSize / 2}" cy="${cropSize / 2}" r="${cropSize / 2 - 1}" fill="white" />
+    </svg>`
+  );
+
+  const medallionMaster = await sharp(masterBuf)
+    .extract({ left: cropLeft, top: cropTop, width: cropSize, height: cropSize })
+    .composite([{ input: circleMask, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+
+  console.log('[favicon-gen] Extracted circular golden medallion master (' + cropSize + 'x' + cropSize + ')');
+
+  // 3. Generate Multi-Resolution Favicon Suite for Google Search & Browsers
   const sizes = [
-    { name: 'favicon-48x48.png', size: 48 },
+    { name: 'favicon-48x48.png', size: 48 },   // Google Search requirement (multiple of 48)
     { name: 'favicon-96x96.png', size: 96 },
-    { name: 'favicon-192x192.png', size: 192 },
-    { name: 'favicon-512x512.png', size: 512 },
-    { name: 'apple-touch-icon.png', size: 180 },
+    { name: 'favicon-192x192.png', size: 192 }, // Android Chrome & PWA
+    { name: 'favicon-512x512.png', size: 512 }, // PWA High-res splash
+    { name: 'apple-touch-icon.png', size: 180 },// iOS Safari
     { name: 'images/brand/favicon.png', size: 192 }
   ];
 
-  const generatedPngs = [];
-
   for (const target of sizes) {
-    const buf = await sharp(svgBuffer)
+    const buf = await sharp(medallionMaster)
       .resize(target.size, target.size)
       .png({ compressionLevel: 9 })
       .toBuffer();
@@ -134,29 +110,36 @@ async function main() {
     const targetPath = path.join(publicDir, target.name);
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     fs.writeFileSync(targetPath, buf);
-    console.log(`[favicon-gen] Created ${target.name} (${target.size}x${target.size})`);
-
-    if ([16, 32, 48].includes(target.size) || target.size === 48) {
-      generatedPngs.push({ width: target.size, height: target.size, buffer: buf });
-    }
+    console.log(`[favicon-gen] Created ${target.name} (${target.size}x${target.size}, ${buf.length} bytes)`);
   }
 
-  // Also generate 16x16 and 32x32 for the ICO file
-  const buf16 = await sharp(svgBuffer).resize(16, 16).png().toBuffer();
-  const buf32 = await sharp(svgBuffer).resize(32, 32).png().toBuffer();
-  const buf48 = await sharp(svgBuffer).resize(48, 48).png().toBuffer();
+  // 4. Generate multi-resolution binary favicon.ico (16, 32, 48px)
+  const buf16 = await sharp(medallionMaster).resize(16, 16).png().toBuffer();
+  const buf32 = await sharp(medallionMaster).resize(32, 32).png().toBuffer();
+  const buf48 = await sharp(medallionMaster).resize(48, 48).png().toBuffer();
 
-  // 3. Generate multi-resolution favicon.ico
   const icoBuffer = buildIco([
     { width: 16, height: 16, buffer: buf16 },
     { width: 32, height: 32, buffer: buf32 },
     { width: 48, height: 48, buffer: buf48 }
   ]);
-
   fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuffer);
   console.log('[favicon-gen] Created multi-resolution binary favicon.ico (16, 32, 48px)');
 
-  // 4. Create Web App Manifest (site.webmanifest)
+  // 5. Generate scalable SVG Favicon embedding the crisp medallion
+  const medallion192Base64 = (await sharp(medallionMaster).resize(192, 192).png().toBuffer()).toString('base64');
+  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <clipPath id="circleClip">
+      <circle cx="96" cy="96" r="95" />
+    </clipPath>
+  </defs>
+  <image href="data:image/png;base64,${medallion192Base64}" width="192" height="192" clip-path="url(#circleClip)" />
+</svg>`;
+  fs.writeFileSync(path.join(publicDir, 'favicon.svg'), svgContent, 'utf8');
+  console.log('[favicon-gen] Created vector SVG favicon embedding authentic medallion');
+
+  // 6. Create Web App Manifest (site.webmanifest)
   const manifest = {
     name: "برستيج لإدارة وتشغيل الفنادق | Prestige Hotels Management",
     short_name: "برستيج للفنادق | Prestige Hotels",
@@ -222,10 +205,16 @@ async function main() {
         fs.copyFileSync(src, dest);
       }
     }
+    const distBrandDir = path.join(distDir, 'images/brand');
+    fs.mkdirSync(distBrandDir, { recursive: true });
+    fs.copyFileSync(path.join(brandDir, 'logo.webp'), path.join(distBrandDir, 'logo.webp'));
+    fs.copyFileSync(path.join(brandDir, 'logo.png'), path.join(distBrandDir, 'logo.png'));
+    fs.copyFileSync(path.join(brandDir, 'logo-header.webp'), path.join(distBrandDir, 'logo-header.webp'));
+    fs.copyFileSync(path.join(brandDir, 'favicon.png'), path.join(distBrandDir, 'favicon.png'));
     console.log('[favicon-gen] Synced all favicon assets to dist/');
   }
 
-  console.log('[favicon-gen] ✅ All favicon assets successfully generated!');
+  console.log('[favicon-gen] ✅ All authentic brand favicon assets successfully generated!');
 }
 
 main().catch(console.error);

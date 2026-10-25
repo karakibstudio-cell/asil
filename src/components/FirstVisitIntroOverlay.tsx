@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { SiteSettings } from '../types';
 import { Sparkles, X, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { getBrandLogoUrl } from '../utils/brandLogo';
 
 interface FirstVisitIntroOverlayProps {
   siteSettings?: SiteSettings;
@@ -213,7 +214,7 @@ export const FirstVisitIntroOverlay: React.FC<FirstVisitIntroOverlayProps> = ({
 
   if (!shouldShow || hasIntroVideo) return null;
 
-  const logoUrl = config?.logoUrl || siteSettings?.logoUrl || '/images/brand/logo.png';
+  const logoUrl = getBrandLogoUrl(config?.logoUrl || siteSettings?.logoUrl, 'default');
   const title = language === 'en' 
     ? (config?.titleEn || siteSettings?.siteTitleEn || 'PRESTIGE')
     : (config?.titleAr || siteSettings?.siteTitle || 'برستيج');
