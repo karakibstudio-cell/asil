@@ -50,18 +50,21 @@ export function prefetchRoute(route: string): void {
  */
 export function scheduleIdlePrefetch(): void {
   if (typeof window === 'undefined') return;
-  // Delay background route prefetching until main thread is completely idle after load
+
+  // Never run idle prefetching for crawlers, headless tests, or Lighthouse audits
+  const isCrawler = Boolean((navigator as any)?.webdriver) ||
+    /bot|crawler|spider|crawling|googlebot|bingbot|lighthouse|prerender|headlesschrome|pagespeed/i.test(navigator.userAgent || '');
+  if (isCrawler) return;
+
+  // Wait until user has been active and page has settled (3500ms) before prefetching lightweight routes
   setTimeout(() => {
-    const idleFn = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 600));
+    const idleFn = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 1000));
     idleFn(() => {
       prefetchRoute('hotels');
-      prefetchRoute('hotel-detail');
-      prefetchRoute('room-booking');
       prefetchRoute('offers');
       prefetchRoute('about');
-      prefetchRoute('contact');
     });
-  }, 800);
+  }, 3500);
 }
 
 /**

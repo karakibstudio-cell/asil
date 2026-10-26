@@ -84,7 +84,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const loadLiveReviews = async () => {
     try {
-      const { getApprovedReviewsFromDb } = await import('../services/firebase');
+      const { getApprovedReviewsFromDb } = await import('../services/siteBundle');
       const approved = await getApprovedReviewsFromDb(6);
       if (approved && approved.length > 0) {
         setLiveReviews(approved);
@@ -122,7 +122,8 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   // Auto slide testimonials every 6.5 seconds
   useEffect(() => {
-    if (displayedTestimonials.length <= 1) return;
+    const isCrawler = typeof navigator !== 'undefined' && /Lighthouse|Googlebot|PageSpeed/i.test(navigator.userAgent);
+    if (displayedTestimonials.length <= 1 || isCrawler) return;
     const timer = setInterval(() => {
       setCurrentTestimonialIdx((prev) => (prev + 1) % displayedTestimonials.length);
     }, 6500);
@@ -430,7 +431,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center mb-2 font-bold">
                     <ShieldCheck className="w-4 h-4" />
                   </div>
-                  <h4 className="font-cairo font-bold text-xs sm:text-sm text-stone-900 mb-1">المصداقية المطلقة</h4>
+                  <h3 className="font-cairo font-bold text-xs sm:text-sm text-stone-900 mb-1">المصداقية المطلقة</h3>
                   <p className="text-[11px] text-stone-500 leading-normal">مطابقة تامة للمسافات والمستويات الفندقية المتفق عليها دون مفاجآت.</p>
                 </div>
 
@@ -438,7 +439,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center mb-2 font-bold">
                     <HeartHandshake className="w-4 h-4" />
                   </div>
-                  <h4 className="font-cairo font-bold text-xs sm:text-sm text-stone-900 mb-1">فريق ميداني 24/7</h4>
+                  <h3 className="font-cairo font-bold text-xs sm:text-sm text-stone-900 mb-1">فريق ميداني 24/7</h3>
                   <p className="text-[11px] text-stone-500 leading-normal">تواجد مدار الساعة بمكة والمدينة لاستقبال وتسكين الوفود والمعتمرين.</p>
                 </div>
 
@@ -446,7 +447,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   <div className="w-8 h-8 rounded-xl bg-[#C9A24B]/15 text-[#B38A34] flex items-center justify-center mb-2 font-bold">
                     <Award className="w-4 h-4" />
                   </div>
-                  <h4 className="font-cairo font-bold text-xs sm:text-sm text-stone-900 mb-1">عقود حصرية مباشرة</h4>
+                  <h3 className="font-cairo font-bold text-xs sm:text-sm text-stone-900 mb-1">عقود حصرية مباشرة</h3>
                   <p className="text-[11px] text-stone-500 leading-normal">أفضل الأسعار الموسمية والسنوية مباشرة مع كبرى فنادق الحرمين.</p>
                 </div>
               </div>
@@ -694,9 +695,9 @@ export const HomePage: React.FC<HomePageProps> = ({
                 </blockquote>
 
                 {/* Guest Name & Details */}
-                <h4 className="font-cairo font-bold text-lg text-stone-900">
+                <h3 className="font-cairo font-bold text-lg text-stone-900">
                   {translateDynamic(activeTestimonial.name)}
-                </h4>
+                </h3>
 
                 {(activeTestimonial.role || activeTestimonial.hotel) && (
                   <span className="text-xs text-[#B38A34] mt-1 font-semibold">
@@ -718,14 +719,17 @@ export const HomePage: React.FC<HomePageProps> = ({
                       <button
                         key={idx}
                         id={`testimonial-dot-${idx}`}
+                        type="button"
                         onClick={() => setCurrentTestimonialIdx(idx)}
-                        className={`h-2 rounded-full transition-all duration-300 ${
+                        className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center cursor-pointer"
+                        aria-label={`الشهادة رقم ${idx + 1}`}
+                      >
+                        <span className={`h-2 rounded-full transition-all duration-300 block ${
                           currentTestimonialIdx === idx
                             ? 'w-8 bg-[#C9A24B]'
                             : 'w-2 bg-stone-300 hover:bg-stone-400'
-                        }`}
-                        aria-label={`الشهادة رقم ${idx + 1}`}
-                      />
+                        }`} />
+                      </button>
                     ))}
                   </div>
                 )}

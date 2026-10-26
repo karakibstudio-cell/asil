@@ -235,7 +235,7 @@ export const IntroVideoSection: React.FC<IntroVideoSectionProps> = ({
             webkit-playsinline="true"
             x5-playsinline="true"
             muted={isMuted}
-            preload="auto"
+            preload="none"
             disablePictureInPicture
             disableRemotePlayback
             onLoadStart={attemptPlay}

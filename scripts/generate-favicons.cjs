@@ -126,18 +126,18 @@ async function main() {
   fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuffer);
   console.log('[favicon-gen] Created multi-resolution binary favicon.ico (16, 32, 48px)');
 
-  // 5. Generate scalable SVG Favicon embedding the crisp medallion
-  const medallion192Base64 = (await sharp(medallionMaster).resize(192, 192).png().toBuffer()).toString('base64');
-  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  // 5. Generate lightweight SVG Favicon (compact ~4KB instead of 97KB)
+  const medallionWebpBase64 = (await sharp(medallionMaster).resize(96, 96).webp({ quality: 90 }).toBuffer()).toString('base64');
+  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
   <defs>
     <clipPath id="circleClip">
-      <circle cx="96" cy="96" r="95" />
+      <circle cx="48" cy="48" r="47" />
     </clipPath>
   </defs>
-  <image href="data:image/png;base64,${medallion192Base64}" width="192" height="192" clip-path="url(#circleClip)" />
+  <image href="data:image/webp;base64,${medallionWebpBase64}" width="96" height="96" clip-path="url(#circleClip)" />
 </svg>`;
   fs.writeFileSync(path.join(publicDir, 'favicon.svg'), svgContent, 'utf8');
-  console.log('[favicon-gen] Created vector SVG favicon embedding authentic medallion');
+  console.log('[favicon-gen] Created ultra-lightweight SVG favicon (~4KB)');
 
   // 6. Create Web App Manifest (site.webmanifest)
   const manifest = {

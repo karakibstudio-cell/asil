@@ -32,6 +32,7 @@ export default defineConfig(() => {
           return deps.filter(dep => 
             !dep.includes('vendor-pdf') && 
             !dep.includes('vendor-firebase') && 
+            !dep.includes('vendor-supabase') && 
             !dep.includes('data-hotels-seed') &&
             !dep.includes('AdminDashboard') &&
             !dep.includes('vendor-charts')
@@ -48,7 +49,7 @@ export default defineConfig(() => {
               return 'data-hotels-seed';
             }
             if (id.includes('node_modules')) {
-              if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg') || id.includes('dompurify') || id.includes('fflate')) {
+              if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg') || id.includes('dompurify') || id.includes('fflate') || id.includes('qrcode')) {
                 return 'vendor-pdf';
               }
               if (id.includes('recharts') || id.includes('d3-')) {
@@ -60,13 +61,30 @@ export default defineConfig(() => {
               if (id.includes('framer-motion')) {
                 return 'vendor-motion';
               }
-              if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/') || id.endsWith('react') || id.endsWith('react-dom')) {
+              if (
+                id.includes('/react/') || 
+                id.includes('\\react\\') || 
+                id.includes('/react-dom/') || 
+                id.includes('\\react-dom\\') || 
+                id.includes('/scheduler/') || 
+                id.includes('\\scheduler\\') || 
+                id.endsWith('react') || 
+                id.endsWith('react-dom')
+              ) {
                 return 'vendor-react';
               }
-              if (id.includes('@supabase')) {
+              if (id.includes('@supabase') || id.includes('iceberg-js') || id.includes('@realtime-js') || id.includes('gotrue') || id.includes('postgrest')) {
                 return 'vendor-supabase';
               }
-              if (id.includes('firebase')) {
+              if (
+                id.includes('firebase') || 
+                id.includes('@firebase') || 
+                id.includes('re2js') || 
+                id.includes('@grpc') || 
+                id.includes('proto-loader') || 
+                id.includes('faye-websocket') || 
+                id.includes('idb')
+              ) {
                 return 'vendor-firebase';
               }
               return 'vendor-common';

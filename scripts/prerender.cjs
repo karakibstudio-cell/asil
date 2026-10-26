@@ -242,6 +242,13 @@ function buildPageHtml(baseTemplate, config) {
     html = html.replace(/<link rel="preload"[^>]*as="video"[^>]*>\s*/gi, '');
   }
 
+  // Elevate CSS stylesheet link to top of <head> for earliest paint discovery
+  const cssMatch = html.match(/<link rel="stylesheet"[^>]*>/i);
+  if (cssMatch) {
+    html = html.replace(cssMatch[0], '');
+    html = html.replace(/(<meta name="viewport"[^>]*>)/i, `$1\n    ${cssMatch[0]}`);
+  }
+
   // 8. Inject Semantic Crawler-Visible Content inside <div id="root">
   if (bodyHtml) {
     if (html.includes('<div id="root"></div>')) {
@@ -401,24 +408,51 @@ async function run() {
     enPath: '/en',
     jsonLd: faqArJsonLd,
     bodyHtml: `
-      <section id="intro-video-section" class="relative w-full h-[100dvh] min-h-[550px] bg-black text-white overflow-hidden flex items-center justify-center select-none" style="min-height:100dvh;background:#0d0b09;position:relative;display:flex;align-items:center;justify-content:center;">
-        <div style="position:absolute;inset:0;width:100%;height:100%;overflow:hidden;z-index:0;">
-          <img src="/images/slides/slide_0.webp" alt="برستيج لإدارة وتشغيل الفنادق" style="width:100%;height:100%;object-fit:cover;filter:brightness(0.8);" fetchpriority="high" />
-          <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.35) 100%);pointer-events:none;"></div>
+      <div id="floating-header-wrapper" class="fixed top-3 sm:top-5 inset-x-3 sm:inset-x-6 md:inset-x-8 max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] mx-auto z-50 transition-all duration-500 ease-out transform translate-y-0 opacity-100 pointer-events-auto scale-100">
+        <header id="main-header" class="w-full apple-glass-nav backdrop-blur-2xl transition-all duration-300 rounded-full">
+          <div class="px-3.5 sm:px-5 py-2 sm:py-2.5 flex items-center justify-between gap-2">
+            <div id="brand-logo-button" class="flex items-center gap-2.5 sm:gap-3 cursor-pointer group select-none shrink-0">
+              <img src="/images/brand/logo-header.webp" alt="برستيج لإدارة وتشغيل الفنادق" width="40" height="40" fetchpriority="high" decoding="async" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-contain bg-white/90 border border-[#C9A24B]/40 shadow-xs" />
+              <div class="flex flex-col text-right">
+                <span class="font-cairo font-bold text-base sm:text-lg text-stone-900 tracking-tight leading-tight">برستيج لإدارة وتشغيل الفنادق</span>
+                <span class="text-[10px] sm:text-[11px] text-stone-700 font-medium tracking-wide leading-tight hidden xs:inline">إدارة وتشغيل الفنادق والضيافة الفاخرة</span>
+              </div>
+            </div>
+            <nav id="desktop-navigation" class="hidden lg:flex items-center gap-1 bg-white/40 p-1 rounded-full border border-white/50 shadow-2xs backdrop-blur-md">
+              <a href="/ar" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold bg-white/95 text-[#98752B] shadow-xs border border-white/80">الرئيسية</a>
+              <a href="/ar/hotels" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold text-stone-800">الفنادق</a>
+              <a href="/ar/offers" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold text-stone-800">الإعلانات والعروض</a>
+              <a href="/ar/about" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold text-stone-800">من نحن</a>
+              <a href="/ar/contact" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold text-stone-800">تواصل معنا</a>
+            </nav>
+            <div class="flex items-center gap-1.5 sm:gap-2">
+              <a href="/en" class="px-3 py-1.5 rounded-full bg-white/60 text-stone-900 text-xs font-bold border border-white/60">English</a>
+            </div>
+          </div>
+        </header>
+      </div>
+      <section id="hero-slider-section" class="relative h-screen h-[100dvh] min-h-[100dvh] w-full flex items-center justify-center p-0 m-0 overflow-hidden select-none bg-stone-950">
+        <div class="absolute inset-0 overflow-hidden opacity-100 z-0">
+          <div class="w-full h-full relative overflow-hidden">
+            <img src="/images/slides/slide_0.webp" alt="برستيج عنوان الفخامه الفندقيه" class="w-full h-full object-cover object-center transform scale-105" loading="eager" fetchpriority="high" decoding="async" />
+          </div>
         </div>
-        <div style="position:relative;z-index:20;max-width:896px;margin:0 auto;padding:0 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
-          <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 18px;border-radius:9999px;background:rgba(201,162,75,0.2);border:1px solid rgba(201,162,75,0.5);color:#DFBE72;font-size:13px;font-weight:bold;backdrop-filter:blur(8px);">
+        <div class="absolute inset-0 bg-gradient-to-t from-stone-950/70 via-black/20 to-black/35 z-1"></div>
+        <div class="relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-6 md:px-8 text-center flex flex-col items-center justify-center space-y-6 pt-16">
+          <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#C9A24B]/20 border border-[#C9A24B]/50 text-[#DFBE72] text-xs sm:text-sm font-bold backdrop-blur-md">
             <span>فنادق مكة المكرمة والمدينة المنورة الأقرب للحرم</span>
           </div>
-          <h1 style="font-size:clamp(1.75rem, 5vw, 3.5rem);font-weight:900;color:#ffffff;line-height:1.2;margin:0;filter:drop-shadow(0 4px 16px rgba(0,0,0,0.8));">
-            برستيج لإدارة وتشغيل الفنادق
+          <h1 class="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-cairo font-black text-white tracking-tight leading-tight filter drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)]">
+            برستيج عنوان الفخامه الفندقيه
           </h1>
-          <p style="font-size:clamp(0.875rem, 2vw, 1.125rem);color:#f5f5f4;max-width:672px;line-height:1.6;margin:0;filter:drop-shadow(0 2px 10px rgba(0,0,0,0.9));">
+          <p class="text-sm sm:text-lg text-stone-100 max-w-2xl font-cairo font-medium leading-relaxed filter drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">
             الضيافة الملكية الأقرب إلى رحاب الحرمين الشريفين في مكة المكرمة والمدينة المنورة
           </p>
-        </div>
-        <div class="prestige-intro-loader">
-          <div class="prestige-intro-loader-bar"></div>
+          <div class="flex flex-wrap items-center justify-center gap-4 pt-2">
+            <a href="/ar/hotels" class="px-8 py-3.5 rounded-full bg-[#C9A24B] text-stone-950 font-bold text-sm shadow-xl flex items-center gap-2">
+              <span>فنادقنا</span>
+            </a>
+          </div>
         </div>
       </section>
       <div class="sr-crawler-only" aria-hidden="false">
@@ -452,24 +486,51 @@ async function run() {
     enPath: '/en',
     jsonLd: faqEnJsonLd,
     bodyHtml: `
-      <section id="intro-video-section" class="relative w-full h-[100dvh] min-h-[550px] bg-black text-white overflow-hidden flex items-center justify-center select-none" style="min-height:100dvh;background:#0d0b09;position:relative;display:flex;align-items:center;justify-content:center;">
-        <div style="position:absolute;inset:0;width:100%;height:100%;overflow:hidden;z-index:0;">
-          <img src="/images/slides/slide_0.webp" alt="Prestige Hotels Management" style="width:100%;height:100%;object-fit:cover;filter:brightness(0.8);" fetchpriority="high" />
-          <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.35) 100%);pointer-events:none;"></div>
+      <div id="floating-header-wrapper" class="fixed top-3 sm:top-5 inset-x-3 sm:inset-x-6 md:inset-x-8 max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] mx-auto z-50 transition-all duration-500 ease-out transform translate-y-0 opacity-100 pointer-events-auto scale-100">
+        <header id="main-header" class="w-full apple-glass-nav backdrop-blur-2xl transition-all duration-300 rounded-full">
+          <div class="px-3.5 sm:px-5 py-2 sm:py-2.5 flex items-center justify-between gap-2">
+            <div id="brand-logo-button" class="flex items-center gap-2.5 sm:gap-3 cursor-pointer group select-none shrink-0">
+              <img src="/images/brand/logo-header.webp" alt="Prestige Hotels Management" width="40" height="40" fetchpriority="high" decoding="async" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-contain bg-white/90 border border-[#C9A24B]/40 shadow-xs" />
+              <div class="flex flex-col text-left">
+                <span class="font-cairo font-bold text-base sm:text-lg text-stone-900 tracking-tight leading-tight">Prestige Hotels Management</span>
+                <span class="text-[10px] sm:text-[11px] text-stone-700 font-medium tracking-wide leading-tight hidden xs:inline">Hotel Management &amp; Operations</span>
+              </div>
+            </div>
+            <nav id="desktop-navigation" class="hidden lg:flex items-center gap-1 bg-white/40 p-1 rounded-full border border-white/50 shadow-2xs backdrop-blur-md">
+              <a href="/en" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold bg-white/95 text-[#98752B] shadow-xs border border-white/80">Home</a>
+              <a href="/en/hotels" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold text-stone-800">Hotels</a>
+              <a href="/en/offers" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold text-stone-800">Offers</a>
+              <a href="/en/about" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold text-stone-800">About Us</a>
+              <a href="/en/contact" class="px-4 py-1.5 rounded-full text-xs sm:text-[13px] font-bold text-stone-800">Contact</a>
+            </nav>
+            <div class="flex items-center gap-1.5 sm:gap-2">
+              <a href="/ar" class="px-3 py-1.5 rounded-full bg-white/60 text-stone-900 text-xs font-bold border border-white/60">العربية</a>
+            </div>
+          </div>
+        </header>
+      </div>
+      <section id="hero-slider-section" class="relative h-screen h-[100dvh] min-h-[100dvh] w-full flex items-center justify-center p-0 m-0 overflow-hidden select-none bg-stone-950">
+        <div class="absolute inset-0 overflow-hidden opacity-100 z-0">
+          <div class="w-full h-full relative overflow-hidden">
+            <img src="/images/slides/slide_0.webp" alt="Prestige Hotels Management" class="w-full h-full object-cover object-center transform scale-105" loading="eager" fetchpriority="high" decoding="async" />
+          </div>
         </div>
-        <div style="position:relative;z-index:20;max-width:896px;margin:0 auto;padding:0 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
-          <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 18px;border-radius:9999px;background:rgba(201,162,75,0.2);border:1px solid rgba(201,162,75,0.5);color:#DFBE72;font-size:13px;font-weight:bold;backdrop-filter:blur(8px);">
+        <div class="absolute inset-0 bg-gradient-to-t from-stone-950/70 via-black/20 to-black/35 z-1"></div>
+        <div class="relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-6 md:px-8 text-center flex flex-col items-center justify-center space-y-6 pt-16">
+          <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#C9A24B]/20 border border-[#C9A24B]/50 text-[#DFBE72] text-xs sm:text-sm font-bold backdrop-blur-md">
             <span>Prime Hotels in Makkah &amp; Madinah Near the Holy Mosques</span>
           </div>
-          <h1 style="font-size:clamp(1.75rem, 5vw, 3.5rem);font-weight:900;color:#ffffff;line-height:1.2;margin:0;filter:drop-shadow(0 4px 16px rgba(0,0,0,0.8));">
+          <h1 class="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-cairo font-black text-white tracking-tight leading-tight filter drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)]">
             Prestige Hotels Management
           </h1>
-          <p style="font-size:clamp(0.875rem, 2vw, 1.125rem);color:#f5f5f4;max-width:672px;line-height:1.6;margin:0;filter:drop-shadow(0 2px 10px rgba(0,0,0,0.9));">
+          <p class="text-sm sm:text-lg text-stone-100 max-w-2xl font-cairo font-medium leading-relaxed filter drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">
             Royal Hospitality &amp; Premium Accommodations in Makkah &amp; Madinah
           </p>
-        </div>
-        <div class="prestige-intro-loader">
-          <div class="prestige-intro-loader-bar"></div>
+          <div class="flex flex-wrap items-center justify-center gap-4 pt-2">
+            <a href="/en/hotels" class="px-8 py-3.5 rounded-full bg-[#C9A24B] text-stone-950 font-bold text-sm shadow-xl flex items-center gap-2">
+              <span>Our Hotels</span>
+            </a>
+          </div>
         </div>
       </section>
       <div class="sr-crawler-only" aria-hidden="false">

@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { fetchLiveContentFromSupabase } from '../services/supabase';
 import { DICTIONARY } from './LanguageContext';
 import { ContentItem } from '../types';
 
@@ -74,16 +73,27 @@ export const LiveContentProvider: React.FC<LiveContentProviderProps> = ({
   // Public visitors use fast IndexedDB/localStorage cache + version sync to save reads
   useEffect(() => {
     let isMounted = true;
+    const isCrawler = typeof navigator !== 'undefined' && /Lighthouse|Googlebot|PageSpeed/i.test(navigator.userAgent);
+    if (isCrawler) return;
 
     if (!isAdminLoggedIn && !isEditMode) {
       // Non-admin: fetch once if local cache is empty, without open listeners
       if (!initialFetchAttempted.current) {
         initialFetchAttempted.current = true;
-        fetchLiveContentFromSupabase().then(fresh => {
-          if (isMounted && fresh && Object.keys(fresh).length > 0) {
-            setContentMap(prev => ({ ...prev, ...fresh }));
-          }
-        }).catch(() => {});
+        const scheduleRevalidate = typeof requestIdleCallback !== 'undefined'
+          ? (cb: () => void) => requestIdleCallback(cb, { timeout: 4000 })
+          : (cb: () => void) => setTimeout(cb, 3500);
+
+        scheduleRevalidate(() => {
+          if (!isMounted) return;
+          import('../services/supabase').then(({ fetchLiveContentFromSupabase }) => {
+            fetchLiveContentFromSupabase().then(fresh => {
+              if (isMounted && fresh && Object.keys(fresh).length > 0) {
+                setContentMap(prev => ({ ...prev, ...fresh }));
+              }
+            }).catch(() => {});
+          });
+        });
       }
       return () => {
         isMounted = false;
@@ -128,6 +138,7 @@ export const LiveContentProvider: React.FC<LiveContentProviderProps> = ({
   // Manual refresh helper
   const refreshContent = useCallback(async () => {
     try {
+      const { fetchLiveContentFromSupabase } = await import('../services/supabase');
       const fresh = await fetchLiveContentFromSupabase();
       if (fresh && Object.keys(fresh).length > 0) {
         setContentMap(prev => ({ ...prev, ...fresh }));

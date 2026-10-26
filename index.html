@@ -17,9 +17,9 @@
     <meta name="theme-color" content="#14120E" />
     <link rel="canonical" href="https://prestige-ksa.web.app/" />
 
-    <!-- Instant Brand Logo Preload (0ms LCP & Instant Header Paint) -->
+    <!-- Instant Brand Logo & Font Preload (0ms Header Paint & 0 Layout Shift) -->
     <link rel="preload" as="image" href="/images/brand/logo-header.webp" type="image/webp" fetchpriority="high" />
-    <link rel="preload" as="image" href="/images/brand/logo.webp" type="image/webp" />
+    <link rel="preload" as="font" href="/fonts/cairo-arabic.woff2" type="font/woff2" crossorigin />
 
     <!-- Google Search Console Verification -->
     <meta name="google-site-verification" content="ee92dce69fb66fa9" />
@@ -97,28 +97,6 @@
       #root { min-height: 100vh; display: flex; flex-direction: column; }
       #intro-video-section { min-height: 100dvh; contain: layout style; }
       #hero-slider-section { min-height: 100dvh; contain: layout style; }
-
-      @keyframes prestigePulse {
-        0% { transform: translateX(-100%); }
-        50% { transform: translateX(50%); }
-        100% { transform: translateX(200%); }
-      }
-      .prestige-intro-loader {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: rgba(255, 255, 255, 0.1);
-        overflow: hidden;
-        z-index: 30;
-      }
-      .prestige-intro-loader-bar {
-        height: 100%;
-        width: 40%;
-        background: linear-gradient(90deg, transparent, #C9A24B, #DFBE72, transparent);
-        animation: prestigePulse 1.8s ease-in-out infinite;
-      }
       .sr-crawler-only {
         position: absolute !important;
         width: 1px !important;

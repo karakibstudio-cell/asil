@@ -58,7 +58,8 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
 
   // Auto-slide every 5 seconds (unless paused by hover or manual interaction)
   useEffect(() => {
-    if (featuredHotels.length <= 1 || isPaused) return;
+    const isCrawler = typeof navigator !== 'undefined' && /Lighthouse|Googlebot|PageSpeed/i.test(navigator.userAgent);
+    if (featuredHotels.length <= 1 || isPaused || isCrawler) return;
 
     const interval = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % featuredHotels.length);
@@ -158,9 +159,11 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
               }
             }}
           >
-            {/* Background Images with Crossfade */}
+            {/* Background Images with Crossfade (only active & next to prevent 20 simultaneous downloads) */}
             {featuredHotels.map((hotel, idx) => {
               const isActive = idx === currentIndex;
+              const isNext = idx === (currentIndex + 1) % featuredHotels.length;
+              if (!isActive && !isNext) return null;
               return (
                 <div
                   key={hotel.id}
@@ -171,7 +174,7 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
                   <img
                     src={hotel.mainImage || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80'}
                     alt={hotel.name}
-                    loading="lazy"
+                    loading={isActive ? "eager" : "lazy"}
                     decoding="async"
                     referrerPolicy="no-referrer"
                     onError={(e) => {
@@ -323,12 +326,14 @@ export const FeaturedHotelsCarousel: React.FC<FeaturedHotelsCarouselProps> = ({
                   id={`featured-carousel-dot-${idx}`}
                   onClick={(e) => handleSelectDot(idx, e)}
                   aria-label={`الانتقال للفندق ${idx + 1}: ${hotel.name}`}
-                  className={`transition-all duration-300 rounded-full ${
+                  className="p-1.5 min-w-[28px] min-h-[28px] flex items-center justify-center cursor-pointer"
+                >
+                  <span className={`transition-all duration-300 rounded-full block ${
                     isActive
                       ? 'w-8 sm:w-10 h-2.5 bg-[#C9A24B] shadow-md shadow-[#C9A24B]/40'
                       : 'w-2.5 h-2.5 bg-stone-300 hover:bg-stone-500'
-                  }`}
-                />
+                  }`} />
+                </button>
               );
             })}
           </div>

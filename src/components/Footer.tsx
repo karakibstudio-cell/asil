@@ -283,7 +283,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, activeOffers, siteSe
                             </span>
                           )}
                           {branch.showWorkingHours !== false && (branch.workingHoursEn || branch.workingHours) && (
-                            <span className="text-[11px] text-stone-500 block mt-0.5 font-normal">
+                            <span className="text-[11px] text-stone-700 block mt-0.5 font-normal">
                               ⏱️ {language === 'en' ? (branch.workingHoursEn || branch.workingHours) : (branch.workingHours || branch.workingHoursEn)}
                             </span>
                           )}
@@ -306,7 +306,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, activeOffers, siteSe
                             </span>
                           )}
                           {branch.showWorkingHours !== false && (branch.workingHoursEn || branch.workingHours) && (
-                            <span className="text-[11px] text-stone-500 block mt-0.5 font-normal">
+                            <span className="text-[11px] text-stone-700 block mt-0.5 font-normal">
                               ⏱️ {language === 'en' ? (branch.workingHoursEn || branch.workingHours) : (branch.workingHours || branch.workingHoursEn)}
                             </span>
                           )}

@@ -113,8 +113,8 @@ export const HotelCard: React.FC<HotelCardProps> = ({
             src={hotel.mainImage || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80'}
             alt={hotel.name}
             className={`w-full h-full object-cover transition-all duration-500 ease-out group-hover:scale-105 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-            loading={index < 6 ? "eager" : "lazy"}
-            fetchPriority={index < 3 ? "high" : "auto"}
+            loading="lazy"
+            fetchPriority="low"
             decoding="async"
             onLoad={() => setImageLoaded(true)}
             onError={(e) => {
